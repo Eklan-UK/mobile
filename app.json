@@ -1,0 +1,92 @@
+{
+  "expo": {
+    "name": "Eklan",
+    "slug": "mobile",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/splash-icon.png",
+    "scheme": "elkan",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "updates": {
+      "url": "https://u.expo.dev/74671476-d20e-46aa-88fb-6dba53dbea27"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eklan.ai",
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need access to your camera to record videos for your future self messages and profile pictures.",
+        "NSMicrophoneUsageDescription": "We need access to your microphone to record your pronunciation for practice and feedback in language learning drills.",
+        "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to upload profile pictures and select videos.",
+        "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library."
+      }
+    },
+    "android": {
+      "versionCode": 2,
+      "adaptiveIcon": {
+       "foregroundImage": "./assets/images/adaptive-foreground.png",
+    "backgroundColor": "#E6F4FE"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.eklan.ai",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/splash-icon.png",
+          "color": "#ffffff",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to record videos for your future self messages and profile pictures.",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record audio with videos.",
+          "recordAudioAndroid": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "74671476-d20e-46aa-88fb-6dba53dbea27"
+      }
+    },
+    
+    "owner": "algoredeem"
+  }
+}

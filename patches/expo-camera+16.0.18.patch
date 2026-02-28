@@ -1,0 +1,269 @@
+diff --git a/node_modules/expo-camera/android/build/generated/source/buildConfig/debug/expo/modules/camera/BuildConfig.java b/node_modules/expo-camera/android/build/generated/source/buildConfig/debug/expo/modules/camera/BuildConfig.java
+new file mode 100644
+index 0000000..e30ac12
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/generated/source/buildConfig/debug/expo/modules/camera/BuildConfig.java
+@@ -0,0 +1,10 @@
++/**
++ * Automatically generated file. DO NOT MODIFY
++ */
++package expo.modules.camera;
++
++public final class BuildConfig {
++  public static final boolean DEBUG = Boolean.parseBoolean("true");
++  public static final String LIBRARY_PACKAGE_NAME = "expo.modules.camera";
++  public static final String BUILD_TYPE = "debug";
++}
+diff --git a/node_modules/expo-camera/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml b/node_modules/expo-camera/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml
+new file mode 100644
+index 0000000..10f98ce
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="expo.modules.camera" >
++
++    <uses-sdk android:minSdkVersion="24" />
++
++    <uses-permission android:name="android.permission.CAMERA" />
++    <uses-permission android:name="android.permission.RECORD_AUDIO" />
++
++</manifest>
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json b/node_modules/expo-camera/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json
+new file mode 100644
+index 0000000..08a8e44
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json
+@@ -0,0 +1,18 @@
++{
++  "version": 3,
++  "artifactType": {
++    "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
++    "kind": "Directory"
++  },
++  "applicationId": "expo.modules.camera",
++  "variantName": "debug",
++  "elements": [
++    {
++      "type": "SINGLE",
++      "filters": [],
++      "attributes": [],
++      "outputFile": "AndroidManifest.xml"
++    }
++  ],
++  "elementType": "File"
++}
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties b/node_modules/expo-camera/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties
+new file mode 100644
+index 0000000..1211b1e
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties
+@@ -0,0 +1,6 @@
++aarFormatVersion=1.0
++aarMetadataVersion=1.0
++minCompileSdk=1
++minCompileSdkExtension=0
++minAndroidGradlePluginVersion=1.0.0
++coreLibraryDesugaringEnabled=false
+diff --git a/node_modules/expo-camera/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json b/node_modules/expo-camera/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json
+new file mode 100644
+index 0000000..9e26dfe
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json
+@@ -0,0 +1 @@
++{}
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar b/node_modules/expo-camera/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar
+new file mode 100644
+index 0000000..4666457
+Binary files /dev/null and b/node_modules/expo-camera/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar differ
+diff --git a/node_modules/expo-camera/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt b/node_modules/expo-camera/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/expo-camera/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties b/node_modules/expo-camera/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties
+new file mode 100644
+index 0000000..940a2ff
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties
+@@ -0,0 +1 @@
++#Fri Feb 06 15:47:23 WAT 2026
+diff --git a/node_modules/expo-camera/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml b/node_modules/expo-camera/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml
+new file mode 100644
+index 0000000..db52c6e
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main" generated-set="main$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/debug/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug" generated-set="debug$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/debug/res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/build/generated/res/resValues/debug"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated" generated-set="generated$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/build/generated/res/resValues/debug"/></dataSet><mergedItems/></merger>
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugAssets/merger.xml b/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugAssets/merger.xml
+new file mode 100644
+index 0000000..0b7012d
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugAssets/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet config="main" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/assets"/></dataSet><dataSet config="debug" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/debug/assets"/></dataSet><dataSet config="generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/build/intermediates/shader_assets/debug/compileDebugShaders/out"/></dataSet></merger>
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugJniLibFolders/merger.xml b/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugJniLibFolders/merger.xml
+new file mode 100644
+index 0000000..ffb07e1
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugJniLibFolders/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet config="main" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/jniLibs"/></dataSet><dataSet config="debug" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/debug/jniLibs"/></dataSet></merger>
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugShaders/merger.xml b/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugShaders/merger.xml
+new file mode 100644
+index 0000000..c4c49f4
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/incremental/mergeDebugShaders/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet config="main" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/shaders"/></dataSet><dataSet config="debug" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/debug/shaders"/></dataSet></merger>
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt b/node_modules/expo-camera/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt
+new file mode 100644
+index 0000000..78ac5b8
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt
+@@ -0,0 +1,2 @@
++R_DEF: Internal format may change without notice
++local
+diff --git a/node_modules/expo-camera/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt b/node_modules/expo-camera/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt
+new file mode 100644
+index 0000000..4d6eb6b
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt
+@@ -0,0 +1,14 @@
++1<?xml version="1.0" encoding="utf-8"?>
++2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++3    package="expo.modules.camera" >
++4
++5    <uses-sdk android:minSdkVersion="24" />
++6
++7    <uses-permission android:name="android.permission.CAMERA" />
++7-->/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:2:3-63
++7-->/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:2:20-60
++8    <uses-permission android:name="android.permission.RECORD_AUDIO" />
++8-->/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:3:3-69
++8-->/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:3:20-66
++9
++10</manifest>
+diff --git a/node_modules/expo-camera/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml b/node_modules/expo-camera/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml
+new file mode 100644
+index 0000000..10f98ce
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="expo.modules.camera" >
++
++    <uses-sdk android:minSdkVersion="24" />
++
++    <uses-permission android:name="android.permission.CAMERA" />
++    <uses-permission android:name="android.permission.RECORD_AUDIO" />
++
++</manifest>
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json b/node_modules/expo-camera/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json
+new file mode 100644
+index 0000000..0637a08
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json
+@@ -0,0 +1 @@
++[]
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt b/node_modules/expo-camera/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt
+new file mode 100644
+index 0000000..08f4ebe
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt
+@@ -0,0 +1 @@
++0 Warning/Error
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt b/node_modules/expo-camera/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt
+new file mode 100644
+index 0000000..97d68d9
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt
+@@ -0,0 +1 @@
++expo.modules.camera
+diff --git a/node_modules/expo-camera/android/build/kotlin/compileDebugKotlin/cacheable/dirty-sources.txt b/node_modules/expo-camera/android/build/kotlin/compileDebugKotlin/cacheable/dirty-sources.txt
+new file mode 100644
+index 0000000..bb8c59d
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/kotlin/compileDebugKotlin/cacheable/dirty-sources.txt
+@@ -0,0 +1,17 @@
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/common/CommonEvents.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/CameraExceptions.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/tasks/PictureSavedDelegate.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/CameraViewModule.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/utils/FileSystemUtils.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/records/CameraRecords.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeScannerResultSerializer.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/MLKitBarcodeAnalyzer.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/utils/ExifTags.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/Options.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/utils/BarCodeScannerListMappers.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/utils/ImageDimensions.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/CameraViewHelper.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/utils/CameraViewHelper.kt
++/home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/java/expo/modules/camera/tasks/ResolveTakenPicture.kt
+\ No newline at end of file
+diff --git a/node_modules/expo-camera/android/build/kotlin/compileDebugKotlin/local-state/build-history.bin b/node_modules/expo-camera/android/build/kotlin/compileDebugKotlin/local-state/build-history.bin
+new file mode 100644
+index 0000000..6fdb304
+Binary files /dev/null and b/node_modules/expo-camera/android/build/kotlin/compileDebugKotlin/local-state/build-history.bin differ
+diff --git a/node_modules/expo-camera/android/build/outputs/logs/manifest-merger-debug-report.txt b/node_modules/expo-camera/android/build/outputs/logs/manifest-merger-debug-report.txt
+new file mode 100644
+index 0000000..3a26bb8
+--- /dev/null
++++ b/node_modules/expo-camera/android/build/outputs/logs/manifest-merger-debug-report.txt
+@@ -0,0 +1,24 @@
++-- Merging decision tree log ---
++manifest
++ADDED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:1:1-4:12
++INJECTED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:1:1-4:12
++	package
++		INJECTED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml
++	xmlns:android
++		ADDED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:1:11-69
++uses-permission#android.permission.CAMERA
++ADDED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:2:3-63
++	android:name
++		ADDED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:2:20-60
++uses-permission#android.permission.RECORD_AUDIO
++ADDED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:3:3-69
++	android:name
++		ADDED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml:3:20-66
++uses-sdk
++INJECTED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
++INJECTED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml
++INJECTED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml
++	android:targetSdkVersion
++		INJECTED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml
++	android:minSdkVersion
++		INJECTED from /home/lord/Elkan-project/mobile/node_modules/expo-camera/android/src/main/AndroidManifest.xml
+diff --git a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+index 91d396e..f3cd0a6 100644
+--- a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
++++ b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+@@ -685,8 +685,8 @@ class ExpoCameraView(
+       onBarcodeScanned(
+         BarcodeScannedEvent(
+           target = id,
+-          data = barcode.value,
+-          raw = barcode.raw,
++          data = barcode.value ?: "",
++          raw = barcode.raw ?: "",
+           type = BarcodeType.mapFormatToString(barcode.type),
+           cornerPoints = cornerPoints,
+           bounds = boundingBox
