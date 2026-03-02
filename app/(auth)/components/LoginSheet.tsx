@@ -7,7 +7,6 @@ import React, { forwardRef, useCallback, useEffect, useMemo, useState } from 're
 import { TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetInput } from './SheetInput';
-
 import Lock from '@/assets/icons/lock.svg';
 import EmailOutline from '@/assets/icons/mail-outline.svg';
 import { AppText, BoldText, Button } from '@/components/ui';
@@ -174,11 +173,10 @@ const LoginSheet = forwardRef<BottomSheetModal, LoginSheetProps>(({ onDismiss, o
         <Button
           onPress={handleLogin}
           style={tw`bg-primary-500 rounded-full mb-4 py-4 items-center`}
+          loading={isLoading}
           disabled={isLoading}
         >
-          <AppText weight="bold" style={tw`text-white font-semibold text-lg`}>
-            {isLoading ? 'Logging in...' : 'Log in'}
-          </AppText>
+          {isLoading ? 'Logging in…' : 'Log in'}
         </Button>
 
         {/* Switch to Signup */}

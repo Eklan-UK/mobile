@@ -1,5 +1,6 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
 import AudioButton from "@/components/drills/AudioButton";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
@@ -33,6 +34,7 @@ export default function SummaryDrill() {
   const [attemptLoading, setAttemptLoading] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
   const [questionAnswers, setQuestionAnswers] = useState<Record<number, string>>({});
+  const [showSubmittedScreen, setShowSubmittedScreen] = useState(false);
 
   // Restore progress
   useEffect(() => {
@@ -172,21 +174,8 @@ export default function SummaryDrill() {
       // Mark drill as completed
       setIsCompleted(true);
 
-      // Only show the comprehension check flow if questions exist for this drill
-      const rawQuestions: any =
-        (drill as any).summary_questions ||
-        (drill as any).comprehension_questions ||
-        [];
-      const hasQuestions =
-        Array.isArray(rawQuestions) && rawQuestions.length > 0;
-
-      if (hasQuestions) {
-        setShowInstructions(true);
-      } else {
-        // No questions configured – simply go back after successful submission
-        setShowInstructions(false);
-        router.back();
-      }
+      // Show the "Summary submitted" screen first
+      setShowSubmittedScreen(true);
       addRecentActivity({
         id: drill._id,
         title: drill.title,
@@ -236,6 +225,29 @@ export default function SummaryDrill() {
     }).filter((q: { text: string }) => q.text && q.text.length > 0)
     : [];
   const hasQuestions = summaryQuestions.length > 0;
+
+  // Show the "Summary submitted" completion screen
+  if (isCompleted && showSubmittedScreen) {
+    const handleSubmittedContinue = () => {
+      setShowSubmittedScreen(false);
+      // Check if there are comprehension questions to show next
+      if (hasQuestions) {
+        setShowInstructions(true);
+      } else {
+        router.back();
+      }
+    };
+
+    return (
+      <DrillCompletedScreen
+        variant="submitted"
+        title="Summary submitted"
+        message="Nice work putting the ideas into your own words. Expressing understanding clearly is a powerful skill."
+        onContinue={handleSubmittedContinue}
+        onClose={() => router.back()}
+      />
+    );
+  }
 
   // Only show the comprehension check intro once the drill has been completed/submitted
   // and only if there are configured questions

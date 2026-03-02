@@ -1,26 +1,51 @@
 import apiClient from '@/lib/api';
 import { logger } from "@/utils/logger";
 
+// ─── Full SpeechAce Response Types ───────────────────────────────
+
+export interface PhoneScore {
+  phone: string;
+  stress_level: number | null;
+  extent: [number, number];
+  quality_score: number;
+  stress_score?: number;
+  predicted_stress_level?: number;
+  word_extent: [number, number];
+  sound_most_like: string;
+}
+
+export interface SyllableScore {
+  phone_count: number;
+  stress_level: number;
+  letters: string;
+  quality_score: number;
+  stress_score: number;
+  predicted_stress_level: number;
+  extent: [number, number];
+}
+
+export interface WordScore {
+  word: string;
+  quality_score: number;
+  phone_score_list: PhoneScore[];
+  syllable_score_list: SyllableScore[];
+}
+
+export interface TextScore {
+  text: string;
+  word_score_list: WordScore[];
+  ielts_score: { pronunciation: number };
+  pte_score: { pronunciation: number };
+  speechace_score: { pronunciation: number };
+  toeic_score: { pronunciation: number };
+  cefr_score: { pronunciation: string };
+}
+
+// ─── API Response Shape ──────────────────────────────────────────
+
 export interface SpeechAceScoreResult {
-  text_score?: number | {
-    text: string;
-    quality_score: number;
-    word_score_list: Array<{
-      word: string;
-      quality_score: number;
-      phone_score_list: Array<{
-        phone: string;
-        quality_score: number;
-        sound_most_like: string;
-      }>;
-    }>;
-  };
-  textScore?: { // Added camelCase version sent by backend
-      speechace_score: {
-          pronunciation: number;
-      };
-      quality_score?: number; // Some versions might have this
-  };
+  text_score?: number | TextScore;
+  textScore?: TextScore;
   integrity_score?: number;
   fluency_score?: number;
   // Error fields
@@ -31,6 +56,40 @@ export interface SpeechAceScoreResult {
   version?: string;
   word_scores?: any[];
 }
+
+// ─── Helper to extract the full TextScore from a result ──────────
+
+export function extractTextScore(result: SpeechAceScoreResult): TextScore | null {
+  // Try camelCase version first (normalised by backend)
+  if (result.textScore && typeof result.textScore === 'object' && result.textScore.word_score_list) {
+    return result.textScore;
+  }
+  // Try snake_case object version
+  if (result.text_score && typeof result.text_score === 'object') {
+    return result.text_score as TextScore;
+  }
+  return null;
+}
+
+// ─── Helper to extract the overall pronunciation score number ────
+
+export function extractQualityScore(result: SpeechAceScoreResult): number {
+  if (typeof result.text_score === 'number') {
+    return result.text_score;
+  }
+  if (result.textScore?.speechace_score?.pronunciation) {
+    return result.textScore.speechace_score.pronunciation;
+  }
+  if (typeof result.text_score === 'object' && result.text_score?.speechace_score?.pronunciation) {
+    return result.text_score.speechace_score.pronunciation;
+  }
+  if (typeof result.text_score === 'object' && result.text_score?.quality_score) {
+    return result.text_score.quality_score;
+  }
+  return 0;
+}
+
+// ─── Service ─────────────────────────────────────────────────────
 
 export const speechaceService = {
   /**
@@ -45,7 +104,7 @@ export const speechaceService = {
         text,
         audioBase64,
         questionInfo: {
-          questionId: 'vocabulary-drill', // Generic context for now
+          questionId: 'vocabulary-drill',
         }
       });
       

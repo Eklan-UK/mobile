@@ -41,7 +41,7 @@ export const Alert: React.FC<AlertProps> = ({
   const getIconConfig = () => {
     switch (type) {
       case 'error':
-        return { name: 'close-circle' as const, color: '#EF4444', bgColor: '#FEE2E2' };
+        return { name: 'close-circle' as const, color: '#2E7D32', bgColor: '#E8F5E9' };
       case 'success':
         return { name: 'checkmark-circle' as const, color: '#10B981', bgColor: '#D1FAE5' };
       case 'warning':

@@ -1,5 +1,6 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
 import AudioButton from "@/components/drills/AudioButton";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
@@ -25,6 +26,7 @@ export default function SentenceDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const startTimeRef = useRef(Date.now());
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
 
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -63,21 +65,28 @@ export default function SentenceDrill() {
     };
   }, [drill]);
 
-  // Save progress
+  // Save progress (debounced to avoid AsyncStorage writes on every keystroke)
   useEffect(() => {
     if (drill) {
-      updateDrillProgress({
-        drillId,
-        title: drill.title,
-        type: drill.type,
-        currentStep: 1,
-        totalSteps: 1,
-        answers: [],
-        data: { answers },
-        startTime: startTimeRef.current,
-        lastUpdated: Date.now(),
-      });
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        updateDrillProgress({
+          drillId,
+          title: drill.title,
+          type: drill.type,
+          currentStep: 1,
+          totalSteps: 1,
+          answers: [],
+          data: { answers },
+          startTime: startTimeRef.current,
+          lastUpdated: Date.now(),
+        });
+      }, 1500); // Only persist after 1.5s of inactivity
     }
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   }, [answers, drill]);
 
   useEffect(() => {
@@ -174,20 +183,13 @@ export default function SentenceDrill() {
 
   if (isCompleted) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
-        <View style={tw`flex-1 items-center justify-center px-5`}>
-          <AppText style={tw`text-2xl font-bold text-gray-900 mb-2`}>Great Job!</AppText>
-          <AppText style={tw`text-gray-600 text-center mb-6`}>
-            Your sentence drill has been submitted for review.
-          </AppText>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={tw`bg-green-700 rounded-full px-6 py-3`}
-          >
-            <AppText style={tw`text-white font-semibold`}>Continue</AppText>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <DrillCompletedScreen
+        variant="submitted"
+        title="Sentence submitted"
+        message="Your submission has been submitted for review. You'll be notified when your sentences have been reviewed."
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
     );
   }
 

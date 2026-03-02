@@ -45,6 +45,7 @@ const FEELING_OPTIONS = [
 
 export default function ViewEditReflectionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
   const [reflection, setReflection] = useState<DailyReflection | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -109,7 +110,7 @@ export default function ViewEditReflectionScreen() {
         },
       ]);
     } catch (error: any) {
-      console.error('Error saving reflection:', error);
+      logger.error('Error saving reflection:', error);
       Alert.alert('Error', error.message || 'Failed to update reflection');
     } finally {
       setSaving(false);

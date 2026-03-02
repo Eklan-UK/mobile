@@ -35,7 +35,8 @@ const variantStyles: Record<
     input: "text-neutral-900",
   },
   outline: {
-    container: "bg-transparent  border border-primary-500 ",
+    // Border colour applied dynamically based on focus state below
+    container: "bg-transparent border",
     input: "text-neutral-900",
   },
   filled: {
@@ -73,14 +74,26 @@ export function Input({
   secureTextEntry,
   style,
   containerStyle,
+  onFocus,
+  onBlur,
   ...props
 }: InputProps) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   const variantStyle = variantStyles[variant];
   const sizeStyle = sizeStyles[size];
 
   const isPassword = secureTextEntry === true;
+
+  // Border priority: error > focused (primary-500) > default (neutral-200)
+  const borderColorClass = error
+    ? "border-error"
+    : variant === "outline"
+    ? isFocused
+      ? "border-primary-500"
+      : "border-neutral-200"
+    : "";
 
   return (
     <View style={containerStyle}>
@@ -95,7 +108,7 @@ export function Input({
           flex-row items-center
           ${variantStyle.container}
           ${sizeStyle.container}
-          ${error ? "border-error" : ""}
+          ${borderColorClass}
         `}
       >
         {/* Left Icon */}
@@ -114,6 +127,8 @@ export function Input({
           ]}
           placeholderTextColor="#a3a3a3"
           secureTextEntry={isPassword && !isPasswordVisible}
+          onFocus={(e) => { setIsFocused(true); onFocus?.(e); }}
+          onBlur={(e) => { setIsFocused(false); onBlur?.(e); }}
           {...props}
         />
 

@@ -24,28 +24,24 @@ export default function RootSplashRouter() {
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       if (isAuthenticated) {
-        // Wait for checkSession to complete if it's running
-        // This ensures we have the latest hasProfile from backend
-        try {
-          await useAuthStore.getState().checkSession();
-        } catch (error) {
-          logger.warn('Session check failed, using cached user data:', error);
-        }
+        // Fire and forget session check - don't block navigation
+        useAuthStore.getState().checkSession().catch(error => {
+          logger.warn('Background session check failed:', error);
+        });
 
-        // Get the latest user from store after checkSession
-        const latestUser = useAuthStore.getState().user;
+        // Use cached user data immediately for fast startup
+        const cachedUser = useAuthStore.getState().user;
         
-        if (latestUser) {
-          // hasProfile is now updated from backend via checkSession
-          const hasProfile = latestUser.hasProfile === true || 
-                             latestUser.role === 'admin' || 
-                             latestUser.role === 'tutor';
+        if (cachedUser) {
+          const hasProfile = cachedUser.hasProfile === true || 
+                             cachedUser.role === 'admin' || 
+                             cachedUser.role === 'tutor';
           
-          logger.log('🔍 Profile check (after session refresh):', {
+          logger.log('🔍 Profile check (cached):', {
             hasProfile,
-            userHasProfile: latestUser.hasProfile,
-            role: latestUser.role,
-            userId: latestUser.id
+            userHasProfile: cachedUser.hasProfile,
+            role: cachedUser.role,
+            userId: cachedUser.id
           });
           
           if (hasProfile) {

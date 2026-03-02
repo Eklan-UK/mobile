@@ -1,10 +1,19 @@
 import tw from "@/lib/tw";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
-import { Animated, Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Animated, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppText, BoldText, Button } from "@/components/ui";
 import Svg, { Path, Rect } from "react-native-svg";
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system/legacy";
+import { speechaceService } from "@/services/speechace.service";
+import { setAudioModeSafely } from "@/utils/audio";
+import { logger } from "@/utils/logger";
+
+// ─── The phrase the user reads aloud ──────────────────────
+const CALIBRATION_PHRASE =
+  "I'm really excited to improve my English speaking with Eklan, so I can express myself clearly and connect better with people around the world.";
 
 // ─── Icons ────────────────────────────────────────────────
 
@@ -126,19 +135,19 @@ type Phase = "idle" | "recording" | "analyzing" | "result";
 
 const getFeedback = (score: number) => {
   if (score >= 70)
-    return "You sound clear and confident. Let's make this feel even more natural.";
+    return "You sound clear and confident. Let\u2019s make this feel even more natural.";
   if (score >= 50)
-    return "You're expressing yourself clearly. Let's smooth out your flow and rhythm.";
+    return "You\u2019re expressing yourself clearly. Let\u2019s smooth out your flow and rhythm.";
   if (score >= 30)
-    return "You're getting your ideas across now let's work on clarity and confidence together.";
-  return "Speaking out loud takes courage. We'll help you build confidence step by step.";
+    return "You\u2019re getting your ideas across \u2014 now let\u2019s work on clarity and confidence together.";
+  return "Speaking out loud takes courage. We\u2019ll help you build confidence step by step.";
 };
 
 const getSubtitle = (phase: Phase, score: number | null) => {
   if (phase === "result" && score !== null) {
     if (score < 50)
-      return "Thanks for giving that a try. Here's where we'll begin.";
-    return "I've finished analysing your voice. Here's what we're starting with.";
+      return "Thanks for giving that a try. Here\u2019s where we\u2019ll begin.";
+    return "I\u2019ve finished analysing your voice. Here\u2019s what we\u2019re starting with.";
   }
   return "Repeat this phrase to personalise your experience";
 };
@@ -151,6 +160,11 @@ export default function VoiceCalibrationScreen() {
   const [confidenceScore, setConfidenceScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [pulseAnim] = useState(new Animated.Value(1));
+
+  // Audio recording state
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [permissionResponse, requestPermission] = Audio.usePermissions();
+  const recordingRef = useRef<Audio.Recording | null>(null);
 
   useEffect(() => {
     if (phase === "recording") {
@@ -166,14 +180,127 @@ export default function VoiceCalibrationScreen() {
     }
   }, [phase]);
 
-  const handleMicPress = () => setPhase("recording");
+  // Cleanup recording on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+      }
+    };
+  }, []);
 
-  const handleStopPress = () => {
+  // ── Start recording ──
+  const handleMicPress = async () => {
+    try {
+      if (!permissionResponse?.granted) {
+        const response = await requestPermission();
+        if (!response.granted) {
+          Alert.alert(
+            "Permission Required",
+            "Microphone access is needed to calibrate your voice."
+          );
+          return;
+        }
+      }
+
+      await setAudioModeSafely({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      logger.log("🎤 Starting voice calibration recording…");
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+      setRecording(newRecording);
+      recordingRef.current = newRecording;
+      setPhase("recording");
+      logger.log("✅ Recording started");
+    } catch (err: any) {
+      logger.error("❌ Failed to start recording:", err);
+      Alert.alert("Error", "Failed to start recording. Please try again.");
+    }
+  };
+
+  // ── Stop recording → send to SpeechAce ──
+  const handleStopPress = async () => {
+    if (!recording) {
+      logger.warn("No active recording to stop");
+      return;
+    }
+
+    const recordingToStop = recording;
+    setRecording(null);
+    recordingRef.current = null;
     setPhase("analyzing");
-    setTimeout(() => {
-      setConfidenceScore(Math.floor(Math.random() * 100));
+
+    try {
+      await recordingToStop.stopAndUnloadAsync();
+      const uri = recordingToStop.getURI();
+      logger.log("🛑 Recording stopped, URI:", uri);
+
+      if (!uri) {
+        throw new Error("No recording URI returned");
+      }
+
+      // Read audio file as base64
+      const audioBase64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: (FileSystem as any).EncodingType?.Base64 || "base64",
+      });
+
+      logger.log("📡 Sending audio to SpeechAce for scoring…");
+
+      const result = await speechaceService.scorePronunciation(
+        CALIBRATION_PHRASE,
+        audioBase64
+      );
+
+      // Extract the pronunciation score
+      let pronunciationScore = 0;
+
+      if (result.textScore?.speechace_score?.pronunciation) {
+        pronunciationScore = result.textScore.speechace_score.pronunciation;
+      } else if (typeof result.text_score === "number") {
+        pronunciationScore = result.text_score;
+      } else if (
+        typeof result.text_score === "object" &&
+        result.text_score?.quality_score
+      ) {
+        pronunciationScore = result.text_score.quality_score;
+      }
+
+      // Clamp to 0-100
+      pronunciationScore = Math.max(0, Math.min(100, Math.round(pronunciationScore)));
+
+      logger.log("✅ SpeechAce score:", pronunciationScore);
+
+      setConfidenceScore(pronunciationScore);
       setPhase("result");
-    }, 3000);
+    } catch (err: any) {
+      logger.error("❌ Voice analysis failed:", err);
+
+      Alert.alert(
+        "Analysis Error",
+        "We couldn\u2019t analyse your voice right now. Would you like to try again?",
+        [
+          {
+            text: "Try again",
+            onPress: () => setPhase("idle"),
+          },
+          {
+            text: "Skip",
+            style: "cancel",
+            onPress: () => {
+              router.push({
+                pathname: "/(profile-setup)/welcome-complete",
+                params: { ...params, confidenceScore: "0" },
+              });
+            },
+          },
+        ]
+      );
+    }
   };
 
   const handleContinue = async () => {
@@ -244,14 +371,19 @@ export default function VoiceCalibrationScreen() {
                 ]}
               >
                 <TouchableOpacity
-                  onPress={phase === "idle" ? handleMicPress : handleStopPress}
-                  style={tw`w-24 h-24 rounded-full bg-green-700 items-center justify-center shadow-lg`}
+                  onPress={phase === "idle" ? handleMicPress : phase === "recording" ? handleStopPress : undefined}
+                  disabled={phase === "analyzing"}
+                  style={tw`w-24 h-24 rounded-full ${
+                    phase === "analyzing" ? "bg-gray-400" : "bg-green-700"
+                  } items-center justify-center shadow-lg`}
                   activeOpacity={0.85}
                 >
                   {phase === "idle" ? (
                     <MicIcon size={32} color="white" />
-                  ) : (
+                  ) : phase === "recording" ? (
                     <StopIcon size={26} color="white" />
+                  ) : (
+                    <MicIcon size={32} color="white" />
                   )}
                 </TouchableOpacity>
               </Animated.View>
@@ -268,8 +400,8 @@ export default function VoiceCalibrationScreen() {
                 {phase === "idle"
                   ? "Tap to start recording"
                   : phase === "recording"
-                    ? "Listening..."
-                    : "Analyzing pronunciation..."}
+                    ? "Listening\u2026"
+                    : "Analyzing pronunciation\u2026"}
               </AppText>
             </View>
 

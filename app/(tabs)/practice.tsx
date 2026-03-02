@@ -1,7 +1,6 @@
 import HeadPhone from "@/assets/icons/headphone.svg";
 import LogoYellow from "@/assets/icons/logo-yellow.svg";
 import Mic from "@/assets/icons/mic.svg";
-import AiFreeTalkBottomSheet from "@/components/practice/AiFreeTalkBottomSheet";
 import CoachingRequiredBottomSheet from "@/components/practice/CoachinRequiredBottomSheet";
 import PronunciationBottomSheet from "@/components/practice/PronunciationBottomSheet";
 import { AppText } from "@/components/ui";
@@ -9,7 +8,7 @@ import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { router } from "expo-router";
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import {
   ScrollView,
   TouchableOpacity,
@@ -26,7 +25,6 @@ import { useActivityStore } from "@/store/activity-store";
 import { Drill } from "@/types/drill.types";
 
 export default function PracticeScreen() {
-  const aiFreeTalkBottomSheetRef = useRef<any>(null);
   const coachingRequiredBottomSheetRef = useRef<any>(null);
   const pronunciationBottomSheetRef = useRef<any>(null);
 
@@ -39,8 +37,12 @@ export default function PracticeScreen() {
   // Prefetching utilities
   const { prefetchDrill, prefetchDrills } = usePrefetch();
 
-  // Fetch drills for guided section with background refetching
-  const { data: drillsData, isLoading: isLoadingDrills, isError: drillsError } = useDrills();
+  // Fetch all drills with a large limit so we have everything client-side
+  const { data: drillsData, isLoading: isLoadingDrills, isError: drillsError } = useDrills(undefined, 200);
+
+  // How many drills are currently visible in My Plan (progressive reveal)
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Prefetch all drill details when drills list is loaded
   useEffect(() => {
@@ -53,13 +55,18 @@ export default function PracticeScreen() {
       });
     }
   }, [drillsData, prefetchDrill]);
+
+  // All pending/in-progress drills (un-capped — we fetched 200)
   const assignedDrills = drillsData?.drills.filter(
     (assignment) => assignment.status === "pending" || assignment.status === "in_progress"
   ) || [];
 
+  // Slice to visible count for progressive reveal
+  const visibleDrills = assignedDrills.slice(0, visibleCount);
+  const hasMoreDrills = assignedDrills.length > visibleCount;
+
   const handleOpenAiFreeTalk = () => {
-    aiFreeTalkBottomSheetRef.current?.expand();
-    setOpenSheets(prev => new Set(prev).add('aiFreeTalk'));
+    router.push("/practice/ai");
   };
 
   const handleOpenCoachingRequired = () => {
@@ -130,11 +137,6 @@ export default function PracticeScreen() {
         if (openSheets.has('pronunciation') && pronunciationBottomSheetRef.current) {
           pronunciationBottomSheetRef.current.close();
           handleSheetClose('pronunciation');
-          return true; // Prevent navigation
-        }
-        if (openSheets.has('aiFreeTalk') && aiFreeTalkBottomSheetRef.current) {
-          aiFreeTalkBottomSheetRef.current.close();
-          handleSheetClose('aiFreeTalk');
           return true; // Prevent navigation
         }
         if (openSheets.has('coachingRequired') && coachingRequiredBottomSheetRef.current) {
@@ -296,7 +298,7 @@ export default function PracticeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Your Guided Drills Section */}
+        {/* My Plan — Guided Drills */}
         <View style={tw`px-5 pb-24`}>
           <AppText style={tw`text-xl font-bold text-gray-900 mb-1`}>
             Your guided drills
@@ -306,116 +308,101 @@ export default function PracticeScreen() {
           </AppText>
 
           {isLoadingDrills ? (
-            // Loading state
             <>
               <View style={tw`bg-gray-100 rounded-2xl p-4 mb-3 h-32`} />
               <View style={tw`bg-gray-100 rounded-2xl p-4 mb-3 h-32`} />
             </>
           ) : drillsError ? (
-            // Error state
             <View style={tw`bg-red-50 rounded-2xl p-4 mb-3`}>
-              <AppText style={tw`text-red-700 text-center`}>
-                Failed to load drills
-              </AppText>
+              <AppText style={tw`text-red-700 text-center`}>Failed to load drills</AppText>
             </View>
           ) : assignedDrills.length === 0 ? (
-            // Empty state
             <View style={tw`bg-gray-50 rounded-2xl p-6 items-center`}>
               <AppText style={tw`text-4xl mb-2`}>📚</AppText>
-              <AppText style={tw`text-gray-700 font-semibold mb-1`}>
-                No drills assigned yet
-              </AppText>
+              <AppText style={tw`text-gray-700 font-semibold mb-1`}>No drills assigned yet</AppText>
               <AppText style={tw`text-gray-500 text-sm text-center`}>
                 Your coach will assign drills based on your goals
               </AppText>
             </View>
           ) : (
-            // Display assigned drills (limit to 3)
-            assignedDrills.slice(0, 3).map((assignment) => {
-              const drill = assignment.drill;
-              const isLocked = assignment.status === "completed";
-              const category = getDrillCategory(drill.type);
-              const estimatedTime = getEstimatedTime(drill.type);
+            <>
+              {visibleDrills.map((assignment) => {
+                const drill = assignment.drill;
+                const isCompleted = assignment.status === "completed";
+                const category = getDrillCategory(drill.type);
+                const estimatedTime = getEstimatedTime(drill.type);
 
-              return (
-                <TouchableOpacity
-                  key={assignment.assignmentId}
-                  style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-3`}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    if (!isLocked) {
-                      // Prefetch drill data before navigation for instant loading
+                return (
+                  <TouchableOpacity
+                    key={assignment.assignmentId}
+                    style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-3`}
+                    activeOpacity={0.7}
+                    onPress={() => {
                       const drillId = assignment.drill?._id;
-                      if (drillId) {
-                        prefetchDrill(drillId);
-                      }
+                      if (drillId) prefetchDrill(drillId);
                       navigateToDrill(assignment);
-                    }
-                  }}
-                >
-                  <View style={tw`flex-row items-start justify-between mb-3`}>
-                    <View style={tw`flex-1`}>
-                      <AppText style={tw`text-base font-semibold text-gray-900 mb-1`}>
-                        {drill.title}
-                      </AppText>
-                      <AppText style={tw`text-sm text-gray-600 mb-1`}>
-                        {category} • {estimatedTime}
-                      </AppText>
-                      {assignment.assignedBy && (
-                        <View style={tw`flex-row items-center`}>
-                          <AppText style={tw`text-xs text-gray-400 mr-1`}>👤</AppText>
-                          <AppText style={tw`text-xs text-gray-500`}>
-                            Assigned by a coach
-                          </AppText>
+                    }}
+                  >
+                    <View style={tw`flex-row items-start justify-between mb-3`}>
+                      <View style={tw`flex-1`}>
+                        <AppText style={tw`text-base font-semibold text-gray-900 mb-1`}>
+                          {drill.title}
+                        </AppText>
+                        <AppText style={tw`text-sm text-gray-600 mb-1`}>
+                          {category} • {estimatedTime}
+                        </AppText>
+                        {assignment.assignedBy && (
+                          <View style={tw`flex-row items-center`}>
+                            <AppText style={tw`text-xs text-gray-400 mr-1`}>👤</AppText>
+                            <AppText style={tw`text-xs text-gray-500`}>Assigned by a coach</AppText>
+                          </View>
+                        )}
+                      </View>
+                      {isCompleted ? (
+                        <View style={tw`w-8 h-8 bg-green-50 rounded-full items-center justify-center`}>
+                          <Ionicons name="checkmark" size={16} color="#10B981" />
+                        </View>
+                      ) : (
+                        <View style={tw`w-8 h-8 bg-gray-100 rounded-full items-center justify-center`}>
+                          <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
                         </View>
                       )}
                     </View>
-                    {isLocked ? (
-                      <View style={tw`w-8 h-8 bg-gray-100 rounded-full items-center justify-center`}>
-                        <Ionicons name="checkmark" size={16} color="#10B981" />
-                      </View>
-                    ) : (
-                      <View style={tw`w-8 h-8 bg-gray-100 rounded-full items-center justify-center`}>
-                        <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+
+                    {assignment.status === "in_progress" && (
+                      <View style={tw`bg-blue-50 rounded-lg px-3 py-2 self-start`}>
+                        <AppText style={tw`text-xs text-blue-700`}>In Progress</AppText>
                       </View>
                     )}
-                  </View>
+                    {assignment.status === "completed" && (
+                      <View style={tw`bg-green-50 rounded-lg px-3 py-2 flex-row items-center self-start`}>
+                        <AppText style={tw`text-xs mr-1`}>✓</AppText>
+                        <AppText style={tw`text-xs text-green-700`}>Completed</AppText>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
 
-                  {/* Status badge */}
-                  {assignment.status === "in_progress" && (
-                    <View style={tw`bg-blue-50 rounded-lg px-3 py-2 flex-row items-center self-start`}>
-                      <AppText style={tw`text-xs text-blue-700`}>
-                        In Progress
-                      </AppText>
-                    </View>
-                  )}
-                  {assignment.status === "completed" && (
-                    <View style={tw`bg-green-50 rounded-lg px-3 py-2 flex-row items-center self-start`}>
-                      <AppText style={tw`text-xs mr-1`}>✓</AppText>
-                      <AppText style={tw`text-xs text-green-700`}>
-                        Completed
-                      </AppText>
-                    </View>
-                  )}
+              {/* Show more button */}
+              {hasMoreDrills && (
+                <TouchableOpacity
+                  onPress={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                  style={tw`border border-gray-200 rounded-2xl py-4 items-center mt-1 mb-3`}
+                  activeOpacity={0.7}
+                >
+                  <AppText style={tw`text-sm font-semibold text-gray-700`}>
+                    Show more ({assignedDrills.length - visibleCount} remaining)
+                  </AppText>
                 </TouchableOpacity>
-              );
-            })
+              )}
+            </>
           )}
         </View>
+       
       </ScrollView>
 
       {/* Bottom Sheets */}
-      <AiFreeTalkBottomSheet
-        bottomSheetRef={aiFreeTalkBottomSheetRef}
-        onStartConversation={handleStartConversation}
-        onChange={(index: number) => {
-          if (index === -1) {
-            handleSheetClose('aiFreeTalk');
-          } else if (index >= 0) {
-            setOpenSheets(prev => new Set(prev).add('aiFreeTalk'));
-          }
-        }}
-      />
 
       <CoachingRequiredBottomSheet
         bottomSheetRef={coachingRequiredBottomSheetRef}

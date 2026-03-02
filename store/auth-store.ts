@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { secureStorage } from '@/lib/secure-storage';
-import apiClient from '@/lib/api';
+import apiClient, { invalidateTokenCache } from '@/lib/api';
 import { router } from 'expo-router';
 import { logger } from '@/utils/logger';
 
@@ -65,6 +65,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Hydrate from storage on app start
   hydrate: async () => {
     try {
+      invalidateTokenCache(); // Clear stale cache on hydration
       const [token, user] = await Promise.all([
         secureStorage.getToken(),
         secureStorage.getUser(),
@@ -106,15 +107,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       logger.log('🔄 checkSession response:', {
         status: response.status,
-        dataKeys: Object.keys(response.data || {}),
         hasUser: !!response.data?.user,
         hasDataUser: !!response.data?.data?.user,
-        userData: response.data?.user ? {
-          id: response.data.user.id || response.data.user._id,
-          hasProfile: response.data.user.hasProfile,
-          role: response.data.user.role,
-        } : null,
-        fullResponse: JSON.stringify(response.data, null, 2).substring(0, 500),
       });
       
       // Extract user data from response
@@ -179,6 +173,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // Token is invalid - clear auth
         // Don't log auth errors - they're expected and handled gracefully
         await secureStorage.clearAll();
+        invalidateTokenCache(); // Clear stale cached token
         set({
           user: null,
           session: null,
@@ -249,6 +244,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       logger.log('💾 Storing credentials...');
       if (token) {
         await secureStorage.setToken(token);
+        invalidateTokenCache(); // Refresh in-memory cache with new token
       }
       
       // Extract hasProfile from user object
@@ -293,67 +289,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         stack: error.stack,
       });
       
-      // Check if error is related to email verification
-      const isEmailVerificationError = 
-        (error.response?.status === 400 || error.response?.status === 401) && 
-        (error.response?.data?.message?.toLowerCase().includes('email') && 
-         error.response?.data?.message?.toLowerCase().includes('verify')) ||
-        error.response?.data?.code === 'EMAIL_NOT_VERIFIED' ||
-        (error.message?.toLowerCase().includes('email') && 
-         error.message?.toLowerCase().includes('verify'));
-
-      if (isEmailVerificationError) {
-        // Allow login even if email is not verified
-        // Try to get user data from error response if available
-        logger.warn('⚠️ Email not verified, but attempting to proceed...');
-        
-        // If we have user data in error response, use it
-        const errorUser = error.response?.data?.user || error.response?.data?.data?.user;
-        const errorToken = error.response?.data?.token || 
-                          error.response?.data?.session?.token ||
-                          error.response?.data?.data?.token;
-        
-        if (errorUser && errorToken) {
-          logger.log('✅ Found user data in error response, proceeding with login...');
-          
-          // Extract hasProfile from user object
-          const hasProfile = errorUser.hasProfile === true || 
-                             errorUser.role === 'admin' || 
-                             errorUser.role === 'tutor';
-          
-          const userWithProfile = {
-            ...errorUser,
-            hasProfile,
-          };
-          
-          await secureStorage.setToken(errorToken);
-          await secureStorage.setUser(userWithProfile);
-          
-          set({
-            user: userWithProfile,
-            session: { token: errorToken, expiresAt: 0, userId: errorUser.id },
-            isAuthenticated: true,
-            isLoading: false,
-            error: null, // Don't show error, just proceed
-          });
-
-          // Use hasProfile from backend
-          if (!hasProfile) {
-            router.replace('/(profile-setup)');
-          } else {
-            router.replace('/(tabs)');
-          }
-          
-          return; // Successfully logged in despite email verification warning
-        } else {
-          // No user data in error - backend is blocking login
-          // Log warning but still show error to user
-          logger.warn('⚠️ Email not verified and no user data in response - backend is blocking login');
-          // Fall through to show error message below
-        }
-      }
-      
-      // For other errors, show error message
+      // Show error message
       const errorMessage = error.response?.data?.message || error.response?.data?.error?.message || 'Login failed. Please try again.';
       logger.log('📝 Setting error message:', errorMessage);
       
@@ -408,6 +344,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       logger.log('💾 Storing credentials...');
       if (token) {
         await secureStorage.setToken(token);
+        invalidateTokenCache(); // Refresh in-memory cache with new token
       }
       
       // New users always have hasProfile: false
@@ -431,10 +368,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
 
-      // New users always go to profile setup
-      logger.log('🚀 Navigating to profile setup...');
-      router.replace('/(profile-setup)');
-      logger.log('✅ Registration completed successfully');
+      // Navigation is handled by auth.tsx after OTP verification
+      logger.log('✅ Registration completed successfully (navigation deferred to caller)');
     } catch (error: any) {
       logger.error('❌ Registration failed:', {
         message: error.message,
@@ -463,6 +398,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } finally {
       // Clear local state regardless of backend response
       await secureStorage.clearAll();
+      invalidateTokenCache(); // Clear cached token on logout
       
       set({
         user: null,
@@ -496,6 +432,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       // Store credentials
       await secureStorage.setToken(token || session?.token);
+      invalidateTokenCache(); // Refresh in-memory cache with new token
       await secureStorage.setUser(userWithProfile);
 
       set({
@@ -553,6 +490,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       // Store credentials
       await secureStorage.setToken(token || session?.token);
+      invalidateTokenCache(); // Refresh in-memory cache with new token
       await secureStorage.setUser(userWithProfile);
 
       set({

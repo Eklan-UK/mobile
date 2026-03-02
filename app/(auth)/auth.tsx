@@ -1,13 +1,14 @@
+import { LinearGradient } from "expo-linear-gradient";
 import Apple from "@/assets/icons/apple.svg";
 import Google from "@/assets/icons/google.svg";
 import Mail from "@/assets/icons/mail.svg";
 import EklanLogo from "@/assets/images/auth_logo.svg";
-import { AppText, BoldText, Button } from "@/components/ui";
+import { AppText, BoldText, Button, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useRef, useState, useEffect } from "react";
-import { TouchableOpacity, View, Platform, BackHandler } from "react-native";
+import { TouchableOpacity, View, Platform, BackHandler, ImageBackground, StyleSheet } from "react-native";
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from "react-native-safe-area-context";
 import ForgotPasswordSheet from "./components/ForgotPasswordSheet";
@@ -15,8 +16,12 @@ import LoadingSheet from "./components/LoadingSheet";
 import LoginSheet from "./components/LoginSheet";
 import SignupSheet from "./components/SignupSheet";
 import SuccessSheet from "./components/SuccessSheet";
+import VerifyEmailOtpSheet from "./components/VerifyEmailOtpSheet";
 import { useAuth } from "@/hooks/useAuth";
 import Logo from "@/assets/icons/icon-logo.svg";
+import { SignupFormData } from "./components/SignupSheet";
+import apiClient from "@/lib/api";
+import { logger } from "@/utils/logger";
 
 export default function AccessGatewayScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
@@ -27,9 +32,12 @@ export default function AccessGatewayScreen() {
   const loadingSheetRef = useRef<BottomSheetModal>(null);
   const successSheetRef = useRef<BottomSheetModal>(null);
   const forgotPasswordSheetRef = useRef<BottomSheetModal>(null);
+  const verifyEmailOtpSheetRef = useRef<BottomSheetModal>(null);
 
-  const { signInWithGoogle, signInWithApple, isLoading } = useAuth();
+  const { signInWithGoogle, signInWithApple, register, isLoading } = useAuth();
   const [oauthLoading, setOauthLoading] = useState(false);
+  const [signupEmail, setSignupEmail] = useState("");
+  const [showLoaderOverlay, setShowLoaderOverlay] = useState(false);
 
   const handleEmailSignup = () => {
     if (mode === 'login') {
@@ -43,14 +51,70 @@ export default function AccessGatewayScreen() {
     loginSheetRef.current?.present();
   };
 
-  const handleSignupSubmit = () => {
+  /**
+   * Full signup flow:
+   * 1. Dismiss SignupSheet
+   * 2. Show LoadingSheet ("Setting up your account…")
+   * 3. Call register() — creates account & stores token
+   * 4. Send verification OTP to user's email
+   * 5. Dismiss LoadingSheet → show VerifyEmailOtpSheet
+   * 6. User enters OTP → verify → handleOtpVerified
+   * 7. Show LoadingSheet briefly → show SuccessSheet
+   * 8. User taps Continue → loader overlay → navigate to profile-setup
+   */
+  const handleSignupSubmit = async (data: SignupFormData) => {
     signupSheetRef.current?.dismiss();
-    loadingSheetRef.current?.present();
+    setSignupEmail(data.email);
+
+    // Small delay so the signup sheet can begin animating out
+    setTimeout(async () => {
+      loadingSheetRef.current?.present();
+
+      try {
+        // Step 1: Create the account
+        await register(data);
+
+        // Step 2: Send verification OTP
+        logger.log("📧 Sending verification OTP...");
+        await apiClient.post("/api/v1/auth/email/send-verification-otp");
+        logger.log("✅ Verification OTP sent");
+
+        // Step 3: Dismiss loading → show OTP sheet
+        loadingSheetRef.current?.dismiss();
+        setTimeout(() => {
+          verifyEmailOtpSheetRef.current?.present();
+        }, 300);
+      } catch (err: any) {
+        loadingSheetRef.current?.dismiss();
+        setTimeout(() => {
+          Alert.alert("Signup Failed", err?.message || "An error occurred. Please try again.");
+          // Re-open signup sheet so user can try again
+          signupSheetRef.current?.present();
+        }, 300);
+      }
+    }, 300);
   };
 
-  const handleLoadingComplete = () => {
-    loadingSheetRef.current?.dismiss();
-    successSheetRef.current?.present();
+  /**
+   * Called after OTP is successfully verified.
+   * Dismiss OTP sheet → Loading sheet → Success sheet → Loader overlay → Profile setup
+   */
+  const handleOtpVerified = () => {
+    verifyEmailOtpSheetRef.current?.dismiss();
+
+    setTimeout(() => {
+      // Show loading sheet briefly
+      loadingSheetRef.current?.present();
+
+      setTimeout(() => {
+        loadingSheetRef.current?.dismiss();
+
+        setTimeout(() => {
+          // Show success sheet
+          successSheetRef.current?.present();
+        }, 300);
+      }, 1500);
+    }, 300);
   };
 
   const handleForgotPassword = () => {
@@ -137,21 +201,30 @@ export default function AccessGatewayScreen() {
   }, []);
 
   return (
-    <View style={tw`flex-1 bg-neutral-50`}>
+    <ImageBackground
+      source={require("@/assets/images/auth-bg.jpeg")}
+      style={styles.bgImage}
+      resizeMode="cover"
+    >
+      <LinearGradient
+        colors={["rgba(255, 255, 255, 0.2)", "rgba(255, 255, 255, 1)", "#ffffff"]}
+        locations={[0, 0.5, 1]}
+        style={styles.overlay}
+      />
       <SafeAreaView style={tw`flex-1`} edges={["top", "bottom"]}>
         <View style={tw`flex-1 justify-around px-6`}>
 
           {/* Logo */}
-          <View style={tw`items-center mt-30 gap-2`}>
-            <Logo width={150} height={150} />
+          <View style={tw`items-center mt-24 gap-2`}>
+            <Logo width={100} height={130} />
           </View>
 
 
-          <View style={tw`items-center`}>
-            <BoldText weight="extrabold" style={tw`text-[32px]  text-neutral-900 mb-3`}>
+          <View style={tw`items-center mt-20`}>
+            <BoldText weight="extrabold" style={tw`text-[32px]  mb-3`}>
               Hello there!
             </BoldText>
-            <AppText style={tw`text-base text-neutral-900 text-center`}>
+            <AppText style={tw`text-base  text-center`}>
               Let's make English speaking feel natural.
             </AppText>
           </View>
@@ -197,7 +270,7 @@ export default function AccessGatewayScreen() {
             </View>
 
             {/* Footer */}
-            <AppText style={tw`text-base text-neutral-400 text-center mt-2 px-4`}>
+            <AppText style={tw`text-base  text-center mt-2 px-4`}>
               We'll never post or share anything without permission.
             </AppText>
 {/* 
@@ -224,10 +297,46 @@ export default function AccessGatewayScreen() {
       />
       <LoadingSheet
         ref={loadingSheetRef}
-        onLoadingComplete={handleLoadingComplete}
       />
-      <SuccessSheet ref={successSheetRef} />
+      <VerifyEmailOtpSheet
+        ref={verifyEmailOtpSheetRef}
+        email={signupEmail}
+        onVerified={handleOtpVerified}
+      />
+      <SuccessSheet
+        ref={successSheetRef}
+        onContinue={() => {
+          successSheetRef.current?.dismiss();
+          setShowLoaderOverlay(true);
+          setTimeout(() => {
+            router.replace("/(profile-setup)");
+          }, 1500);
+        }}
+      />
       <ForgotPasswordSheet ref={forgotPasswordSheetRef} />
-    </View>
+
+      {/* Full-screen loader overlay (shown after success → before profile setup) */}
+      {showLoaderOverlay && (
+        <View
+          style={[
+            StyleSheet.absoluteFillObject,
+            tw`bg-white items-center justify-center`,
+            { zIndex: 999 },
+          ]}
+        >
+          <Loader size={120} />
+          <AppText style={tw`text-neutral-500 mt-4`}>Just a moment…</AppText>
+        </View>
+      )}
+    </ImageBackground>
   );
 }
+
+const styles = StyleSheet.create({
+  bgImage: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+});

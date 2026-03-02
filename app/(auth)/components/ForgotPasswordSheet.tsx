@@ -11,18 +11,18 @@ import {
 import React, {
     forwardRef,
     useCallback,
-    useEffect,
     useImperativeHandle,
     useMemo,
     useRef,
     useState,
 } from "react";
-import { ActivityIndicator, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SheetInput } from "./SheetInput";
 import { passwordResetService } from "@/services/password-reset.service";
 import { Alert } from "@/utils/alert";
 import { logger } from "@/utils/logger";
+import OtpVerification, { OtpVerificationHandle } from "./OtpVerification";
 
 interface ForgotPasswordSheetProps {
   onDismiss?: () => void;
@@ -34,18 +34,16 @@ type Step = "email" | "otp" | "reset" | "success";
 const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProps>(
   ({ onDismiss, onSuccess }, ref) => {
     const bottomSheetRef = useRef<BottomSheetModal>(null);
+    const otpRef = useRef<OtpVerificationHandle>(null);
     const [currentStep, setCurrentStep] = useState<Step>("email");
     const [email, setEmail] = useState("");
-    const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+    const [verifiedOtpCode, setVerifiedOtpCode] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [countdown, setCountdown] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
-    const otpInputRefs = useRef<(TextInput | null)[]>([]);
-    const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    const snapPoints = useMemo(() => ["75%"], []);
+    const snapPoints = useMemo(() => ["70%"], []);
     const insets = useSafeAreaInsets();
 
     useImperativeHandle(ref, () => bottomSheetRef.current as BottomSheetModal);
@@ -55,51 +53,16 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
         if (index === -1) {
           setCurrentStep("email");
           setEmail("");
-          setOtp(["", "", "", "", "", ""]);
+          setVerifiedOtpCode("");
           setPassword("");
           setConfirmPassword("");
-          setCountdown(0);
           setError("");
           setIsLoading(false);
-          if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-          }
           if (onDismiss) onDismiss();
         }
       },
       [onDismiss]
     );
-
-    // Countdown timer effect
-    useEffect(() => {
-      if (countdown > 0) {
-        countdownIntervalRef.current = setInterval(() => {
-          setCountdown((prev) => {
-            if (prev <= 1) {
-              if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
-                countdownIntervalRef.current = null;
-              }
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      } else {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-      }
-
-      return () => {
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-      };
-    }, [countdown]);
 
     const renderBackdrop = useCallback(
       (props: any) => (
@@ -131,12 +94,6 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
       try {
         await passwordResetService.sendOTP(email);
         setCurrentStep("otp");
-        setCountdown(600); // 10 minutes in seconds
-        setOtp(["", "", "", "", "", ""]);
-        // Focus first OTP input
-        setTimeout(() => {
-          otpInputRefs.current[0]?.focus();
-        }, 100);
       } catch (error: any) {
         logger.error('Failed to send OTP:', error);
         setError(error.message || "Failed to send OTP. Please try again.");
@@ -146,27 +103,22 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
       }
     };
 
-    const handleVerifyOTP = async () => {
-      const otpCode = otp.join("");
-      if (otpCode.length !== 6) return;
-
-      setIsLoading(true);
-      setError("");
-
-      try {
+    const handleOtpVerify = useCallback(
+      async (otpCode: string) => {
         await passwordResetService.verifyOTP(email, otpCode);
+        setVerifiedOtpCode(otpCode);
         setCurrentStep("reset");
-      } catch (error: any) {
-        logger.error('Failed to verify OTP:', error);
-        setError(error.message || "Invalid OTP. Please try again.");
-        Alert.alert("Error", error.message || "Invalid OTP. Please try again.");
-        // Clear OTP inputs on error
-        setOtp(["", "", "", "", "", ""]);
-        otpInputRefs.current[0]?.focus();
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      },
+      [email]
+    );
+
+    const handleOtpResend = useCallback(async () => {
+      await passwordResetService.sendOTP(email);
+    }, [email]);
+
+    const handleEditEmail = useCallback(() => {
+      setCurrentStep("email");
+    }, []);
 
     const handleResetPassword = async () => {
       if (!password || password !== confirmPassword) return;
@@ -180,8 +132,7 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
       setError("");
 
       try {
-        const otpCode = otp.join("");
-        await passwordResetService.resetPassword(email, otpCode, password);
+        await passwordResetService.resetPassword(email, verifiedOtpCode, password);
         setCurrentStep("success");
         setTimeout(() => {
           bottomSheetRef.current?.dismiss();
@@ -194,77 +145,6 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
       } finally {
         setIsLoading(false);
       }
-    };
-
-    const handleOtpChange = (index: number, value: string) => {
-      if (value.length <= 1) {
-        const newOtp = [...otp];
-        newOtp[index] = value;
-        setOtp(newOtp);
-
-        // Auto-focus next input
-        if (value && index < 5) {
-          otpInputRefs.current[index + 1]?.focus();
-        }
-
-        // Auto-verify when all 6 digits are entered
-        if (value && index === 5) {
-          const otpCode = newOtp.join("");
-          if (otpCode.length === 6) {
-            // Small delay to ensure state is updated, then verify
-            setTimeout(async () => {
-              setIsLoading(true);
-              setError("");
-
-              try {
-                await passwordResetService.verifyOTP(email, otpCode);
-                setCurrentStep("reset");
-              } catch (error: any) {
-                logger.error('Failed to verify OTP:', error);
-                setError(error.message || "Invalid OTP. Please try again.");
-                Alert.alert("Error", error.message || "Invalid OTP. Please try again.");
-                // Clear OTP inputs on error
-                setOtp(["", "", "", "", "", ""]);
-                otpInputRefs.current[0]?.focus();
-              } finally {
-                setIsLoading(false);
-              }
-            }, 300);
-          }
-        }
-      }
-    };
-
-    const handleOtpKeyPress = (index: number, key: string) => {
-      if (key === "Backspace" && !otp[index] && index > 0) {
-        otpInputRefs.current[index - 1]?.focus();
-      }
-    };
-
-    const handleResend = async () => {
-      if (countdown > 0) return; // Can't resend if countdown is active
-
-      setIsLoading(true);
-      setError("");
-
-      try {
-        await passwordResetService.sendOTP(email);
-        setCountdown(600); // 10 minutes in seconds
-        setOtp(["", "", "", "", "", ""]);
-        // Focus first OTP input
-        setTimeout(() => {
-          otpInputRefs.current[0]?.focus();
-        }, 100);
-      } catch (error: any) {
-        logger.error('Failed to resend OTP:', error);
-        Alert.alert("Error", error.message || "Failed to resend OTP. Please try again.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const handleEditEmail = () => {
-      setCurrentStep("email");
     };
 
     return (
@@ -351,103 +231,16 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
             </>
           )}
 
-          {/* Step 2: OTP Verification */}
+          {/* Step 2: OTP Verification — shared component */}
           {currentStep === "otp" && (
-            <>
-              {/* Header */}
-              <View style={tw`mb-8`}>
-                <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
-                  Verify your email
-                </BoldText>
-                <AppText style={tw`text-neutral-500 text-center`}>
-                  We sent a 6-digit code has been sent to {email}. Please enter
-                  it below.
-                </AppText>
-              </View>
-
-              {/* OTP Input */}
-              <View style={tw`flex-row justify-between mb-4`}>
-                {otp.map((digit, index) => (
-                  <TextInput
-                    key={index}
-                    ref={(el) => {
-                      otpInputRefs.current[index] = el;
-                    }}
-                    style={tw`w-12 h-14 border-2 ${
-                      digit ? "border-primary-500" : "border-gray-300"
-                    } rounded-xl text-center text-xl font-bold text-gray-900`}
-                    value={digit}
-                    onChangeText={(value) => handleOtpChange(index, value)}
-                    onKeyPress={({ nativeEvent: { key } }) =>
-                      handleOtpKeyPress(index, key)
-                    }
-                    keyboardType="number-pad"
-                    maxLength={1}
-                  />
-                ))}
-              </View>
-
-              {/* Resend */}
-              <View style={tw`flex-row justify-center mb-8`}>
-                <AppText style={tw`text-neutral-500`}>Didn't get it? </AppText>
-                <TouchableOpacity 
-                  onPress={handleResend}
-                  disabled={countdown > 0 || isLoading}
-                >
-                  <AppText 
-                    weight="bold" 
-                    style={tw`${
-                      countdown > 0 || isLoading 
-                        ? "text-gray-400" 
-                        : "text-primary-500"
-                    } font-bold`}
-                  >
-                    Resend
-                  </AppText>
-                </TouchableOpacity>
-                {countdown > 0 && (
-                  <AppText style={tw`text-neutral-500`}>
-                    {" "}({Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')})
-                  </AppText>
-                )}
-              </View>
-
-              {/* Error Message */}
-              {error && (
-                <AppText style={tw`text-red-500 text-sm mb-4 text-center`}>
-                  {error}
-                </AppText>
-              )}
-
-              {/* Verify Button */}
-              <Button
-                onPress={handleVerifyOTP}
-                style={tw`${
-                  otp.every((d) => d) && !isLoading ? "bg-primary-500" : "bg-gray-300"
-                } rounded-full py-4 items-center mb-4`}
-                disabled={!otp.every((d) => d) || isLoading}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <AppText
-                    weight="bold"
-                    style={tw`${
-                      otp.every((d) => d) ? "text-white" : "text-gray-500"
-                    } font-semibold text-lg`}
-                  >
-                    Verify
-                  </AppText>
-                )}
-              </Button>
-
-              {/* Edit Email */}
-              <TouchableOpacity onPress={handleEditEmail}>
-                <AppText style={tw`text-center text-neutral-500`}>
-                  Wrong email? Edit
-                </AppText>
-              </TouchableOpacity>
-            </>
+            <OtpVerification
+              ref={otpRef}
+              email={email}
+              onVerify={handleOtpVerify}
+              onResend={handleOtpResend}
+              onEditEmail={handleEditEmail}
+              autoStartCountdown
+            />
           )}
 
           {/* Step 3: Reset Password */}

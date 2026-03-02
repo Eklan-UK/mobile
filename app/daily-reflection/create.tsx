@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { logger } from '@/utils/logger';
 
 // Feeling options with corresponding prompts
 const FEELING_OPTIONS = [
@@ -84,7 +85,7 @@ export default function CreateReflectionScreen() {
       // Navigate back to list
       router.replace('/daily-reflection');
     } catch (error: any) {
-      console.error('Error saving reflection:', error);
+      logger.error('Error saving reflection:', error);
       Alert.alert(
         'Error',
         error.message || 'Failed to save reflection'

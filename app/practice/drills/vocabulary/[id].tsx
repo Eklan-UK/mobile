@@ -1,14 +1,17 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
 import AudioButton from "@/components/drills/AudioButton";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
+import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
+import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import DrillHeader from "@/components/drills/DrillHeader";
 import RecordButton from "@/components/drills/RecordButton";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, bookmarkWord } from "@/services/drill.service";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
-import { speechaceService } from "@/services/speechace.service";
+import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState, useRef } from "react";
 import { Animated, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import { Alert } from '@/utils/alert';
@@ -56,6 +59,9 @@ export default function VocabularyDrill() {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [permissionResponse, requestPermission] = Audio.usePermissions();
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isDrillCompleted, setIsDrillCompleted] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
 
   // Restore progress
@@ -204,18 +210,17 @@ export default function VocabularyDrill() {
           const result = await speechaceService.scorePronunciation(targetText, base64);
           logger.log('SpeechAce Result:', result);
 
-          // Check score (Threshold: 80)
-          let qualityScore = 0;
+          // Extract full text score for analysis review
+          const textScore = extractTextScore(result);
+          const qualityScore = extractQualityScore(result);
 
-          if (typeof result.text_score === 'number') {
-            qualityScore = result.text_score;
-          } else if (result.textScore?.speechace_score?.pronunciation) {
-            qualityScore = result.textScore.speechace_score.pronunciation;
-          } else if (typeof result.text_score === 'object' && result.text_score.quality_score) {
-            qualityScore = result.text_score.quality_score;
-          }
+          logger.log('Final Quality Score:', qualityScore);
 
-          logger.log('Final Quantity Score:', qualityScore);
+          // Save analysis result regardless of pass/fail
+          setAnalysisResults((prev) => [
+            ...prev,
+            { text: targetText, score: qualityScore, textScore },
+          ]);
 
           if (qualityScore >= 80) {
             handleSuccess();
@@ -269,7 +274,7 @@ export default function VocabularyDrill() {
         setIsBookmarked(false);
       }, 2000);
     } else {
-      // Complete
+      // All words done – show speech review first
       if (drill) {
         const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
         addRecentActivity({
@@ -280,7 +285,7 @@ export default function VocabularyDrill() {
           score: 100,
         });
         clearDrillProgress(drillId);
-        Alert.alert("Congratulations!", "Drill Completed!");
+        setShowReview(true);
       }
     }
   };
@@ -298,6 +303,43 @@ export default function VocabularyDrill() {
       Alert.alert("Error", "Failed to bookmark.");
     }
   };
+
+  const totalWords = drill?.target_sentences?.length || 1;
+
+  // ── Speech Analysis Review Screen ──
+  if (showReview && !isDrillCompleted && drill) {
+    return (
+      <SpeechAnalysisReview
+        analysisResults={analysisResults}
+        drillType="vocabulary"
+        onDone={() => setIsDrillCompleted(true)}
+        onPracticeAgain={() => {
+          setShowReview(false);
+          setMessageIndex(0);
+          setCurrentStep(1);
+          setShowSuccess(false);
+          setShowConfetti(false);
+          setAnalysisResults([]);
+          startTimeRef.current = Date.now();
+        }}
+      />
+    );
+  }
+
+  // ── Completion Screen ──
+  if (isDrillCompleted && drill) {
+    return (
+      <DrillCompletedScreen
+        variant="progress"
+        completed={totalWords}
+        total={totalWords}
+        title="Lesson completed"
+        message={`Great job! You've mastered the pronunciation of all ${totalWords} word${totalWords > 1 ? "s" : ""}.`}
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
+    );
+  }
 
   if (loading) {
     return (

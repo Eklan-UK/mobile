@@ -1,5 +1,6 @@
 import apiClient from '@/lib/api';
 import { logger } from '@/utils/logger';
+import * as FileSystem from 'expo-file-system';
 
 interface ConversationMessage {
   role: 'user' | 'model';
@@ -24,6 +25,40 @@ interface ScenarioOptions {
  * Integrates with Gemini AI via backend API
  */
 export const aiService = {
+  /**
+   * Transcribe an audio file using either Gemini or a dedicated stt service (currently using Gemini internally via sendVoiceMessage logic extracted)
+   */
+  async transcribeAudio(uri: string, languageCode: string = 'en'): Promise<string> {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      
+      if (!fileInfo.exists) {
+        throw new Error('Audio file does not exist');
+      }
+
+      const fileContent = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+
+      const response = await apiClient.post('/api/v1/ai/voice', {
+        audioData: fileContent,
+        history: [], // No history needed for just transcription
+        context: "Please only transcribe the following audio directly. Do not respond to it, just transcribe exactly what is said.",
+      });
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Failed to transcribe audio');
+      }
+
+      // We extract the transcription from our standardized backend schema
+      // Since sendVoiceMessage used to return just the response, we assume the backend returns text.
+      return response.data?.data || '';
+    } catch (error: any) {
+      logger.error('❌ Error transcribing audio:', error);
+      throw new Error(error.response?.data?.message || 'Failed to transcribe audio');
+    }
+  },
+
   /**
    * Send a message in a conversation
    */
@@ -262,6 +297,144 @@ export const aiService = {
       throw new Error(error.response?.data?.message || error.message || 'Failed to analyze listening comprehension');
     }
   },
+
+  // ─── Native SSE Streaming for React Native (XHR) ──────────────────────────
+
+  /**
+   * React Native's `fetch` does not polyfill ReadableStream perfectly.
+   * To consume chunks as they arrive, we use XMLHttpRequest directly.
+   */
+  _processSSEStreamXHR(url: string, body: any | null, onChunk: (chunk: { type: 'audio'|'text'|'metadata'; data: any }) => void): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(body ? 'POST' : 'GET', apiClient.defaults.baseURL + url, true);
+      
+      // ⚠️ XHR bypasses the Axios interceptor, so we must read the token ourselves.
+      // Use the cached token to avoid hitting SecureStore on every SSE request.
+      try {
+        const { getCachedToken } = await import('@/lib/api');
+        const token = await getCachedToken();
+        if (token) {
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+      } catch (e) {
+        logger.error('❌ SSE XHR: Failed to read token', e);
+      }
+      
+      xhr.setRequestHeader('Accept', 'text/event-stream');
+      if (body) {
+        xhr.setRequestHeader('Content-Type', 'application/json');
+      }
+
+      let processedIndex = 0;
+
+      xhr.onreadystatechange = () => {
+        // State 3 (LOADING) or 4 (DONE) has responseText
+        if ((xhr.readyState === 3 || xhr.readyState === 4) && xhr.status === 200) {
+          const responseText = xhr.responseText;
+          if (responseText) {
+            const newText = responseText.substring(processedIndex);
+            if (newText) {
+              const lines = newText.split('\n\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const jsonStr = line.substring(6).trim();
+                    if (jsonStr) {
+                      const chunk = JSON.parse(jsonStr);
+                      onChunk(chunk);
+                    }
+                  } catch (e) {
+                    // Incomplete chunk, wait for next tick
+                  }
+                }
+              }
+              // Update processed index to the last complete chunk boundary
+              const lastDoubleNewline = responseText.lastIndexOf('\n\n');
+              if (lastDoubleNewline !== -1 && lastDoubleNewline >= processedIndex) {
+                 processedIndex = lastDoubleNewline + 2;
+              }
+            }
+          }
+        }
+        
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200) {
+            resolve();
+          } else {
+            reject(new Error(`Stream failed with status ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during stream'));
+      xhr.send(body ? JSON.stringify(body) : null);
+    });
+  },
+
+  /**
+   * Stream the Drills (Roleplay) greeting via SSE
+   */
+  async streamDrillPracticeGreeting(
+    drillId: string,
+    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
+  ): Promise<void> {
+    try {
+      logger.log('📥 Streaming drill practice greeting...', drillId);
+      await this._processSSEStreamXHR(`/api/v1/ai/drill-practice/greeting?drillId=${drillId}`, null, onChunk);
+    } catch (error: any) {
+      logger.error('❌ Error streaming drill practice greeting:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Stream a Drill practice message via SSE
+   */
+  async streamDrillPracticeMessage(
+    options: { drillId: string; userMessage: string; conversationHistory?: ConversationMessage[] },
+    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
+  ): Promise<void> {
+    try {
+      logger.log('📥 Streaming drill practice message...', options.drillId);
+      await this._processSSEStreamXHR('/api/v1/ai/drill-practice', options, onChunk);
+    } catch (error: any) {
+      logger.error('❌ Error streaming drill practice message:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Stream the Topic (Free Talk) greeting via SSE
+   */
+  async streamTopicPracticeGreeting(
+    topic: string,
+    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
+  ): Promise<void> {
+    try {
+      logger.log('📥 Streaming topic practice greeting...', topic);
+      await this._processSSEStreamXHR(`/api/v1/ai/topic-practice/greeting?topic=${topic}`, null, onChunk);
+    } catch (error: any) {
+      logger.error('❌ Error streaming topic practice greeting:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Stream a Topic practice message via SSE
+   */
+  async streamTopicPracticeMessage(
+    options: { topic: string; userMessage: string; conversationHistory?: ConversationMessage[] },
+    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
+  ): Promise<void> {
+    try {
+      logger.log('📥 Streaming topic practice message...', options.topic);
+      await this._processSSEStreamXHR('/api/v1/ai/topic-practice', options, onChunk);
+    } catch (error: any) {
+      logger.error('❌ Error streaming topic practice message:', error);
+      throw error;
+    }
+  }
 };
 
 

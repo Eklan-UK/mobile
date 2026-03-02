@@ -3,42 +3,43 @@ import { AppText, BoldText, Button } from '@/components/ui';
 import tw from '@/lib/tw';
 import { Alert } from '@/utils/alert';
 import { BottomSheetBackdrop, BottomSheetModal, BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import React, { forwardRef, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { forwardRef, useCallback, useMemo, useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetInput } from './SheetInput';
 
 import Lock from '@/assets/icons/lock.svg';
 import EmailOutline from '@/assets/icons/mail-outline.svg';
-import { useAuth } from '@/hooks/useAuth';
+
+export interface SignupFormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+}
 
 interface SignupSheetProps {
   onDismiss?: () => void;
-  onSignup?: () => void;
+  onSignup?: (data: SignupFormData) => void;
   onGoToLogin?: () => void;
 }
 
 const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss, onSignup, onGoToLogin }, ref) => {
-  const { register, isLoading, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [submitted, setSubmitted] = useState(false);
 
-  // variables
   const snapPoints = useMemo(() => ['85%'], []);
   const insets = useSafeAreaInsets();
 
-  // callbacks
   const handleSheetChanges = useCallback((index: number) => {
     if (index === -1) {
-      clearError();
-      if (onDismiss) {
-        onDismiss();
-      }
+      onDismiss?.();
     }
-  }, [onDismiss, clearError]);
+  }, [onDismiss]);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -51,57 +52,28 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
     []
   );
 
-  const handleSignup = async () => {
+  const handleSignup = () => {
     // Validation
     if (!email || !password || !confirmPassword || !firstName || !lastName) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
-
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
-
     if (password.length < 8) {
       Alert.alert('Error', 'Password must be at least 8 characters long');
       return;
     }
 
-    try {
-      await register({
-        email,
-        password,
-        firstName,
-        lastName,
-      });
-      
-      // Navigation is handled in the auth store
-      // Close the sheet
-      if (ref && typeof ref !== 'function' && ref.current) {
-        ref.current.dismiss();
-      }
-      
-      // Call onSignup callback if provided
-      if (onSignup) {
-        onSignup();
-      }
-    } catch (err: any) {
-      // Error is already set in the store
-      Alert.alert('Signup Failed', error || 'An error occurred. Please try again.');
-    }
+    // Prevent double-submit
+    if (submitted) return;
+    setSubmitted(true);
+
+    // Hand off to auth.tsx immediately — it will show LoadingSheet and call the API
+    onSignup?.({ firstName, lastName, email, password });
   };
-
-  // Auto-clear error after 3 seconds
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => {
-        clearError();
-      }, 3000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [error, clearError]);
 
   return (
     <BottomSheetModal
@@ -113,6 +85,7 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
       backdropComponent={renderBackdrop}
       handleIndicatorStyle={tw`bg-neutral-300 w-12`}
       backgroundStyle={tw`bg-white rounded-t-3xl`}
+      onDismiss={() => setSubmitted(false)}
     >
       <BottomSheetScrollView contentContainerStyle={[tw`px-6 pt-2 pb-8`, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         {/* Header */}
@@ -135,7 +108,7 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
           containerStyle={tw`mb-2`}
           value={firstName}
           onChangeText={setFirstName}
-          editable={!isLoading}
+          editable={!submitted}
         />
 
         {/* Last Name */}
@@ -148,7 +121,7 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
           containerStyle={tw`mb-2`}
           value={lastName}
           onChangeText={setLastName}
-          editable={!isLoading}
+          editable={!submitted}
         />
 
         {/* Email */}
@@ -163,7 +136,7 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
           containerStyle={tw`mb-2`}
           value={email}
           onChangeText={setEmail}
-          editable={!isLoading}
+          editable={!submitted}
         />
 
         {/* Password */}
@@ -177,7 +150,7 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
           containerStyle={tw`mb-2`}
           value={password}
           onChangeText={setPassword}
-          editable={!isLoading}
+          editable={!submitted}
         />
 
         {/* Confirm Password */}
@@ -191,35 +164,28 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
           containerStyle={tw`mb-6`}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
-          editable={!isLoading}
+          editable={!submitted}
         />
-
-        {/* Error Message */}
-        {error && (
-          <View style={tw`mb-4 p-3 bg-red-50 rounded-lg`}>
-            <AppText style={tw`text-red-600 text-sm`}>{error}</AppText>
-          </View>
-        )}
 
         {/* Terms */}
         <AppText style={tw`text-[14px] text-neutral-500 mb-6`}>
-          By clicking create account, you agree to Eklan's{" "}
+          By clicking create account, you agree to Eklan's{' '}
           <AppText weight="medium" style={tw`text-primary-500 font-medium`}>
             Terms of Service
-          </AppText>{" "}
-          and{" "}
+          </AppText>{' '}
+          and{' '}
           <AppText weight="medium" style={tw`text-primary-500 text-[14px] font-medium`}>
             Privacy Policy
           </AppText>.
         </AppText>
 
         {/* CTA */}
-        <Button 
+        <Button
           onPress={handleSignup}
           style={tw`rounded-full mb-4`}
-          disabled={isLoading}
+          disabled={submitted}
         >
-          {isLoading ? 'Creating account...' : 'Create account'}
+          Create account
         </Button>
 
         {/* Switch to Login */}

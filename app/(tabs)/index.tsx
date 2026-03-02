@@ -1,4 +1,4 @@
-import { AppText, Button, Card } from "@/components/ui";
+import { AppText, BoldText, Button, Card } from "@/components/ui";
 import { ProgressCircle } from "@/components/ui/ProgressCircle";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
@@ -9,20 +9,24 @@ import { useActivityStore } from "@/store/activity-store";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { Drill } from "@/types/drill.types";
 import { formatTimeAgo } from "@/utils/date";
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { FutureSelfBottomSheet, FutureSelfBottomSheetRef } from '@/components/FutureSelfBottomSheet';
 import { futureSelfService } from '@/services/future-self.service';
 import { useQuery } from '@tanstack/react-query';
 import { usePrefetch } from '@/hooks/usePrefetch';
 import { reflectionService } from '@/services/reflection.service';
 import { dailyFocusService } from '@/services/daily-focus.service';
+import { usePronunciation } from '@/hooks/usePronunciation';
+import { useConfidence } from '@/hooks/useConfidence';
 import VideoIcon from '@/assets/icons/file-video.svg';
 import VideoIconWhite from '@/assets/icons/File-type-icon.svg';
 import { Loader } from '@/components/ui';
 import BellIcon from '@/assets/icons/bell.svg';
 import { useAuth } from "@/hooks/useAuth";
-import CallToActionCarousel from "@/components/CallToActionCarousel";
+import CallToActionCard from "@/components/CallToAction";
 import Phone from "@/assets/icons/phone.svg";
+
+import { Ionicons } from "@expo/vector-icons";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const isSmallScreen = SCREEN_WIDTH < 375;
 const isMediumScreen = SCREEN_WIDTH >= 375 && SCREEN_WIDTH < 414;
@@ -68,27 +72,33 @@ const ProgressCard = ({
   change: string;
   progress: number;
   color: string;
-}) => (
-  <Card variant="outlined" padding="md" style={tw`flex-1`}>
-    <View style={tw`flex-row justify-between items-center`}>
-      <View style={tw`flex-1 mr-2`}>
-        <AppText style={tw`font-semibold text-base`}>{title}</AppText>
-        <AppText style={tw`text-sm text-green-600 mt-1`}>{change}</AppText>
+}) => {
+  const isNegative = change.startsWith('-');
+  return (
+    <Card variant="outlined" padding="md" style={tw`flex-1`}>
+      <View style={tw`flex-row justify-between items-center`}>
+        <View style={tw`flex-1 mr-2`}>
+          <AppText style={tw`font-semibold text-base`}>{title}</AppText>
+          <AppText style={tw`text-sm mt-1 ${isNegative ? 'text-red-500' : 'text-green-600'}`}>
+            {change}
+          </AppText>
+        </View>
+        <ProgressCircle
+          progress={progress}
+          size={isSmallScreen ? 42 : 46}
+          strokeWidth={4}
+          color={color}
+          backgroundColor="#e5e7eb"
+          showPercentage
+        />
       </View>
-      <ProgressCircle
-        progress={progress}
-        size={isSmallScreen ? 42 : 46}
-        strokeWidth={4}
-        color={color}
-        backgroundColor="#e5e7eb"
-        showPercentage
-      />
-    </View>
-  </Card>
-);
+    </Card>
+  );
+};
+
 
 const SavedDrillsCard = () => (
-  <Card variant="outlined" padding="md" style={tw`flex-1`}>
+  <Card variant="outlined" padding="md" style={tw`p-3`}>
     <TouchableOpacity
       onPress={() => router.push("/practice/drills/saved")}
       style={tw`flex-row items-center justify-between`}
@@ -166,14 +176,17 @@ const ActivityItem = ({
 export default function HomeScreen() {
   const { user } = useAuth();
   const name = user?.firstName + ' ' + user?.lastName || 'User';
-  console.log(user);
   const { recentActivities } = useActivityStore();
+
+  // Metrics
+  const { data: pronunciation, isLoading: pronunciationLoading, weeklyChange: weeklyPronunciation } = usePronunciation();
+  const { data: confidence, isLoading: confidenceLoading, weeklyChange: weeklyConfidence } = useConfidence();
 
   // Bottom sheet ref
   const futureSelfBottomSheetRef = useRef<FutureSelfBottomSheetRef>(null);
 
-  // Prefetching utilities
-  const { prefetchDrill, prefetchCommonData } = usePrefetch();
+  // Prefetching utilities (prefetchCommonData is handled by BackgroundPrefetcher in _layout.tsx)
+  const { prefetchDrill } = usePrefetch();
 
   // Fetch future self video with background refetching
   const { data: futureSelfVideo, refetch: refetchFutureSelf } = useQuery({
@@ -199,11 +212,6 @@ export default function HomeScreen() {
   });
 
   const recentReflections = reflectionsData?.reflections || [];
-
-  // Prefetch common data on mount
-  useEffect(() => {
-    prefetchCommonData();
-  }, [prefetchCommonData]);
 
   const handleStartTodaysFocus = () => {
     if (todaysFocus) {
@@ -243,34 +251,8 @@ export default function HomeScreen() {
         contentContainerStyle={tw`pb-6`}
       >
         {/* HEADER */}
-        <View style={tw`px-${isSmallScreen ? "4" : "6"} mb-6`}>
-          <CallToActionCarousel
-            items={[
-              {
-                id: 'book-call',
-                title: 'Book a call',
-                subtitle: 'Speak to an English language expert',
-                iconBackgroundColor: "#FFFFFF",
-                gradientAngle: 135,
-                icon: <Phone />,
-                gradientColors: ['#3C8CE7', '#00EAFF'], // Blue to cyan gradient
-                onPress: () => {
-                  // Navigate to book call page or show modal
-                  // router.push('/book-call');
-                  console.log('Book a call pressed');
-                },
-              },
-              {
-                id: 'future-self',
-                title: 'Upload your video',
-                subtitle: 'Write a message to your future self',
-                icon: <VideoIconWhite width={24} height={24} />,
-                gradientColors: ['#FF96F9', '#C32BAC'], // Pink gradient
-                onPress: handleFutureSelfPress,
-              },
-            ]}
-          />
-        </View>
+
+
         <View
           style={tw`px-${isSmallScreen ? "4" : "6"} pt-4 pb-6 flex-row justify-between items-center`}
         >
@@ -295,6 +277,26 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        <View style={tw`px-${isSmallScreen ? "4" : "6"} mb-6 gap-3`}>
+          {/* <CallToActionCard
+            title="Book a call"
+            subtitle="Speak to an English language expert"
+            iconBackgroundColor="#FFFFFF"
+            gradientAngle={135}
+            icon={<Phone />}
+            gradientColors={['#3C8CE7', '#00EAFF']}
+            onPress={() => {
+              // router.push('/book-call');
+            }}
+          /> */}
+          <CallToActionCard
+            title="Upload your video"
+            subtitle="Write a message to your future self"
+            icon={<VideoIconWhite width={24} height={24} />}
+            gradientColors={['#FF96F9', '#C32BAC']}
+            onPress={handleFutureSelfPress}
+          />
+        </View>
         {/* TODAY'S FOCUS */}
         <View style={tw`px-${isSmallScreen ? "4" : "6"} mb-6`}>
           {isLoadingFocus ? (
@@ -302,7 +304,7 @@ export default function HomeScreen() {
               <Loader />
             </View>
           ) : todaysFocus ? (
-            <View style={tw`bg-green-900 rounded-2xl p-${isSmallScreen ? "4" : "5"}`}>
+            <View style={tw`bg-green-900 rounded-[24px] p-${isSmallScreen ? "4" : "5"}`}>
               <View
                 style={tw`bg-green-800 px-4 py-1 rounded-full self-start mb-4`}
               >
@@ -354,10 +356,57 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={tw`bg-gray-100 rounded-2xl p-${isSmallScreen ? "4" : "5"} items-center justify-center min-h-[150px]`}>
-              <AppText style={tw`text-gray-500 text-center`}>
-                No focus available for today
+            <View style={tw`bg-green-900 rounded-2xl p-${isSmallScreen ? "4" : "5"}`}>
+              <View
+                style={tw`bg-green-800 px-4 py-1 rounded-full self-start mb-4`}
+              >
+                <AppText style={tw`text-green-200 text-xs font-semibold`}>
+                  🔥 TODAY'S FOCUS
+                </AppText>
+              </View>
+
+              <AppText style={tw`text-white text-${isSmallScreen ? "xl" : "2xl"} font-bold mb-2`}>
+                Learn with me
               </AppText>
+
+
+              <AppText style={tw`text-white/80 text-sm mb-4`}>
+                just a test
+              </AppText>
+
+
+              <View style={tw`flex-row gap-${isSmallScreen ? "3" : "4"} my-4 flex-wrap`}>
+                <View style={tw`flex-row items-center gap-1`}>
+                  <ClockIcon />
+                  <AppText style={tw`text-white/90 text-sm`}>
+                    5 min
+                  </AppText>
+                </View>
+                <View style={tw`flex-row items-center gap-1`}>
+                  <TargetIcon />
+                  <AppText style={tw`text-white/90 text-sm capitalize`}>
+                    Hard
+                  </AppText>
+                </View>
+
+                <View style={tw`flex-row items-center gap-1`}>
+                  <AppText style={tw`text-white/90 text-sm`}>
+                    5questions
+                  </AppText>
+                </View>
+
+              </View>
+
+              <TouchableOpacity
+                onPress={handleStartTodaysFocus}
+                style={tw`bg-yellow-400 py-${isSmallScreen ? "3" : "4"} rounded-full items-center mb-3`}
+                activeOpacity={0.8}
+              >
+                <AppText style={tw`font-semibold text-neutral-900 text-base`}>
+                  Start Today's Practice
+                </AppText>
+              </TouchableOpacity>
+
             </View>
           )}
         </View>
@@ -368,14 +417,22 @@ export default function HomeScreen() {
           <View style={tw`flex-row gap-3`}>
             <ProgressCard
               title="Confidence"
-              change="+5% this week"
-              progress={74}
+              change={
+                confidenceLoading
+                  ? 'Loading...'
+                  : `${weeklyConfidence >= 0 ? '+' : ''}${weeklyConfidence}% this week`
+              }
+              progress={Math.max(0, Math.min(100, confidence?.confidenceScore ?? 0))}
               color="#2563eb"
             />
             <ProgressCard
               title="Pronunciation"
-              change="+3% this week"
-              progress={78}
+              change={
+                pronunciationLoading
+                  ? 'Loading...'
+                  : `${weeklyPronunciation >= 0 ? '+' : ''}${weeklyPronunciation}% this week`
+              }
+              progress={Math.max(0, Math.min(100, pronunciation?.overallScore ?? 0))}
               color="#22c55e"
             />
           </View>
@@ -386,9 +443,9 @@ export default function HomeScreen() {
           <View style={tw`flex-row gap-3`}>
             {/* LEFT: Daily Reflection */}
             <Card variant="outlined" padding="md" style={tw`flex-1 bg-neutral-100`}>
-              <AppText style={tw`font-semibold mb-1 text-base`}>
+              <BoldText style={tw`text-5 mb-1`}>
                 📘 Daily Reflection
-              </AppText>
+              </BoldText>
               <AppText style={tw`text-sm text-neutral-500 mb-3`}>
                 Log your experience as you go about learning
               </AppText>
@@ -434,9 +491,9 @@ export default function HomeScreen() {
 
               <TouchableOpacity
                 onPress={() => router.push("/daily-reflection")}
-                style={tw`border border-neutral-200 rounded-full py-2.5 items-center mt-auto`}
+                style={tw`border border-neutral-200 bg-white rounded-full py-2.5 items-center mt-auto`}
               >
-                <AppText style={tw`font-medium text-sm`}>
+                <AppText style={tw`font-medium  text-sm`}>
                   Record Journal Entry
                 </AppText>
               </TouchableOpacity>
@@ -448,21 +505,34 @@ export default function HomeScreen() {
               <SavedDrillsCard />
 
               {/* Future Self */}
-              <TouchableOpacity onPress={handleFutureSelfPress}>
-                <Card variant="outlined" padding="md" style={tw`bg-neutral-100`}>
+              <TouchableOpacity onPress={handleFutureSelfPress} style={tw`flex-1`}>
+                <Card variant="outlined" padding="md" style={tw`bg-neutral-100 flex-1`}>
                   <View style={tw`flex-row items-center gap-2 mb-1`}>
                     <AppText style={tw`text-lg`}>
                       '🎥'
                     </AppText>
-                    <AppText style={tw`font-semibold flex-1`} numberOfLines={1}>
+                    <BoldText style={tw` text-5 flex-1`} numberOfLines={1}>
                       Future Self
-                    </AppText>
+                    </BoldText>
                   </View>
                   <AppText style={tw`text-sm text-neutral-500`} numberOfLines={2}>
 
 
                     A message you recorded for yourself
                   </AppText>
+
+
+
+                  <View style={tw`flex-row items-center  justify-between`}>
+
+
+                    <AppText style={tw`text-blue-600 font-bold text-4 my-2`}>
+                      Upload
+                    </AppText>
+
+                    <Ionicons name="chevron-forward" style={tw`font-bold`} />
+
+                  </View>
                   {futureSelfVideo ? <View style={tw`flex-row items-center gap-1`}><VideoIcon />
                     <View>
 

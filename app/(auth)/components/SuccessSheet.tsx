@@ -12,9 +12,10 @@ const { width } = Dimensions.get("window");
 
 interface SuccessSheetProps {
   onDismiss?: () => void;
+  onContinue?: () => void;
 }
 
-const SuccessSheet = forwardRef<BottomSheetModal, SuccessSheetProps>(({ onDismiss }, ref) => {
+const SuccessSheet = forwardRef<BottomSheetModal, SuccessSheetProps>(({ onDismiss, onContinue }, ref) => {
   const snapPoints = useMemo(() => ['50%'], []);
   const insets = useSafeAreaInsets();
   const confettiRef = useRef<ConfettiCannon>(null);
@@ -75,7 +76,13 @@ const SuccessSheet = forwardRef<BottomSheetModal, SuccessSheetProps>(({ onDismis
         </AppText>
 
         <TouchableOpacity
-          onPress={() => router.replace("/(profile-setup)")}
+          onPress={() => {
+            if (onContinue) {
+              onContinue();
+            } else {
+              router.replace("/(profile-setup)");
+            }
+          }}
           style={tw`bg-primary-500 rounded-full py-4 w-full items-center`}
         >
           <AppText weight="bold" style={tw`text-white font-semibold text-lg`}>

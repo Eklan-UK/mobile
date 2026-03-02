@@ -6,7 +6,7 @@ import { logger } from './logger';
  * @param options Audio mode options
  */
 export async function setAudioModeSafely(
-  options: Audio.AudioModeOptions
+  options: any
 ): Promise<void> {
   try {
     await Audio.setAudioModeAsync(options);

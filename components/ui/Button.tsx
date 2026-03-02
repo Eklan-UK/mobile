@@ -1,7 +1,8 @@
 import tw from '@/lib/tw';
-import React from 'react';
-import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing, TouchableOpacity, View } from 'react-native';
 import { AppText } from './AppText';
+import Logo from '@/assets/icons/logo-white.svg';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'dark' | 'ghost' | 'destructive';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -61,6 +62,35 @@ const sizeStyles: Record<ButtonSize, { container: string; text: string }> = {
   },
 };
 
+/** Spinning logo shown inside the button while loading */
+function SpinningLogo({ size = 20 }: { size?: number }) {
+  const rotation = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const spin = Animated.loop(
+      Animated.timing(rotation, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    spin.start();
+    return () => spin.stop();
+  }, [rotation]);
+
+  const rotate = rotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <Animated.View style={{ transform: [{ rotate }], width: size, height: size }}>
+      <Logo width={size} height={size} />
+    </Animated.View>
+  );
+}
+
 export function Button({
   children,
   onPress,
@@ -81,16 +111,18 @@ export function Button({
       onPress={onPress}
       disabled={disabled || loading}
       style={[
-        tw`${variantStyle.container} ${sizeStyle.container} flex-row items-center justify-center ${fullWidth ? 'w-full' : ''} ${disabled ? 'opacity-50' : ''}`,
+        tw`${variantStyle.container} ${sizeStyle.container} flex-row items-center justify-center ${fullWidth ? 'w-full' : ''} ${disabled ? 'opacity-70' : ''}`,
         style,
       ]}
       activeOpacity={0.8}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === 'primary' || variant === 'dark' || variant === 'destructive' ? '#fff' : '#2E7D32'}
-          size="small"
-        />
+        <View style={tw`flex-row items-center gap-2`}>
+          <SpinningLogo size={22} />
+          <AppText weight="bold" style={tw`${variantStyle.text} ${sizeStyle.text} font-semibold`}>
+            {children}
+          </AppText>
+        </View>
       ) : (
         <View style={tw`flex-row items-center gap-2`}>
           {icon && iconPosition === 'left' && icon}
@@ -103,4 +135,3 @@ export function Button({
     </TouchableOpacity>
   );
 }
-

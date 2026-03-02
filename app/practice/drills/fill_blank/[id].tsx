@@ -1,4 +1,5 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
@@ -290,21 +291,25 @@ export default function FillBlankDrill() {
   }
 
   if (isCompleted) {
+    // Calculate score for display
+    const totalBlanks = items.reduce((sum, item) => sum + (item.blanks?.length || 0), 0);
+    const correctBlanks = items.reduce((sum, item, itemIndex) => {
+      const itemAnswers = answers[itemIndex] || {};
+      return sum + (item.blanks?.filter((blank, blankIndex) =>
+        itemAnswers[blankIndex] === blank.correctAnswer
+      ).length || 0);
+    }, 0);
+
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
-        <View style={tw`flex-1 items-center justify-center px-5`}>
-          <AppText style={tw`text-2xl font-bold text-gray-900 mb-2`}>Great Job!</AppText>
-          <AppText style={tw`text-gray-600 text-center mb-6`}>
-            You've completed the fill-in-the-blank drill.
-          </AppText>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={tw`bg-green-700 rounded-full px-6 py-3`}
-          >
-            <AppText style={tw`text-white font-semibold`}>Continue</AppText>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <DrillCompletedScreen
+        variant="progress"
+        completed={correctBlanks}
+        total={totalBlanks}
+        title="Lesson completed"
+        message={`Great job! You answered ${correctBlanks} out of ${totalBlanks} blanks correctly.`}
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
     );
   }
 

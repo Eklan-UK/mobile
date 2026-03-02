@@ -60,7 +60,11 @@ export function useTTS(options: UseTTSOptions = {}) {
         // Play audio (only if we got a valid URI)
         if (autoPlay) {
           try {
-            await ttsService.playAudio(audioUri);
+            await ttsService.playAudio(audioUri, () => {
+              // Called by expo-av status update when playback finishes — no polling needed
+              setIsPlaying(false);
+              onPlayEnd?.();
+            });
             setIsPlaying(true);
             setIsGenerating(false);
             onPlayStart?.();
@@ -68,21 +72,7 @@ export function useTTS(options: UseTTSOptions = {}) {
             logger.error('Error playing audio:', playError);
             setIsGenerating(false);
             setIsPlaying(false);
-            // Don't throw - just log the error
           }
-
-          // Monitor playback status
-          const checkStatus = setInterval(async () => {
-            const playing = await ttsService.isPlaying();
-            if (!playing && isPlaying) {
-              setIsPlaying(false);
-              onPlayEnd?.();
-              clearInterval(checkStatus);
-            }
-          }, 100);
-
-          // Cleanup interval after reasonable time (audio should be done)
-          setTimeout(() => clearInterval(checkStatus), 60000);
         } else {
           setIsGenerating(false);
         }

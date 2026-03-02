@@ -1,3 +1,4 @@
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import AudioButton from "@/components/drills/AudioButton";
 import { AppText, Loader } from "@/components/ui";
@@ -246,11 +247,6 @@ export default function SentenceWritingDrill() {
       });
 
       clearDrillProgress(drillId);
-
-      // Show success screen then navigate back
-      setTimeout(() => {
-        router.back();
-      }, 2000);
     } catch (error: any) {
       logger.error('Failed to submit drill:', error);
       Alert.alert("Error", "Failed to submit. Please try again.");
@@ -292,42 +288,13 @@ export default function SentenceWritingDrill() {
   // Success Screen
   if (showSuccess) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-green-50`} edges={["top", "bottom"]}>
-        <View style={tw`flex-1 items-center justify-center px-6`}>
-          <View style={tw`items-center mb-8`}>
-            <View style={tw`w-32 h-32 rounded-full bg-green-100 items-center justify-center mb-6`}>
-              <View style={tw`w-24 h-24 rounded-full bg-green-600 items-center justify-center`}>
-                <Svg width={48} height={48} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M20 6L9 17L4 12"
-                    stroke="white"
-                    strokeWidth={3}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              </View>
-            </View>
-
-            <AppText style={tw`text-3xl font-bold text-gray-900 mb-4 text-center`}>
-              sentence submitted
-            </AppText>
-
-            <AppText style={tw`text-base text-gray-600 text-center leading-6`}>
-              Your submission has been submitted for review. you'll be notified when your sentences have been reviewed
-            </AppText>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={tw`w-full bg-green-700 rounded-full py-4 items-center`}
-          >
-            <AppText style={tw`text-white text-base font-semibold`}>
-              Continue
-            </AppText>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <DrillCompletedScreen
+        variant="submitted"
+        title="Sentence submitted"
+        message="Your submission has been submitted for review. You'll be notified when your sentences have been reviewed."
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
     );
   }
 

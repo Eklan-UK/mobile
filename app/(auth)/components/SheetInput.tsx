@@ -32,7 +32,8 @@ const variantStyles: Record<
     input: "text-neutral-900",
   },
   outline: {
-    container: "bg-transparent  border border-primary-500 ",
+    // Border colour applied dynamically based on focus state below
+    container: "bg-transparent border",
     input: "text-neutral-900",
   },
   filled: {
@@ -70,14 +71,26 @@ export function SheetInput({
   secureTextEntry,
   style,
   containerStyle,
+  onFocus,
+  onBlur,
   ...props
 }: InputProps) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   const variantStyle = variantStyles[variant];
   const sizeStyle = sizeStyles[size];
 
   const isPassword = secureTextEntry === true;
+
+  // Border priority: error > focused (primary-500) > default (neutral-200)
+  const borderColorClass = error
+    ? "border-error"
+    : variant === "outline"
+    ? isFocused
+      ? "border-primary-500"
+      : "border-neutral-200"
+    : "";
 
   return (
     <View style={containerStyle}>
@@ -92,7 +105,7 @@ export function SheetInput({
           flex-row items-center
           ${variantStyle.container}
           ${sizeStyle.container}
-          ${error ? "border-error" : ""}
+          ${borderColorClass}
         `}
       >
         {/* Left Icon */}
@@ -101,15 +114,19 @@ export function SheetInput({
         {/* Input */}
         <BottomSheetTextInput
           style={[
-            tw`
-              flex-1
-              ${variantStyle.input}
-              ${sizeStyle.text}
-            `,
+            tw`flex-1 ${variantStyle.input} ${sizeStyle.text}`,
             style,
           ]}
           placeholderTextColor="#a3a3a3"
           secureTextEntry={isPassword && !isPasswordVisible}
+          onFocus={(e) => {
+            setIsFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlur?.(e);
+          }}
           {...props}
         />
 
@@ -117,15 +134,12 @@ export function SheetInput({
         {(secondaryIcon || isPassword) && (
           <TouchableOpacity
             onPress={() => {
-              if (isPassword) {
-                setIsPasswordVisible((prev) => !prev);
-              }
+              if (isPassword) setIsPasswordVisible((prev) => !prev);
             }}
             activeOpacity={0.7}
             style={tw`ml-3`}
           >
             {isPassword ? (
-              // Show eye-open when password is hidden, eye-closed when visible
               isPasswordVisible ? (
                 <EyeClosed width={20} height={20} />
               ) : (

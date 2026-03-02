@@ -1,4 +1,7 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
+import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
+import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import DrillHeader from "@/components/drills/DrillHeader";
 import RecordButton from "@/components/drills/RecordButton";
 import UserMessage from "@/components/drills/UserMessage";
@@ -6,7 +9,7 @@ import AudioButton from "@/components/drills/AudioButton";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { Drill } from "@/types/drill.types";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState, useRef } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View, TouchableOpacity } from "react-native";
 import { Alert } from '@/utils/alert';
@@ -19,7 +22,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { getDrillById, completeDrill } from "@/services/drill.service";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import { useActivityStore } from "@/store/activity-store";
-import { speechaceService } from "@/services/speechace.service";
+import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
 import { logger } from "@/utils/logger";
 
 interface Message {
@@ -58,6 +61,9 @@ export default function RoleplayDrill() {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [permissionResponse, requestPermission] = Audio.usePermissions();
+  const [isDrillCompleted, setIsDrillCompleted] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
 
   // Restore progress if available
   useEffect(() => {
@@ -317,18 +323,17 @@ export default function RoleplayDrill() {
         return;
       }
 
-      // Check score (Threshold: 80)
-      let qualityScore = 0;
-
-      if (typeof result.text_score === 'number') {
-        qualityScore = result.text_score;
-      } else if (result.textScore?.speechace_score?.pronunciation) {
-        qualityScore = result.textScore.speechace_score.pronunciation;
-      } else if (typeof result.text_score === 'object' && result.text_score.quality_score) {
-        qualityScore = result.text_score.quality_score;
-      }
+      // Extract full text score for analysis review
+      const textScore = extractTextScore(result);
+      const qualityScore = extractQualityScore(result);
 
       logger.log('Final Quality Score:', qualityScore);
+
+      // Save analysis result for the review screen
+      setAnalysisResults((prev) => [
+        ...prev,
+        { text: currentPrompt, score: qualityScore, textScore },
+      ]);
 
       setIsListening(false);
       setProcessing(false);
@@ -549,7 +554,7 @@ export default function RoleplayDrill() {
           score: completionScore,
         });
 
-        Alert.alert("Congratulations!", "Roleplay drill completed!");
+        setShowReview(true);
       } catch (error) {
         logger.error('Failed to submit drill:', error);
         Alert.alert("Error", "Drill completed but failed to submit. Please try again.");
@@ -575,6 +580,51 @@ export default function RoleplayDrill() {
     setShowYourTurn(true);
   };
 
+  const totalSteps = drill?.roleplay_scenes?.reduce((total, scene) => {
+    return total + (scene.dialogue?.filter(d => d.speaker === "student").length || 0);
+  }, 0) || 5;
+
+  // ── Speech Analysis Review Screen ──
+  if (showReview && !isDrillCompleted && drill) {
+    return (
+      <SpeechAnalysisReview
+        analysisResults={analysisResults}
+        drillType="roleplay"
+        onDone={() => setIsDrillCompleted(true)}
+        onPracticeAgain={() => {
+          // Reset drill to start over
+          setShowReview(false);
+          setMessages([]);
+          setCurrentStep(1);
+          setCurrentSceneIndex(0);
+          setCurrentDialogueIndex(0);
+          setCurrentPrompt("");
+          setShowYourTurn(true);
+          setRecordedAudioUri(null);
+          setAnalysisResults([]);
+          startTimeRef.current = Date.now();
+          // Re-initialise first scene messages
+          loadDrill();
+        }}
+      />
+    );
+  }
+
+  // ── Completion Screen ──
+  if (isDrillCompleted && drill) {
+    return (
+      <DrillCompletedScreen
+        variant="progress"
+        completed={totalSteps}
+        total={totalSteps}
+        title="Lesson completed"
+        message={`Great job! You communicated clearly and stayed professional throughout the conversation.`}
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
@@ -590,8 +640,6 @@ export default function RoleplayDrill() {
       </SafeAreaView>
     );
   }
-
-  const totalSteps = drill.roleplay_scenes?.[0]?.dialogue.filter((d) => d.speaker === "student").length || 5;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>

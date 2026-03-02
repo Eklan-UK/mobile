@@ -47,15 +47,26 @@ export default function RootLayout() {
       }
 
       try {
-        const update = await Updates.checkForUpdateAsync();
+        // Add a 5 second timeout to the update check so it doesn't block startup
+        const updatePromise = Updates.checkForUpdateAsync();
+        const timeoutPromise = new Promise<{isAvailable: boolean}>((_, reject) => {
+          setTimeout(() => reject(new Error('Update check timeout')), 5000);
+        });
+        
+        const update = await Promise.race([updatePromise, timeoutPromise]);
+        
         if (update.isAvailable) {
-          await Updates.fetchUpdateAsync();
+          // Add timeout to fetch as well — don't hang indefinitely on slow networks
+          const fetchPromise = Updates.fetchUpdateAsync();
+          const fetchTimeout = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Update fetch timeout')), 15000);
+          });
+          await Promise.race([fetchPromise, fetchTimeout]);
           // Reload the app to apply the update
           await Updates.reloadAsync();
         }
-      } catch (error) {
-        // Silently fail - don't block app startup if update check fails
-        console.log("Update check failed:", error);
+      } catch {
+        // Silently fail - don't block app startup if update check fails or times out
       }
     }
 

@@ -321,30 +321,17 @@ class TTSService {
       const cacheDir = getCacheDirectory();
       const fileUri = `${cacheDir}${filename}`;
 
-      // Convert blob to base64 using FileReader (works in React Native)
+      // Convert blob to base64 using FileReader (available in React Native).
+      // Avoids the O(n) string-concat loop that was blocking the JS thread.
       const base64 = await new Promise<string>((resolve, reject) => {
-        // Check if FileReader is available (it should be in React Native)
-        if (typeof FileReader === 'undefined') {
-          // Fallback: try to read as array buffer and convert
-          blob.arrayBuffer().then(buffer => {
-            // Convert ArrayBuffer to base64
-            const bytes = new Uint8Array(buffer);
-            let binary = '';
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            resolve(btoa(binary));
-          }).catch(reject);
-        } else {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            const base64Data = result.includes(',') ? result.split(',')[1] : result;
-            resolve(base64Data);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const base64Data = result.includes(',') ? result.split(',')[1] : result;
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
       });
 
       // Write to file system using legacy API
@@ -363,7 +350,7 @@ class TTSService {
   /**
    * Play audio from URI
    */
-  async playAudio(audioUri: string): Promise<void> {
+  async playAudio(audioUri: string, onFinish?: () => void): Promise<void> {
     if (!audioUri || audioUri.trim() === '') {
       logger.warn('Cannot play audio: empty URI');
       return;
@@ -381,9 +368,18 @@ class TTSService {
 
       this.sound = sound;
       this.currentAudioUri = audioUri;
+
+      // Use expo-av's status callback instead of polling — fires once when done
+      if (onFinish) {
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            sound.setOnPlaybackStatusUpdate(null); // remove listener immediately
+            onFinish();
+          }
+        });
+      }
     } catch (error) {
       logger.error('Error playing audio:', error);
-      // Don't throw - just log the error to prevent app crashes
       throw error;
     }
   }

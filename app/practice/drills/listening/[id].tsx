@@ -1,4 +1,5 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import RecordButton from "@/components/drills/RecordButton";
 import AudioButton from "@/components/drills/AudioButton";
@@ -29,6 +30,7 @@ export default function ListeningDrill() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [isRecording, setIsRecording] = useState(false);
   const [hasListened, setHasListened] = useState(false);
+  const [isDrillCompleted, setIsDrillCompleted] = useState(false);
 
   const { playAudio, isGenerating: isGeneratingAudio, isPlaying: isTTSPlaying, stopAudio: stopTTSAudio } = useTTS({
     autoPlay: false,
@@ -99,11 +101,28 @@ export default function ListeningDrill() {
           timeSpent: durationSeconds,
           answers: [],
         }).catch(err => logger.warn('Failed to submit completion', err));
+
+        setIsDrillCompleted(true);
       }
     } else {
       setIsRecording(true);
     }
   };
+
+  // ── Completion Screen ──
+  if (isDrillCompleted && drill) {
+    return (
+      <DrillCompletedScreen
+        variant="progress"
+        completed={1}
+        total={1}
+        title="Lesson completed"
+        message="Great job! You practiced shadowing and improved your listening skills."
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
+    );
+  }
 
   if (loading) {
     return (

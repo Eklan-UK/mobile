@@ -3,6 +3,7 @@ import { TouchableOpacity, ActivityIndicator } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { useTTS } from "@/hooks/useTTS";
 import { useState } from "react";
+import { logger } from "@/utils/logger";
 
 interface AudioButtonProps {
   text?: string;
@@ -49,7 +50,7 @@ export default function AudioButton({
               }
             });
           } catch (error) {
-            console.error('Error playing audio:', error);
+            logger.error('Error playing audio:', error);
             // Fallback to TTS if audio URI fails
             if (text) {
               setIsLocalPlaying(true);

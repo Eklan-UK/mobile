@@ -69,39 +69,11 @@ export const pronunciationService = {
     try {
       logger.log('🔵 Fetching pronunciation problem:', { slug });
       const response = await apiClient.get(`/api/v1/pronunciation-problems/${slug}`);
-      
-      // Log the full response structure
-      logger.log('📥 API Response Status:', response.status);
-      logger.log('📥 API Response Data:', JSON.stringify(response.data, null, 2));
-      logger.log('📥 Response Data Path:', {
-        hasData: !!response.data,
-        hasDataData: !!response.data?.data,
-        dataKeys: response.data ? Object.keys(response.data) : [],
-        dataDataKeys: response.data?.data ? Object.keys(response.data.data) : [],
-      });
-      
       const result = response.data?.data || {};
-      
-      logger.log('📦 Parsed Result:', {
-        hasProblem: !!result.problem,
-        hasWords: !!result.words,
-        wordsIsArray: Array.isArray(result.words),
-        wordsLength: Array.isArray(result.words) ? result.words.length : 'not an array',
-        wordsType: typeof result.words,
-        problemKeys: result.problem ? Object.keys(result.problem) : [],
-        firstWord: result.words?.[0] ? {
-          keys: Object.keys(result.words[0]),
-          word: result.words[0].word,
-          type: result.words[0].type,
-          _id: result.words[0]._id,
-        } : 'no words',
-      });
-      
       return result;
     } catch (error: any) {
       logger.error('❌ Failed to fetch pronunciation problem:', {
         error: error.message,
-        response: error.response?.data,
         status: error.response?.status,
       });
       throw error;

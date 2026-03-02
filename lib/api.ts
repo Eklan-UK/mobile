@@ -6,6 +6,34 @@ import { logger } from '@/utils/logger';
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 const isDev = __DEV__;
 
+// ─── In-memory token cache (avoids SecureStore read on every request) ────────
+let cachedToken: string | null = null;
+let tokenCacheTime = 0;
+const TOKEN_CACHE_TTL = 60 * 1000; // 1 minute
+
+/**
+ * Invalidate the in-memory token cache.
+ * Call this after login, logout, token refresh, or any auth state change.
+ */
+export function invalidateTokenCache() {
+  cachedToken = null;
+  tokenCacheTime = 0;
+}
+
+/**
+ * Get the auth token, using an in-memory cache to avoid
+ * hitting SecureStore (native Keychain/Keystore) on every API call.
+ */
+export async function getCachedToken(): Promise<string | null> {
+  const now = Date.now();
+  if (cachedToken && (now - tokenCacheTime) < TOKEN_CACHE_TTL) {
+    return cachedToken;
+  }
+  cachedToken = await secureStorage.getToken();
+  tokenCacheTime = now;
+  return cachedToken;
+}
+
 /**
  * Safely serialize data for logging (handles FormData, circular refs, etc.)
  */
@@ -67,12 +95,13 @@ const apiClient: AxiosInstance = axios.create({
  */
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    logger.log('🔵 API Request:', {
-      method: config.method?.toUpperCase(),
-      url: config.url,
-      baseURL: config.baseURL,
-      fullURL: `${config.baseURL}${config.url}`,
-    });
+    // Lightweight request logging — no body serialization
+    if (isDev) {
+      logger.log('🔵 API Request:', {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+      });
+    }
     
     // Set Origin header for Better Auth validation (production only)
     // React Native doesn't automatically send Origin header like web browsers do
@@ -84,7 +113,6 @@ apiClient.interceptors.request.use(
       // The mobile scheme 'elkan://' is also in trusted origins as a backup
       const origin = API_BASE_URL || 'elkan://';
       config.headers['Origin'] = origin;
-      logger.log('🌐 Origin header set (production):', origin);
     }
     
     // Ensure Content-Type is set for POST, PUT, PATCH requests
@@ -110,31 +138,11 @@ apiClient.interceptors.request.use(
       }
     }
     
-    const token = await secureStorage.getToken();
+    // Use cached token to avoid hitting SecureStore on every request
+    const token = await getCachedToken();
     
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
-      logger.log('🔑 Token attached to request');
-    } else {
-      logger.log('⚠️ No token available');
-    }
-    
-    // Safely log request data (avoid logging FormData or circular refs)
-    if (config.data !== undefined && config.data !== null) {
-      const isFormData = 
-        config.data instanceof FormData ||
-        (config.data && typeof config.data === 'object' && '_parts' in config.data) ||
-        (config.data?.constructor?.name === 'FormData');
-      
-      if (isFormData) {
-        logger.log('📤 Request data: [FormData]');
-      } else {
-        try {
-          logger.log('📤 Request data:', safeStringify(config.data));
-        } catch (error) {
-          logger.log('📤 Request data: [Unable to serialize]');
-        }
-      }
     }
     
     return config;
@@ -150,17 +158,11 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    try {
+    // Lightweight response logging — no body serialization to avoid blocking JS thread
+    if (isDev) {
       logger.log('✅ API Response:', {
         status: response.status,
         url: response.config.url,
-        data: safeStringify(response.data),
-      });
-    } catch (error) {
-      logger.log('✅ API Response:', {
-        status: response.status,
-        url: response.config.url,
-        data: '[Unable to serialize]',
       });
     }
     return response;
@@ -171,53 +173,39 @@ apiClient.interceptors.response.use(
     // Skip logging auth errors - they're handled gracefully by auth store
     // This prevents cluttering logs with expected auth errors
     if (!isAuthError) {
-      try {
-        logger.error('❌ API Error:', {
-          status: error.response?.status,
-          url: error.config?.url,
-          message: error.message,
-          responseData: error.response?.data ? safeStringify(error.response.data) : undefined,
-        });
-      } catch (logError) {
-        // If logging fails, log minimal info
-        logger.error('❌ API Error:', {
-          status: error.response?.status,
-          url: error.config?.url,
-          message: error.message,
-        });
-      }
-    } else {
+      logger.error('❌ API Error:', {
+        status: error.response?.status,
+        url: error.config?.url,
+        message: error.message,
+      });
+    } else if (isDev) {
       // Only log auth errors in dev mode for debugging
-      if (isDev) {
-        logger.log('🔐 Auth error (handled silently):', {
-          status: error.response?.status,
-          url: error.config?.url,
-        });
-      }
+      logger.log('🔐 Auth error (handled silently):', {
+        status: error.response?.status,
+        url: error.config?.url,
+      });
     }
     
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // If 401 and we haven't retried yet, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
-      logger.log('🔄 Attempting token refresh...');
       originalRequest._retry = true;
 
       try {
         const refreshToken = await secureStorage.getRefreshToken();
         
         if (refreshToken) {
-          logger.log('🔑 Refresh token found, attempting refresh...');
           // Attempt to refresh the token
           const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
             refreshToken,
           });
 
           const { token } = response.data;
-          logger.log('✅ Token refreshed successfully');
           
-          // Store new token
+          // Store new token and invalidate cache so it picks up the new one
           await secureStorage.setToken(token);
+          invalidateTokenCache();
           
           // Retry original request with new token
           if (originalRequest.headers) {
@@ -225,13 +213,12 @@ apiClient.interceptors.response.use(
           }
           
           return apiClient(originalRequest);
-        } else {
-          logger.log('⚠️ No refresh token available');
         }
       } catch (refreshError) {
         logger.error('❌ Token refresh failed:', refreshError);
         // Refresh failed, clear auth data
         await secureStorage.clearAll();
+        invalidateTokenCache();
         // The auth store will handle redirect to login
         return Promise.reject(refreshError);
       }

@@ -1,9 +1,10 @@
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById } from "@/services/drill.service";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState, useRef } from "react";
 import { ScrollView, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -171,6 +172,21 @@ export default function MatchingDrill() {
   };
 
   const isComplete = pairs.length > 0 && matchedPairs.size === pairs.length;
+
+  // ── Completion Screen ──
+  if (isComplete && drill) {
+    return (
+      <DrillCompletedScreen
+        variant="progress"
+        completed={matchedPairs.size}
+        total={pairs.length}
+        title="Lesson completed"
+        message={`Great job! You matched all ${pairs.length} pairs correctly.`}
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
+    );
+  }
 
   if (loading) {
     return (

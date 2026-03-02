@@ -1,7 +1,7 @@
 import { AppText, Button, Card, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
-import { Image, ScrollView, TouchableOpacity, View, ActivityIndicator } from "react-native";
+import { Image, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useAuthStore } from "@/store/auth-store";

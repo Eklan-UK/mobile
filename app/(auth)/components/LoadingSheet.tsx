@@ -7,36 +7,31 @@ import React, { forwardRef, useCallback, useMemo } from 'react';
 
 interface LoadingSheetProps {
   onDismiss?: () => void;
-  onLoadingComplete?: () => void;
 }
 
-const LoadingSheet = forwardRef<BottomSheetModal, LoadingSheetProps>(({ onDismiss, onLoadingComplete }, ref) => {
+/**
+ * LoadingSheet — shows indefinitely while the signup API call is in-flight.
+ * Parent (auth.tsx) is responsible for dismissing it when the API resolves.
+ */
+const LoadingSheet = forwardRef<BottomSheetModal, LoadingSheetProps>(({ onDismiss }, ref) => {
   const snapPoints = useMemo(() => ['40%'], []);
 
   const handleSheetChanges = useCallback((index: number) => {
-    if (index === 0) {
-        // Start loading simulation when sheet opens
-        setTimeout(() => {
-            onLoadingComplete?.();
-        }, 5000);
-    }
-    if (index === -1 && onDismiss) {
-      onDismiss();
-    }
-  }, [onDismiss, onLoadingComplete]);
+    if (index === -1 && onDismiss) onDismiss();
+  }, [onDismiss]);
 
   const renderBackdrop = useCallback(
-      (props: any) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.5}
-          pressBehavior="none" // Prevent closing while loading
-        />
-      ),
-      []
-    );
+    (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.5}
+        pressBehavior="none" // Prevent closing while loading
+      />
+    ),
+    []
+  );
 
   return (
     <BottomSheetModal
@@ -44,12 +39,12 @@ const LoadingSheet = forwardRef<BottomSheetModal, LoadingSheetProps>(({ onDismis
       index={0}
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
-      enablePanDownToClose={false} 
+      enablePanDownToClose={false}
       handleIndicatorStyle={tw`bg-neutral-300 w-12`}
       backgroundStyle={tw`bg-white rounded-t-3xl`}
       backdropComponent={renderBackdrop}
     >
-      <BottomSheetView style={tw`flex-1  px-6 py-10 items-center`}>
+      <BottomSheetView style={tw`flex-1 px-6 py-10 items-center`}>
         <Loader />
 
         <BoldText style={tw`text-xl font-semibold text-neutral-900 mt-6`}>

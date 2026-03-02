@@ -1,5 +1,6 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
 import AudioButton from "@/components/drills/AudioButton";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
@@ -194,20 +195,13 @@ export default function GrammarDrill() {
 
   if (isCompleted) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
-        <View style={tw`flex-1 items-center justify-center px-5`}>
-          <AppText style={tw`text-2xl font-bold text-gray-900 mb-2`}>Great Job!</AppText>
-          <AppText style={tw`text-gray-600 text-center mb-6`}>
-            Your grammar drill has been submitted for review.
-          </AppText>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={tw`bg-green-700 rounded-full px-6 py-3`}
-          >
-            <AppText style={tw`text-white font-semibold`}>Continue</AppText>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <DrillCompletedScreen
+        variant="submitted"
+        title="Grammar submitted"
+        message="Your grammar drill has been submitted for review. You'll be notified when your sentences have been reviewed."
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
     );
   }
 

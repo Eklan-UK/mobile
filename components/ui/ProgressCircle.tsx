@@ -55,7 +55,7 @@ export function ProgressCircle({
       </Svg>
       <View style={tw`absolute items-center justify-center`}>
         {children || (showPercentage && (
-          <AppText style={tw`text-lg font-bold text-neutral-900`}>
+          <AppText style={tw`text-md text-neutral-900`}>
             {Math.round(progress)}%
           </AppText>
         ))}

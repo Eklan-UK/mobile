@@ -1,4 +1,5 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
@@ -183,20 +184,13 @@ export default function DefinitionDrill() {
 
   if (isCompleted) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
-        <View style={tw`flex-1 items-center justify-center px-5`}>
-          <AppText style={tw`text-2xl font-bold text-gray-900 mb-2`}>Great Job!</AppText>
-          <AppText style={tw`text-gray-600 text-center mb-6`}>
-            You've completed the definition drill.
-          </AppText>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={tw`bg-green-700 rounded-full px-6 py-3`}
-          >
-            <AppText style={tw`text-white font-semibold`}>Continue</AppText>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <DrillCompletedScreen
+        variant="submitted"
+        title="Definition submitted"
+        message="Your definitions have been submitted for review. You'll be notified when they have been reviewed."
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
     );
   }
 

@@ -18,46 +18,20 @@ interface GetMyDrillsParams {
  */
 export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsResponse> {
   logger.log('🎯 Fetching drills with params:', params);
-  
+
   const queryParams = new URLSearchParams();
-  
+
   if (params?.limit) queryParams.append('limit', params.limit.toString());
   if (params?.page) queryParams.append('page', params.page.toString());
   if (params?.status) queryParams.append('status', params.status);
 
   const url = `/api/v1/drills/learner/my-drills${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-  
-  logger.log('📡 Requesting drills from:', url);
   const response = await apiClient.get(url);
-  
-  logger.log('📦 Raw API response:', {
-    status: response.status,
-    hasData: !!response.data,
-    dataKeys: Object.keys(response.data || {}),
-  });
-  
+
   // Handle the nested response structure from backend
   // Backend returns: { code, message, data: { drills: [...], pagination: {...} } }
   const data = response.data.data || response.data;
-  
-  logger.log('📊 Processed data:', {
-    drillsCount: data.drills?.length || 0,
-    hasPagination: !!data.pagination,
-    firstDrill: data.drills?.[0],
-  });
-  
-  // Log each drill's status for debugging
-  if (data.drills && data.drills.length > 0) {
-    logger.log('📋 Drill statuses:', data.drills.map((d: any, i: number) => ({
-      index: i,
-      assignmentId: d.assignmentId,
-      status: d.status,
-      drillTitle: d.drill?.title,
-      dueDate: d.dueDate,
-      completedAt: d.completedAt,
-    })));
-  }
-  
+
   const result = {
     drills: data.drills || [],
     pagination: data.pagination || {
@@ -66,12 +40,8 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
       limit: params?.limit || 50,
     },
   };
-  
-  logger.log('✅ Returning drills:', {
-    count: result.drills.length,
-    pagination: result.pagination,
-  });
-  
+
+  logger.log('✅ Drills fetched:', result.drills.length);
   return result;
 }
 

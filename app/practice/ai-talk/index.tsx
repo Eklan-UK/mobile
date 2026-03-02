@@ -13,6 +13,7 @@ import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
+import { AudioStreamPlayer } from "@/lib/audio-stream-player";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -61,10 +62,22 @@ export default function AiTalkScreen() {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [autoPlayedMessages, setAutoPlayedMessages] = useState<Set<string>>(new Set());
 
+  // SSE Stream Player Reference
+  const streamPlayerRef = useRef<AudioStreamPlayer | null>(null);
+
   // Initialize conversation with greeting
   useEffect(() => {
+    // Setup AudioStreamPlayer
+    streamPlayerRef.current = new AudioStreamPlayer();
+    streamPlayerRef.current.initialize();
+
     initializeConversation();
-  }, [topic]);
+
+    return () => {
+      // Cleanup player
+      streamPlayerRef.current?.stop();
+    };
+  }, [topic, params.drillId]);
 
   useEffect(() => {
     // Scroll to bottom when new messages are added
@@ -89,7 +102,7 @@ export default function AiTalkScreen() {
     };
   }, []);
 
-  // Auto-play AI messages when audioUri is available
+  // Auto-play TTS fallback messages when audioUri is available (legacy logic, usually bypassed by SSE)
   useEffect(() => {
     const aiMessages = messages.filter(m => m.type === "ai" && m.audioUri);
 
@@ -117,49 +130,58 @@ export default function AiTalkScreen() {
 
   const initializeConversation = async () => {
     setIsInitializing(true);
+    setMessages([]);
+    setConversationHistory([]);
     try {
-      // Create topic-based greeting messages
-      const topicGreetings: Record<string, string> = {
-        "daily-life": "Hello! I'm Eklan, your AI English tutor powered by Gemini. I can understand your voice directly! Let's practice everyday conversations. Just tap the microphone to speak!",
-        "work-school": "Hello! I'm Eklan, your AI English tutor powered by Gemini. I can understand your voice directly! Let's practice work and school conversations. Just tap the microphone to speak!",
-        "on-mind": "Hello! I'm Eklan, your AI English tutor powered by Gemini. I can understand your voice directly! What's on your mind today? Just tap the microphone to speak!",
-        "surprise": "Hello! I'm Eklan, your AI English tutor powered by Gemini. I can understand your voice directly! Let's have a fun conversation. Just tap the microphone to speak!",
-      };
+      const isDrill = !!params.drillId;
+      const drillId = params.drillId as string;
+      const topicId = topic as string;
 
-      const greeting = topicGreetings[topic] || topicGreetings["daily-life"];
-
-      // Add greeting message
-      const greetingMessage: Message = {
-        id: Date.now().toString(),
+      // Add a placeholder message for the AI that will catch streamed text
+      const greetingId = Date.now().toString();
+      const aiGreetingMessage: Message = {
+        id: greetingId,
         type: "ai",
-        text: greeting,
+        text: "",
         showAvatar: true,
       };
+      setMessages([aiGreetingMessage]);
 
-      setMessages([greetingMessage]);
-
-      // Generate and store TTS for greeting
-      try {
-        const audioUri = await ttsService.generateTTS({ text: greeting });
-        if (audioUri) {
-          greetingMessage.audioUri = audioUri;
-          setMessages([greetingMessage]);
-          // Auto-play greeting message
-          setTimeout(() => {
-            handlePlayAudio(greetingMessage.id, audioUri);
-            setAutoPlayedMessages(prev => new Set([...prev, greetingMessage.id]));
-          }, 500);
+      const onChunk = (chunk: { type: 'audio'|'text'|'metadata', data: any }) => {
+        if (chunk.type === 'text') {
+          // Accumulate text
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === greetingId ? { ...msg, text: msg.text + chunk.data } : msg
+            )
+          );
+        } else if (chunk.type === 'audio') {
+           // Queue the base64 WAV chunk for gapless playback
+           streamPlayerRef.current?.addCompressedChunkBase64(chunk.data);
+        } else if (chunk.type === 'metadata') {
+           // Add to conversation history when complete
+           setConversationHistory((prev) => [
+              ...prev,
+              { role: "model", content: chunk.data.fullText || "" }
+           ]);
         }
-      } catch (error) {
-        logger.error("Failed to generate TTS for greeting:", error);
+      };
+
+      if (isDrill) {
+         await aiService.streamDrillPracticeGreeting(drillId, onChunk);
+      } else {
+         await aiService.streamTopicPracticeGreeting(topicId, onChunk);
       }
+      // Flush any remaining PCM bytes that didn't reach the 400ms threshold
+      await streamPlayerRef.current?.flush();
+
     } catch (error) {
-      logger.error("Failed to initialize conversation:", error);
+      logger.error("Failed to initialize conversation stream:", error);
       // Fallback greeting
       setMessages([{
         id: Date.now().toString(),
         type: "ai",
-        text: "Hello! I'm Eklan, your AI English tutor powered by Gemini. I can understand your voice directly! Just tap the microphone to speak!",
+        text: "Hello! I'm Eklan, your AI English tutor. I'm here to practice with you. Just tap the microphone to speak!",
         showAvatar: true,
       }]);
     } finally {
@@ -174,6 +196,7 @@ export default function AiTalkScreen() {
 
   const handleLeaveConfirm = () => {
     setShowLeaveModal(false);
+    streamPlayerRef.current?.stop();
     router.back();
   };
 
@@ -210,6 +233,14 @@ export default function AiTalkScreen() {
         playsInSilentModeIOS: true,
       });
 
+      // Stop any AI audio currently playing
+      streamPlayerRef.current?.stop();
+      if (playingAudioId) {
+         await ttsService.stopAudio();
+         setPlayingAudioId(null);
+         playingAudioIdRef.current = null;
+      }
+
       logger.log("Starting recording...");
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
@@ -231,14 +262,6 @@ export default function AiTalkScreen() {
     try {
       setMicState("listening");
 
-      // Add listening status
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: "status",
-        text: "",
-        statusType: "listening",
-      }]);
-
       // Stop recording
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
@@ -250,7 +273,7 @@ export default function AiTalkScreen() {
 
       setMicState("analyzing");
       setMessages(prev => {
-        const filtered = prev.filter(m => m.statusType !== "listening");
+        const filtered = prev.filter(m => m.statusType !== "listening" && m.statusType !== "analyzing");
         return [...filtered, {
           id: Date.now().toString(),
           type: "status",
@@ -259,94 +282,35 @@ export default function AiTalkScreen() {
         }];
       });
 
-      logger.log("🤖 Processing with Gemini Native Audio...");
-
-      // Use Gemini Native Audio to process voice message
+      // First transcibe the audio.
+      let transcribedText = "";
       try {
-        logger.log("🎤 Processing voice message with Gemini Native Audio...");
-        
-        // Build context based on topic
-        const topicContexts: Record<string, string> = {
-          "daily-life": "You are Eklan, a friendly AI English tutor. Help the student practice everyday English conversations. Be natural, encouraging, and conversational.",
-          "work-school": "You are Eklan, a friendly AI English tutor. Help the student practice English for work and school situations. Focus on professional and academic language.",
-          "on-mind": "You are Eklan, a friendly AI English tutor. The student wants to talk about something on their mind. Be supportive, listen actively, and help them express themselves in English.",
-          "surprise": "You are Eklan, a friendly AI English tutor. Have a fun, engaging conversation with the student. Be creative and keep things interesting!",
-        };
-
-        const context = topicContexts[topic] || topicContexts["daily-life"];
-
-        const aiResponse = await aiService.sendVoiceMessage(
-          uri,
-          conversationHistory,
-          context
-        );
-
-        logger.log("✅ Gemini Native Audio response received:", aiResponse.substring(0, 50));
-
-        // Remove status messages
-        setMessages(prev => prev.filter(m => m.type !== "status"));
-        setMicState("normal");
-
-        // Add user voice message indicator
-        const userMessage: Message = {
-          id: Date.now().toString(),
-          type: "user",
-          text: "🎤 [Voice message]",
-        };
-        setMessages(prev => [...prev, userMessage]);
-
-        // Add AI response
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          type: "ai",
-          text: aiResponse,
-          showAvatar: true,
-        };
-        setMessages(prev => [...prev, aiMessage]);
-
-        // Update conversation history
-        const updatedHistory = [
-          ...conversationHistory,
-          { role: "user" as const, content: "[Voice message]" },
-          { role: "model" as const, content: aiResponse },
-        ];
-        setConversationHistory(updatedHistory);
-
-        // Generate TTS for AI response
-        try {
-          logger.log("🔊 Generating TTS for AI response...");
-          const audioUri = await ttsService.generateTTS({ text: aiResponse });
-          if (audioUri) {
-            aiMessage.audioUri = audioUri;
-            setMessages(prev => prev.map(m =>
-              m.id === aiMessage.id ? { ...m, audioUri } : m
-            ));
-            logger.log("✅ TTS generated successfully");
-          }
-        } catch (error) {
-          logger.error("Failed to generate TTS:", error);
-        }
-      } catch (error: any) {
-        logger.error("❌ Failed to process voice with Gemini Native Audio:", error);
-        
-        // Remove status messages
-        setMessages(prev => prev.filter(m => m.type !== "status"));
-        setMicState("normal");
-        
-        // Show error message to user
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          type: "ai",
-          text: "Sorry, I'm having trouble processing your voice message. Would you like to try typing instead?",
-          showAvatar: true,
-        }]);
-        
-        // Offer fallback to text input
-        setTimeout(() => {
-          setShowTextInput(true);
-          inputRef.current?.focus();
-        }, 1000);
+        transcribedText = await aiService.transcribeAudio(uri, "en");
+      } catch (e) {
+         logger.warn('Transcription failed. Falling back to native SSE stream bypass (not sending text).', e);
       }
+
+      // Add user voice message indicator + transcription if available
+      const userMessageText = transcribedText ? `🎤 [Voice] ${transcribedText}` : "🎤 [Voice message]";
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        type: "user",
+        text: userMessageText,
+      };
+
+      setMessages(prev => [...prev.filter(m => m.type !== "status"), userMessage]);
+      setMicState("normal");
+
+      // Update local conversation context with transcription so AI remembers it
+      const updatedHistory: Array<{ role: "user" | "model"; content: string }> = [
+        ...conversationHistory,
+        { role: "user", content: transcribedText || "[Voice message]" },
+      ];
+      setConversationHistory(updatedHistory);
+
+      // Now stream response
+      await processStreamResponse(transcribedText || "[Voice message]", updatedHistory);
+
     } catch (error) {
       logger.error("Failed to process recording:", error);
       setMicState("normal");
@@ -365,6 +329,14 @@ export default function AiTalkScreen() {
     setUserInput("");
     setIsLoading(true);
 
+    // Stop currently playing audio
+    streamPlayerRef.current?.stop();
+    if (playingAudioId) {
+      await ttsService.stopAudio();
+      setPlayingAudioId(null);
+      playingAudioIdRef.current = null;
+    }
+
     // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -374,55 +346,76 @@ export default function AiTalkScreen() {
     setMessages(prev => [...prev, userMessage]);
 
     // Update conversation history
-    const newHistory = [
+    const newHistory: Array<{ role: "user" | "model"; content: string }> = [
       ...conversationHistory,
-      { role: "user" as const, content: userMessageText },
+      { role: "user", content: userMessageText },
     ];
     setConversationHistory(newHistory);
 
+    await processStreamResponse(userMessageText, newHistory);
+  };
+
+  /**
+   * Helper function to process response streams for both Text & Voice
+   */
+  const processStreamResponse = async (userMessage: string, history: Array<{ role: "user" | "model"; content: string }>) => {
+    setIsLoading(true);
+
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessage: Message = {
+      id: aiMessageId,
+      type: "ai",
+      text: "",
+      showAvatar: true,
+    };
+    setMessages(prev => [...prev, aiMessage]);
+
     try {
-      // Get AI response
-      const aiResponse = await aiService.sendConversationMessage({
-        messages: newHistory,
-      });
+      const isDrill = !!params.drillId;
+      const drillId = params.drillId as string;
+      const topicId = topic as string;
 
-      // Add AI response
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        type: "ai",
-        text: aiResponse,
-        showAvatar: true,
+      const payload = {
+         userMessage,
+         conversationHistory: history.slice(0, -1), // Everything except the recent message
       };
-      setMessages(prev => [...prev, aiMessage]);
 
-      // Update conversation history
-      const updatedHistory = [
-        ...newHistory,
-        { role: "model" as const, content: aiResponse },
-      ];
-      setConversationHistory(updatedHistory);
-
-      // Generate and store TTS audio
-      try {
-        const audioUri = await ttsService.generateTTS({ text: aiResponse });
-        if (audioUri) {
-          aiMessage.audioUri = audioUri;
-          setMessages(prev => prev.map(m =>
-            m.id === aiMessage.id ? { ...m, audioUri } : m
-          ));
+      const onChunk = (chunk: { type: 'audio'|'text'|'metadata', data: any }) => {
+        if (chunk.type === 'text') {
+          // Accumulate text
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === aiMessageId ? { ...msg, text: msg.text + chunk.data } : msg
+            )
+          );
+        } else if (chunk.type === 'audio') {
+           // Queue audio
+           streamPlayerRef.current?.addCompressedChunkBase64(chunk.data);
+        } else if (chunk.type === 'metadata') {
+           // Update full history
+           setConversationHistory((prev) => [
+              ...prev.filter(m => m.content !== aiMessage.text), // ensure we don't duplicate
+              { role: "model", content: chunk.data.fullText || "" }
+           ]);
         }
-      } catch (error) {
-        logger.error("Failed to generate TTS:", error);
+      };
+
+      if (isDrill) {
+         await aiService.streamDrillPracticeMessage({ drillId, ...payload }, onChunk);
+      } else {
+         await aiService.streamTopicPracticeMessage({ topic: topicId, ...payload }, onChunk);
       }
+      // Flush any remaining PCM bytes that didn't reach the 400ms threshold
+      await streamPlayerRef.current?.flush();
+
     } catch (error: any) {
-      logger.error("Failed to send message:", error);
-      // Add error message
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        type: "ai",
-        text: "Sorry, I'm having trouble responding right now. Please try again.",
-        showAvatar: true,
-      }]);
+      logger.error("❌ Failed stream logic:", error);
+      // Add error message to the unfinished placeholder
+      setMessages(prev => prev.map((msg) => 
+        msg.id === aiMessageId 
+          ? { ...msg, text: "Sorry, I'm having trouble responding right now. Please try again." } 
+          : msg
+      ));
     } finally {
       setIsLoading(false);
     }
@@ -446,50 +439,20 @@ export default function AiTalkScreen() {
         playingAudioIdRef.current = null;
       }
 
-      // Play new audio (or replay if same message)
-      await ttsService.playAudio(audioUri);
+      // Play new audio with onFinish callback — no polling needed
+      await ttsService.playAudio(audioUri, () => {
+        // Called by expo-av's status callback when playback finishes
+        if (playingAudioIdRef.current === messageId) {
+          setPlayingAudioId(null);
+          playingAudioIdRef.current = null;
+        }
+      });
       setPlayingAudioId(messageId);
       playingAudioIdRef.current = messageId;
-
-      // Monitor audio playback status to reset when finished
-      let checkCount = 0;
-      const maxChecks = 120; // Max 60 seconds (120 * 500ms)
-
-      const checkAudioStatus = async () => {
-        try {
-          const isPlaying = await ttsService.isPlaying();
-          const currentPlayingId = playingAudioIdRef.current;
-
-          if (!isPlaying && currentPlayingId === messageId) {
-            // Audio finished
-            setPlayingAudioId(null);
-            playingAudioIdRef.current = null;
-          } else if (isPlaying && currentPlayingId === messageId && checkCount < maxChecks) {
-            // Continue checking if still playing
-            checkCount++;
-            setTimeout(checkAudioStatus, 500);
-          } else if (checkCount >= maxChecks) {
-            // Timeout - assume finished
-            if (currentPlayingId === messageId) {
-              setPlayingAudioId(null);
-              playingAudioIdRef.current = null;
-            }
-          }
-        } catch (error) {
-          // If check fails, assume audio finished
-          if (playingAudioIdRef.current === messageId) {
-            setPlayingAudioId(null);
-            playingAudioIdRef.current = null;
-          }
-        }
-      };
-
-      // Start checking after a short delay
-      setTimeout(checkAudioStatus, 500);
     } catch (error) {
       logger.error("Failed to play audio:", error);
       // Reset on error
-      if (playingAudioId === messageId) {
+      if (playingAudioIdRef.current === messageId) {
         setPlayingAudioId(null);
         playingAudioIdRef.current = null;
       }
