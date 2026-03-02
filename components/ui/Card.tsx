@@ -17,9 +17,9 @@ const paddingStyles = {
 };
 
 const variantStyles = {
-  default: 'bg-white rounded-2xl',
-  elevated: 'bg-white rounded-2xl shadow-md',
-  outlined: 'bg-white rounded-2xl border  border-neutral-200',
+  default: 'bg-white dark:bg-neutral-800 rounded-2xl',
+  elevated: 'bg-white dark:bg-neutral-800 rounded-2xl shadow-md',
+  outlined: 'bg-white dark:bg-neutral-800 rounded-2xl border border-neutral-200 dark:border-neutral-700',
 };
 
 export function Card({

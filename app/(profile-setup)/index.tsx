@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Dimensions, FlatList, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import ConfidenceStep from "./steps/ConfidenceStep";
@@ -10,6 +10,7 @@ import RoleStep from "./steps/RoleStep";
 import { FormData } from "./steps/types";
 import VoiceCalibrationStep from "./steps/VoiceCalibrationStep";
 import { secureStorage } from "@/lib/secure-storage";
+import { useAuthStore } from "@/store/auth-store";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -25,8 +26,18 @@ const STEPS = [
 export default function ProfileSetupScreen() {
   const flatListRef = useRef<FlatList>(null);
   const [currentStep, setCurrentStep] = useState(0);
+  const { user } = useAuthStore();
+  
+  // Initialize form data with user's name from account creation
+  const getInitialName = () => {
+    if (user?.firstName || user?.lastName) {
+      return `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    }
+    return "";
+  };
+
   const [formData, setFormData] = useState<FormData>({
-    name: "",
+    name: getInitialName(),
     role: "",
     goal: "",
     confidence: 0.5,
@@ -34,6 +45,16 @@ export default function ProfileSetupScreen() {
     nationality: "",
     confidenceScore: null,
   });
+
+  // Update name if user data becomes available
+  useEffect(() => {
+    if (user && !formData.name) {
+      const fullName = getInitialName();
+      if (fullName) {
+        setFormData((prev) => ({ ...prev, name: fullName }));
+      }
+    }
+  }, [user]);
 
   const updateFormData = (updates: Partial<FormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));

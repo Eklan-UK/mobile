@@ -18,6 +18,7 @@ interface ButtonProps {
   iconPosition?: 'left' | 'right';
   fullWidth?: boolean;
   style?: any;
+  textStyle?: any;
 }
 
 const variantStyles: Record<ButtonVariant, { container: string; text: string }> = {
@@ -26,20 +27,20 @@ const variantStyles: Record<ButtonVariant, { container: string; text: string }> 
     text: 'text-white',
   },
   secondary: {
-    container: 'bg-white border border-neutral-200',
-    text: 'text-neutral-900',
+    container: 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700',
+    text: 'text-neutral-900 dark:text-white',
   },
   outline: {
-    container: 'bg-transparent border border-primary-500',
-    text: 'text-primary-500',
+    container: 'bg-transparent border border-primary-500 dark:border-primary-400',
+    text: 'text-primary-500 dark:text-primary-400',
   },
   dark: {
-    container: 'bg-neutral-900',
-    text: 'text-white',
+    container: 'bg-neutral-900 dark:bg-white',
+    text: 'text-white dark:text-neutral-900',
   },
   ghost: {
     container: 'bg-transparent',
-    text: 'text-primary-500',
+    text: 'text-primary-500 dark:text-primary-400',
   },
   destructive: {
     container: 'bg-red-600',
@@ -102,6 +103,7 @@ export function Button({
   iconPosition = 'left',
   fullWidth = true,
   style,
+  textStyle,
 }: ButtonProps) {
   const variantStyle = variantStyles[variant];
   const sizeStyle = sizeStyles[size];
@@ -119,14 +121,14 @@ export function Button({
       {loading ? (
         <View style={tw`flex-row items-center gap-2`}>
           <SpinningLogo size={22} />
-          <AppText weight="bold" style={tw`${variantStyle.text} ${sizeStyle.text} font-semibold`}>
+          <AppText weight="bold" style={[tw`${variantStyle.text} ${sizeStyle.text} font-semibold`, textStyle]}>
             {children}
           </AppText>
         </View>
       ) : (
         <View style={tw`flex-row items-center gap-2`}>
           {icon && iconPosition === 'left' && icon}
-          <AppText weight="bold" style={tw`${variantStyle.text} ${sizeStyle.text} font-semibold`}>
+          <AppText weight="bold" style={[tw`${variantStyle.text} ${sizeStyle.text} font-semibold`, textStyle]}>
             {children}
           </AppText>
           {icon && iconPosition === 'right' && icon}

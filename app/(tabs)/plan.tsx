@@ -6,10 +6,14 @@ import { DrillAssignment } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { Ionicons } from "@expo/vector-icons";
 import { useState, useMemo } from "react";
-import { ScrollView, TouchableOpacity, View, RefreshControl } from "react-native";
+import { ScrollView, TouchableOpacity, View, RefreshControl, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useDrills, useRefreshDrills } from "@/hooks/useDrills";
 import { logger } from "@/utils/logger";
+import { useAuth } from "@/hooks/useAuth";
+import { router } from "expo-router";
+import { PlanOnboardingGate } from "@/components/gating/PlanOnboardingGate";
+import { PlanCompletedGate } from "@/components/gating/PlanCompletedGate";
 
 // Types
 type TabType = "ongoing" | "reviewed" | "completed";
@@ -29,7 +33,7 @@ function TabButton({
   return (
     <TouchableOpacity
       style={tw`px-3 py-2.5 rounded-full ${
-        isActive ? "bg-green-700" : "bg-white"
+        isActive ? "bg-green-700" : "bg-white dark:bg-neutral-700"
       }`}
       onPress={onPress}
       activeOpacity={0.7}
@@ -37,19 +41,19 @@ function TabButton({
       <View style={tw`flex-row items-center gap-2`}>
         <AppText
           style={tw`text-base font-semibold ${
-            isActive ? "text-white" : "text-gray-700"
+            isActive ? "text-white" : "text-gray-700 dark:text-neutral-200"
           }`}
         >
           {label}
         </AppText>
         <View
           style={tw`min-w-6 h-6 rounded-full items-center justify-center ${
-            isActive ? "bg-white/20" : "bg-gray-100"
+            isActive ? "bg-white/20" : "bg-gray-100 dark:bg-neutral-600"
           }`}
         >
           <AppText
             style={tw`text-sm font-semibold ${
-              isActive ? "text-white" : "text-gray-600"
+              isActive ? "text-white" : "text-gray-600 dark:text-neutral-300"
             }`}
           >
             {count}
@@ -85,8 +89,8 @@ function EmptyState({ tab }: { tab: TabType }) {
   return (
     <View style={tw`flex-1 items-center justify-center py-20`}>
       <AppText style={tw`text-6xl mb-4`}>{message.emoji}</AppText>
-      <BoldText style={tw`text-xl text-gray-900 mb-2`}>{message.title}</BoldText>
-      <AppText style={tw`text-base text-gray-500 text-center px-8`}>
+      <BoldText style={tw`text-xl text-gray-900 dark:text-white mb-2`}>{message.title}</BoldText>
+      <AppText style={tw`text-base text-gray-500 dark:text-neutral-400 text-center px-8`}>
         {message.subtitle}
       </AppText>
     </View>
@@ -98,10 +102,10 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <View style={tw`flex-1 items-center justify-center py-20`}>
       <AppText style={tw`text-6xl mb-4`}>⚠️</AppText>
-      <BoldText style={tw`text-xl text-gray-900 mb-2`}>
+      <BoldText style={tw`text-xl text-gray-900 dark:text-white mb-2`}>
         Failed to load drills
       </BoldText>
-      <AppText style={tw`text-base text-gray-500 text-center px-8 mb-6`}>
+      <AppText style={tw`text-base text-gray-500 dark:text-neutral-400 text-center px-8 mb-6`}>
         Please check your connection and try again
       </AppText>
       <TouchableOpacity
@@ -118,6 +122,11 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 // Main Screen
 export default function MyPlanScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("ongoing");
+  const { user } = useAuth();
+  const isFreeUser = !user?.isSubscribed;
+  const [hasSeenPlanGate, setHasSeenPlanGate] = useState(false);
+
+  console.log(user)
   
   // Fetch all drills (we'll filter client-side)
   const { data, isLoading, isError, refetch } = useDrills();
@@ -189,25 +198,25 @@ export default function MyPlanScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={tw`flex-1 bg-gray-50`}>
+    <SafeAreaView edges={['top']} style={tw`flex-1 bg-gray-50 dark:bg-neutral-900`}>
       {/* Header */}
-      <View style={tw`px-5 pt-4 pb-4 bg-white`}>
+      <View style={tw`px-5 pt-4 pb-4 bg-white dark:bg-neutral-900 border-b border-gray-100 dark:border-neutral-800`}>
         <View style={tw`flex-row items-start justify-between mb-1`}>
           <View style={tw`flex-1`}>
-            <BoldText style={tw`text-2xl font-bold text-gray-900 mb-1`}>
+            <BoldText style={tw`text-2xl font-bold text-gray-900 dark:text-white mb-1`}>
               My plans
             </BoldText>
-            <AppText style={tw`text-base text-gray-500`}>
+            <AppText style={tw`text-base text-gray-500 dark:text-neutral-400`}>
               Designed for you, based on your goals
             </AppText>
           </View>
           <View style={tw`flex-row items-end gap-1`}>
-            <View style={tw`w-8 h-8 bg-orange-100 rounded-full items-center justify-center`}>
+            <View style={tw`w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-full items-center justify-center`}>
               <AppText style={tw`text-lg`}>🔆</AppText>
             </View>
-            <View style={tw`flex-row items-center bg-orange-50 rounded-full px-3 py-1.5`}>
+            <View style={tw`flex-row items-center bg-orange-50 dark:bg-orange-900/20 rounded-full px-3 py-1.5`}>
               <AppText style={tw`text-base mr-1`}>🔥</AppText>
-              <AppText style={tw`text-base font-semibold text-gray-900`}>22</AppText>
+              <AppText style={tw`text-base font-semibold text-gray-900 dark:text-white`}>22</AppText>
             </View>
             <TouchableOpacity style={tw`w-10 h-10 items-center justify-center`}>
               <Ionicons name="notifications-outline" size={24} color="#6B7280" />
@@ -217,12 +226,12 @@ export default function MyPlanScreen() {
       </View>
 
       {/* Tabs */}
-      <View style={tw`p-[8px] bg-white border-solid`}>
+      <View style={tw`p-[8px] bg-white dark:bg-neutral-900 border-solid`}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={tw`gap-2`}
-          style={tw`border rounded-full p-[8px] border-gray-200`}
+          style={tw`border rounded-full p-[8px] border-gray-200 dark:border-neutral-800`}
         >
           <TabButton
             label="Ongoing"
@@ -278,6 +287,23 @@ export default function MyPlanScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* Plan Gates */}
+      {(() => {
+        const showOnboarding = isFreeUser && !hasSeenPlanGate;
+        const showCompleted = isFreeUser && hasSeenPlanGate && categorizedDrills.ongoing.length === 0 && categorizedDrills.completed.length > 0;
+        return (
+          <PlanOnboardingGate 
+            visible={showOnboarding || showCompleted} 
+            isCompletedState={showCompleted}
+            onClose={() => {
+              if (showOnboarding) {
+                setHasSeenPlanGate(true);
+              }
+            }} 
+          />
+        );
+      })()}
     </SafeAreaView>
   );
 }

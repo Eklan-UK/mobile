@@ -19,7 +19,7 @@ function CloseIcon() {
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
         d="M18 6L6 18M6 6l12 12"
-        stroke="#171717"
+        stroke={tw.prefixMatch('dark') ? "#F9FAFB" : "#171717"}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -296,7 +296,7 @@ export default function NotificationsPermissionScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
+    <SafeAreaView style={tw`flex-1 bg-cream-100 dark:bg-neutral-900`} edges={["top", "bottom"]}>
       {/* Close Button */}
       <View style={tw`px-6 pt-4 flex-row justify-end`}>
         <TouchableOpacity onPress={handleClose}>
@@ -311,10 +311,10 @@ export default function NotificationsPermissionScreen() {
 
         {/* Text Content */}
         <View style={tw`mt-8`}>
-          <AppText style={tw`text-2xl font-bold text-neutral-900 mb-3`}>
+          <AppText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-3`}>
             Stay on track with gentle reminders?
           </AppText>
-          <AppText style={tw`text-base text-neutral-600 leading-6`}>
+          <AppText style={tw`text-base text-neutral-600 dark:text-neutral-400 leading-6`}>
             We'll send you thoughtful notifications when it's time to practice
             again. Never miss a moment.
           </AppText>
@@ -333,12 +333,12 @@ export default function NotificationsPermissionScreen() {
             onPress={handleMaybeLater}
             style={tw`py-3 items-center`}
           >
-            <AppText style={tw`text-base text-neutral-700 font-medium`}>
+            <AppText style={tw`text-base text-neutral-700 dark:text-neutral-300 font-medium`}>
               Maybe later
             </AppText>
           </TouchableOpacity>
 
-          <AppText style={tw`text-center text-sm text-neutral-400`}>
+          <AppText style={tw`text-center text-sm text-neutral-400 dark:text-neutral-500`}>
             You can change this anytime in settings
           </AppText>
         </View>

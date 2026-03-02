@@ -327,6 +327,43 @@ export const aiService = {
       }
 
       let processedIndex = 0;
+      let processingQueue: string[] = [];
+      let isProcessing = false;
+
+      // Process chunks asynchronously to prevent ANR
+      const processChunks = () => {
+        if (isProcessing || processingQueue.length === 0) return;
+        isProcessing = true;
+
+        // Use requestAnimationFrame for smooth processing (falls back to setTimeout)
+        const scheduleNext = typeof requestAnimationFrame !== 'undefined' 
+          ? requestAnimationFrame 
+          : (fn: () => void) => setTimeout(fn, 0);
+
+        scheduleNext(() => {
+          try {
+            const chunks = processingQueue.splice(0, 10); // Process max 10 chunks per tick
+            for (const line of chunks) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.substring(6).trim();
+                  if (jsonStr) {
+                    const chunk = JSON.parse(jsonStr);
+                    onChunk(chunk);
+                  }
+                } catch (e) {
+                  // Incomplete chunk, skip
+                }
+              }
+            }
+          } finally {
+            isProcessing = false;
+            if (processingQueue.length > 0) {
+              processChunks();
+            }
+          }
+        });
+      };
 
       xhr.onreadystatechange = () => {
         // State 3 (LOADING) or 4 (DONE) has responseText
@@ -336,17 +373,10 @@ export const aiService = {
             const newText = responseText.substring(processedIndex);
             if (newText) {
               const lines = newText.split('\n\n');
+              // Queue lines for async processing
               for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  try {
-                    const jsonStr = line.substring(6).trim();
-                    if (jsonStr) {
-                      const chunk = JSON.parse(jsonStr);
-                      onChunk(chunk);
-                    }
-                  } catch (e) {
-                    // Incomplete chunk, wait for next tick
-                  }
+                if (line.trim()) {
+                  processingQueue.push(line);
                 }
               }
               // Update processed index to the last complete chunk boundary
@@ -354,15 +384,30 @@ export const aiService = {
               if (lastDoubleNewline !== -1 && lastDoubleNewline >= processedIndex) {
                  processedIndex = lastDoubleNewline + 2;
               }
+              // Trigger async processing
+              processChunks();
             }
           }
         }
         
         if (xhr.readyState === 4) {
-          if (xhr.status === 200) {
-            resolve();
+          // Process any remaining chunks before resolving
+          if (processingQueue.length > 0) {
+            processChunks();
+            // Wait a bit for final chunks to process
+            setTimeout(() => {
+              if (xhr.status === 200) {
+                resolve();
+              } else {
+                reject(new Error(`Stream failed with status ${xhr.status}`));
+              }
+            }, 100);
           } else {
-            reject(new Error(`Stream failed with status ${xhr.status}`));
+            if (xhr.status === 200) {
+              resolve();
+            } else {
+              reject(new Error(`Stream failed with status ${xhr.status}`));
+            }
           }
         }
       };

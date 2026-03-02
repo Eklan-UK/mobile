@@ -83,17 +83,17 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
       onChange={handleSheetChanges}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
-      handleIndicatorStyle={tw`bg-neutral-300 w-12`}
-      backgroundStyle={tw`bg-white rounded-t-3xl`}
+      handleIndicatorStyle={tw`bg-neutral-300 dark:bg-neutral-600 w-12`}
+      backgroundStyle={tw`bg-white dark:bg-neutral-900 rounded-t-3xl`}
       onDismiss={() => setSubmitted(false)}
     >
       <BottomSheetScrollView contentContainerStyle={[tw`px-6 pt-2 pb-8`, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         {/* Header */}
         <View style={tw`mb-6`}>
-          <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
+          <BoldText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-2`}>
             Create your account
           </BoldText>
-          <AppText style={tw`text-neutral-900`}>
+          <AppText style={tw`text-neutral-900 dark:text-neutral-300`}>
             Start your personalised language journey.
           </AppText>
         </View>
@@ -168,7 +168,7 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
         />
 
         {/* Terms */}
-        <AppText style={tw`text-[14px] text-neutral-500 mb-6`}>
+        <AppText style={tw`text-[14px] text-neutral-500 dark:text-neutral-400 mb-6`}>
           By clicking create account, you agree to Eklan's{' '}
           <AppText weight="medium" style={tw`text-primary-500 font-medium`}>
             Terms of Service
@@ -190,7 +190,7 @@ const SignupSheet = forwardRef<BottomSheetModal, SignupSheetProps>(({ onDismiss,
 
         {/* Switch to Login */}
         <View style={tw`flex-row justify-center mb-2`}>
-          <AppText style={tw`text-sm text-neutral-500`}>
+          <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400`}>
             Already have an account?{' '}
           </AppText>
           <TouchableOpacity onPress={onGoToLogin}>

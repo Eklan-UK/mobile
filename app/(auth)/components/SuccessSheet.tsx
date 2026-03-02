@@ -48,8 +48,8 @@ const SuccessSheet = forwardRef<BottomSheetModal, SuccessSheetProps>(({ onDismis
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
       enablePanDownToClose
-      handleIndicatorStyle={tw`bg-neutral-300 w-12`}
-      backgroundStyle={tw`bg-white rounded-t-3xl`}
+      handleIndicatorStyle={tw`bg-neutral-300 dark:bg-neutral-600 w-12`}
+      backgroundStyle={tw`bg-white dark:bg-neutral-900 rounded-t-3xl`}
       backdropComponent={renderBackdrop}
     >
       <BottomSheetView style={[tw`flex-1 px-6 py-10 items-center`, { paddingBottom: insets.bottom + 20 }]}>
@@ -67,11 +67,11 @@ const SuccessSheet = forwardRef<BottomSheetModal, SuccessSheetProps>(({ onDismis
           <CheckIcon width={40} height={40} />
         </View>
 
-        <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
+        <BoldText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-2`}>
           Account created successful
         </BoldText>
 
-        <AppText style={tw`text-neutral-500 mb-8`}>
+        <AppText style={tw`text-neutral-500 dark:text-neutral-400 mb-8`}>
           Let's get to know better
         </AppText>
 

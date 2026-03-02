@@ -2,6 +2,7 @@ import tw from "@/lib/tw";
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
+  BottomSheetScrollView,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import React, {
@@ -27,7 +28,7 @@ const VerifyEmailOtpSheet = forwardRef<BottomSheetModal, VerifyEmailOtpSheetProp
     const bottomSheetRef = useRef<BottomSheetModal>(null);
     const otpRef = useRef<OtpVerificationHandle>(null);
 
-    const snapPoints = useMemo(() => ["75%"], []);
+    const snapPoints = useMemo(() => ["90%"], []);
     const insets = useSafeAreaInsets();
 
     useImperativeHandle(ref, () => bottomSheetRef.current as BottomSheetModal);
@@ -82,22 +83,34 @@ const VerifyEmailOtpSheet = forwardRef<BottomSheetModal, VerifyEmailOtpSheetProp
         onChange={handleSheetChanges}
         enablePanDownToClose={false}
         backdropComponent={renderBackdrop}
-        handleIndicatorStyle={tw`bg-neutral-300 w-12`}
-        backgroundStyle={tw`bg-white rounded-t-3xl`}
+        handleIndicatorStyle={tw`bg-neutral-300 dark:bg-neutral-600 w-12`}
+        backgroundStyle={tw`bg-white dark:bg-neutral-900 rounded-t-3xl`}
+        // "fillParent" keeps the sheet anchored at its snap point and lets
+        // the inner ScrollView scroll content above the keyboard naturally.
+        // "interactive" shrinks the sheet itself which fights with a fixed
+        // snap point and causes content to be hidden behind the keyboard.
+        keyboardBehavior="fillParent"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
       >
-        <BottomSheetView
-          style={[
-            tw`flex-1 px-6 pt-2 pb-8`,
-            { paddingBottom: Math.max(insets.bottom, 20) },
-          ]}
-        >
-          <OtpVerification
-            ref={otpRef}
-            email={email}
-            onVerify={handleVerify}
-            onResend={handleResend}
-            autoStartCountdown={false}
-          />
+        {/* BottomSheetView fills the sheet frame; ScrollView inside handles overflow */}
+        <BottomSheetView style={{ flex: 1 }}>
+          <BottomSheetScrollView
+            contentContainerStyle={[
+              tw`px-6 pt-2`,
+              { paddingBottom: Math.max(insets.bottom,400) },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <OtpVerification
+              ref={otpRef}
+              email={email}
+              onVerify={handleVerify}
+              onResend={handleResend}
+              autoStartCountdown={false}
+            />
+          </BottomSheetScrollView>
         </BottomSheetView>
       </BottomSheetModal>
     );

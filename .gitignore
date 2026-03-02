@@ -9,6 +9,9 @@ dist/
 web-build/
 expo-env.d.ts
 
+# EAS
+.eas/
+
 # Native
 .kotlin/
 *.orig.*
@@ -26,17 +29,46 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# logs
+*.log
+
 # macOS
 .DS_Store
 *.pem
 
-# local env files
+# Windows
+Thumbs.db
+
+# Linux
+*~
+
+# env files
+.env
+.env.*
 .env*.local
+
+# IDE
+.idea/
+.vscode/
 
 # typescript
 *.tsbuildinfo
 
+# bundle
+.bundle/
+
+# coverage
+coverage/
+
+# temp files
+*.tmp
+*.temp
+
 app-example
+
+# Firebase config files (sensitive - keep local or use EAS Secrets for CI)
+google-services.json
+GoogleService-Info.plist
 
 # generated native folders
 /ios

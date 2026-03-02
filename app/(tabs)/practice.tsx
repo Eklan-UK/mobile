@@ -6,6 +6,8 @@ import PronunciationBottomSheet from "@/components/practice/PronunciationBottomS
 import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
+import { AiLimitSoftGate } from "@/components/gating/AiLimitSoftGate";
+import { AiLimitHardGate } from "@/components/gating/AiLimitHardGate";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { router } from "expo-router";
 import React, { useRef, useEffect, useState } from "react";
@@ -13,15 +15,17 @@ import {
   ScrollView,
   TouchableOpacity,
   View,
-  BackHandler
+  BackHandler,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useDrills } from "@/hooks/useDrills";
 import { getDrillCategory, getEstimatedTime } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { logger } from "@/utils/logger";
 import { usePrefetch } from "@/hooks/usePrefetch";
 import { useActivityStore } from "@/store/activity-store";
+import { useAiUsageStore } from "@/store/ai-usage-store";
+import { useAuth } from "@/hooks/useAuth";
 import { Drill } from "@/types/drill.types";
 
 export default function PracticeScreen() {
@@ -33,39 +37,38 @@ export default function PracticeScreen() {
 
   // Get last active drill for continue practice
   const { lastActiveDrill } = useActivityStore();
+  const { user } = useAuth();
+  const isFreeUser = !user?.isSubscribed;
 
-  // Prefetching utilities
+  const { freeTurnsUsed, freeTurnLimit } = useAiUsageStore();
+  const aiUsageRatio =
+    freeTurnLimit > 0 ? freeTurnsUsed / freeTurnLimit : 0;
+
+  const [showFreeTalkSoftGate, setShowFreeTalkSoftGate] = useState(false);
+  const [showFreeTalkHardGate, setShowFreeTalkHardGate] = useState(false);
+
   const { prefetchDrill, prefetchDrills } = usePrefetch();
 
-  // Fetch all drills with a large limit so we have everything client-side
-  const { data: drillsData, isLoading: isLoadingDrills, isError: drillsError } = useDrills(undefined, 200);
-
-  // How many drills are currently visible in My Plan (progressive reveal)
-  const PAGE_SIZE = 50;
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-  // Prefetch all drill details when drills list is loaded
-  useEffect(() => {
-    if (drillsData?.drills) {
-      const drillIds = drillsData.drills
-        .map((assignment: any) => assignment.drill?._id || assignment.drillId)
-        .filter(Boolean);
-      drillIds.forEach((drillId: string) => {
-        prefetchDrill(drillId);
-      });
-    }
-  }, [drillsData, prefetchDrill]);
-
-  // All pending/in-progress drills (un-capped — we fetched 200)
-  const assignedDrills = drillsData?.drills.filter(
-    (assignment) => assignment.status === "pending" || assignment.status === "in_progress"
-  ) || [];
-
-  // Slice to visible count for progressive reveal
-  const visibleDrills = assignedDrills.slice(0, visibleCount);
-  const hasMoreDrills = assignedDrills.length > visibleCount;
-
   const handleOpenAiFreeTalk = () => {
+    // Premium users go straight in
+    if (!isFreeUser) {
+      router.push("/practice/ai");
+      return;
+    }
+
+    // Free users: apply soft/hard gating based on local turn usage
+    if (aiUsageRatio >= 1) {
+      // Hard gate: all free sessions used
+      setShowFreeTalkHardGate(true);
+      return;
+    }
+
+    if (aiUsageRatio >= 0.75) {
+      // Soft gate: warn user they're near the limit
+      setShowFreeTalkSoftGate(true);
+      return;
+    }
+
     router.push("/practice/ai");
   };
 
@@ -110,7 +113,7 @@ export default function PracticeScreen() {
 
   const handleTalkToCoach = () => {
     logger.log("Navigating to talk to coach");
-    // Navigate to coach booking or contact screen
+    router.push("/book-call");
   };
 
   const handleKeepPracticing = () => {
@@ -154,14 +157,14 @@ export default function PracticeScreen() {
   }, [openSheets]);
 
   return (
-    <SafeAreaView edges={["top"]} style={tw`flex-1 bg-white`}>
+    <SafeAreaView edges={["top"]} style={tw`flex-1 bg-white dark:bg-neutral-900`}>
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={tw`px-5 pt-4 pb-3 flex-row items-center justify-between`}>
-          <AppText style={tw`text-2xl font-bold text-gray-900`}>Practice</AppText>
-          <View style={tw`flex-row items-center bg-orange-50 rounded-full px-3 py-1.5`}>
+          <AppText style={tw`text-2xl font-bold text-gray-900 dark:text-white`}>Practice</AppText>
+          <View style={tw`flex-row items-center bg-orange-50 dark:bg-orange-900/20 rounded-full px-3 py-1.5`}>
             <AppText style={tw`text-lg mr-1`}>🔥</AppText>
-            <AppText style={tw`text-base font-semibold text-gray-900`}>22</AppText>
+            <AppText style={tw`text-base font-semibold text-gray-900 dark:text-white`}>22</AppText>
           </View>
         </View>
 
@@ -225,13 +228,13 @@ export default function PracticeScreen() {
 
         {/* Practice Freely Section */}
         <View style={tw`px-5 mb-6`}>
-          <AppText style={tw`text-xl font-bold text-gray-900 mb-4`}>
+          <AppText style={tw`text-xl font-bold text-gray-900 dark:text-white mb-4`}>
             Practice freely
           </AppText>
 
           {/* AI Free Talk */}
           <TouchableOpacity
-            style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-3 flex-row items-center`}
+            style={tw`bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-2xl p-4 mb-3 flex-row items-center`}
             activeOpacity={0.7}
             onPress={handleOpenAiFreeTalk}
           >
@@ -239,15 +242,15 @@ export default function PracticeScreen() {
               <LogoYellow />
             </View>
             <View style={tw`flex-1`}>
-              <AppText style={tw`text-base font-semibold text-gray-900 mb-0.5`}>
+              <AppText style={tw`text-base font-semibold text-gray-900 dark:text-white mb-0.5`}>
                 Eklan Free Talk
               </AppText>
-              <AppText style={tw`text-sm text-gray-600 mb-1`}>
+              <AppText style={tw`text-sm text-gray-600 dark:text-neutral-400 mb-1`}>
                 Speak about anything
               </AppText>
               <View style={tw`flex-row items-center`}>
-                <AppText style={tw`text-xs text-gray-400 mr-3`}>5–10 mins</AppText>
-                <AppText style={tw`text-xs text-gray-400`}>No pressure</AppText>
+                <AppText style={tw`text-xs text-gray-400 dark:text-neutral-500 mr-3`}>5–10 mins</AppText>
+                <AppText style={tw`text-xs text-gray-400 dark:text-neutral-500`}>No pressure</AppText>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
@@ -256,149 +259,49 @@ export default function PracticeScreen() {
           {/* Pronunciation */}
           <TouchableOpacity
             onPress={handleOpenPronunciation}
-            style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-3 flex-row items-center`}
+            style={tw`bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-2xl p-4 mb-3 flex-row items-center`}
             activeOpacity={0.7}
           >
             <View style={tw`w-12 h-12 bg-primary-500 rounded-xl items-center justify-center mr-4`}>
               <HeadPhone />
             </View>
             <View style={tw`flex-1`}>
-              <AppText style={tw`text-base font-semibold text-gray-900 mb-0.5`}>
+              <AppText style={tw`text-base font-semibold text-gray-900 dark:text-white mb-0.5`}>
                 Pronunciation
               </AppText>
-              <AppText style={tw`text-sm font-satoshi text-gray-600 mb-1`}>
+              <AppText style={tw`text-sm font-satoshi text-gray-600 dark:text-neutral-400 mb-1`}>
                 Practice sounds and words at your own pace.
               </AppText>
-              <AppText style={tw`text-xs text-gray-400`}>3–5 mins</AppText>
+              <AppText style={tw`text-xs text-gray-400 dark:text-neutral-500`}>3–5 mins</AppText>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
 
           {/* Listening */}
           <TouchableOpacity
-            style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-3 flex-row items-center`}
+            style={tw`bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-2xl p-4 mb-3 flex-row items-center`}
             activeOpacity={0.7}
           >
             <View style={tw`w-12 h-12 bg-blue-500 rounded-xl items-center justify-center mr-4`}>
               <Mic />
             </View>
             <View style={tw`flex-1`}>
-              <AppText style={tw`text-base font-semibold text-gray-900 mb-0.5`}>
+              <AppText style={tw`text-base font-semibold text-gray-900 dark:text-white mb-0.5`}>
                 Listening
               </AppText>
-              <AppText style={tw`text-sm text-gray-600 mb-1`}>
+              <AppText style={tw`text-sm text-gray-600 dark:text-neutral-400 mb-1`}>
                 Listen, repeat, and improve natural rhythm.
               </AppText>
               <View style={tw`flex-row items-center`}>
-                <AppText style={tw`text-xs text-gray-400 mr-3`}>5–10 mins</AppText>
-                <AppText style={tw`text-xs text-gray-400`}>No pressure</AppText>
+                <AppText style={tw`text-xs text-gray-400 dark:text-neutral-500 mr-3`}>5–10 mins</AppText>
+                <AppText style={tw`text-xs text-gray-400 dark:text-neutral-500`}>No pressure</AppText>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
           </TouchableOpacity>
         </View>
 
-        {/* My Plan — Guided Drills */}
-        <View style={tw`px-5 pb-24`}>
-          <AppText style={tw`text-xl font-bold text-gray-900 mb-1`}>
-            Your guided drills
-          </AppText>
-          <AppText style={tw`text-sm text-gray-500 mb-4`}>
-            Designed for you, based on your goals and coach insights.
-          </AppText>
 
-          {isLoadingDrills ? (
-            <>
-              <View style={tw`bg-gray-100 rounded-2xl p-4 mb-3 h-32`} />
-              <View style={tw`bg-gray-100 rounded-2xl p-4 mb-3 h-32`} />
-            </>
-          ) : drillsError ? (
-            <View style={tw`bg-red-50 rounded-2xl p-4 mb-3`}>
-              <AppText style={tw`text-red-700 text-center`}>Failed to load drills</AppText>
-            </View>
-          ) : assignedDrills.length === 0 ? (
-            <View style={tw`bg-gray-50 rounded-2xl p-6 items-center`}>
-              <AppText style={tw`text-4xl mb-2`}>📚</AppText>
-              <AppText style={tw`text-gray-700 font-semibold mb-1`}>No drills assigned yet</AppText>
-              <AppText style={tw`text-gray-500 text-sm text-center`}>
-                Your coach will assign drills based on your goals
-              </AppText>
-            </View>
-          ) : (
-            <>
-              {visibleDrills.map((assignment) => {
-                const drill = assignment.drill;
-                const isCompleted = assignment.status === "completed";
-                const category = getDrillCategory(drill.type);
-                const estimatedTime = getEstimatedTime(drill.type);
-
-                return (
-                  <TouchableOpacity
-                    key={assignment.assignmentId}
-                    style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-3`}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      const drillId = assignment.drill?._id;
-                      if (drillId) prefetchDrill(drillId);
-                      navigateToDrill(assignment);
-                    }}
-                  >
-                    <View style={tw`flex-row items-start justify-between mb-3`}>
-                      <View style={tw`flex-1`}>
-                        <AppText style={tw`text-base font-semibold text-gray-900 mb-1`}>
-                          {drill.title}
-                        </AppText>
-                        <AppText style={tw`text-sm text-gray-600 mb-1`}>
-                          {category} • {estimatedTime}
-                        </AppText>
-                        {assignment.assignedBy && (
-                          <View style={tw`flex-row items-center`}>
-                            <AppText style={tw`text-xs text-gray-400 mr-1`}>👤</AppText>
-                            <AppText style={tw`text-xs text-gray-500`}>Assigned by a coach</AppText>
-                          </View>
-                        )}
-                      </View>
-                      {isCompleted ? (
-                        <View style={tw`w-8 h-8 bg-green-50 rounded-full items-center justify-center`}>
-                          <Ionicons name="checkmark" size={16} color="#10B981" />
-                        </View>
-                      ) : (
-                        <View style={tw`w-8 h-8 bg-gray-100 rounded-full items-center justify-center`}>
-                          <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
-                        </View>
-                      )}
-                    </View>
-
-                    {assignment.status === "in_progress" && (
-                      <View style={tw`bg-blue-50 rounded-lg px-3 py-2 self-start`}>
-                        <AppText style={tw`text-xs text-blue-700`}>In Progress</AppText>
-                      </View>
-                    )}
-                    {assignment.status === "completed" && (
-                      <View style={tw`bg-green-50 rounded-lg px-3 py-2 flex-row items-center self-start`}>
-                        <AppText style={tw`text-xs mr-1`}>✓</AppText>
-                        <AppText style={tw`text-xs text-green-700`}>Completed</AppText>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-
-              {/* Show more button */}
-              {hasMoreDrills && (
-                <TouchableOpacity
-                  onPress={() => setVisibleCount((c) => c + PAGE_SIZE)}
-                  style={tw`border border-gray-200 rounded-2xl py-4 items-center mt-1 mb-3`}
-                  activeOpacity={0.7}
-                >
-                  <AppText style={tw`text-sm font-semibold text-gray-700`}>
-                    Show more ({assignedDrills.length - visibleCount} remaining)
-                  </AppText>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View>
        
       </ScrollView>
 
@@ -428,6 +331,10 @@ export default function PracticeScreen() {
           }
         }}
       />
+
+      {/* Free Talk Gates */}
+      <AiLimitSoftGate visible={showFreeTalkSoftGate} onClose={() => setShowFreeTalkSoftGate(false)} />
+      <AiLimitHardGate visible={showFreeTalkHardGate} onClose={() => setShowFreeTalkHardGate(false)} />
     </SafeAreaView>
   );
 }

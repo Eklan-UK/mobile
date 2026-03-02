@@ -26,6 +26,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAiUsageStore } from "@/store/ai-usage-store";
 
 type Message = {
   id: string;
@@ -61,6 +62,8 @@ export default function AiTalkScreen() {
   const [hasPermission, setHasPermission] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [autoPlayedMessages, setAutoPlayedMessages] = useState<Set<string>>(new Set());
+
+  const { incrementTurn } = useAiUsageStore();
 
   // SSE Stream Player Reference
   const streamPlayerRef = useRef<AudioStreamPlayer | null>(null);
@@ -301,6 +304,9 @@ export default function AiTalkScreen() {
       setMessages(prev => [...prev.filter(m => m.type !== "status"), userMessage]);
       setMicState("normal");
 
+      // Count this as a free-talk turn
+      incrementTurn();
+
       // Update local conversation context with transcription so AI remembers it
       const updatedHistory: Array<{ role: "user" | "model"; content: string }> = [
         ...conversationHistory,
@@ -344,6 +350,9 @@ export default function AiTalkScreen() {
       text: userMessageText,
     };
     setMessages(prev => [...prev, userMessage]);
+
+    // Count this as a free-talk turn
+    incrementTurn();
 
     // Update conversation history
     const newHistory: Array<{ role: "user" | "model"; content: string }> = [

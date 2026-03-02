@@ -13,6 +13,7 @@ import { useRef, useState } from 'react';
 import { FutureSelfBottomSheet, FutureSelfBottomSheetRef } from '@/components/FutureSelfBottomSheet';
 import { futureSelfService } from '@/services/future-self.service';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from "react";
 import { usePrefetch } from '@/hooks/usePrefetch';
 import { reflectionService } from '@/services/reflection.service';
 import { dailyFocusService } from '@/services/daily-focus.service';
@@ -21,6 +22,7 @@ import { useConfidence } from '@/hooks/useConfidence';
 import VideoIcon from '@/assets/icons/file-video.svg';
 import VideoIconWhite from '@/assets/icons/File-type-icon.svg';
 import { Loader } from '@/components/ui';
+import { HomeFreeModePopup } from "@/components/gating/HomeFreeModePopup";
 import BellIcon from '@/assets/icons/bell.svg';
 import { useAuth } from "@/hooks/useAuth";
 import CallToActionCard from "@/components/CallToAction";
@@ -78,7 +80,7 @@ const ProgressCard = ({
     <Card variant="outlined" padding="md" style={tw`flex-1`}>
       <View style={tw`flex-row justify-between items-center`}>
         <View style={tw`flex-1 mr-2`}>
-          <AppText style={tw`font-semibold text-base`}>{title}</AppText>
+          <AppText style={tw`font-semibold text-base text-neutral-900 dark:text-white`}>{title}</AppText>
           <AppText style={tw`text-sm mt-1 ${isNegative ? 'text-red-500' : 'text-green-600'}`}>
             {change}
           </AppText>
@@ -109,7 +111,7 @@ const SavedDrillsCard = () => (
         >
           <AppText style={tw`text-lg`}>📘</AppText>
         </View>
-        <AppText style={tw`font-semibold flex-1`} numberOfLines={1}>
+        <AppText style={tw`font-semibold flex-1 text-neutral-900 dark:text-white`} numberOfLines={1}>
           Saved Drills
         </AppText>
       </View>
@@ -145,7 +147,7 @@ const ActivityItem = ({
         </View>
 
         <View style={tw`flex-1`}>
-          <AppText style={tw`font-medium text-base mb-1`} numberOfLines={1}>
+          <AppText style={tw`font-medium text-base mb-1 text-neutral-900 dark:text-white`} numberOfLines={1}>
             {title}
           </AppText>
           <View style={tw`flex-row items-center gap-2 flex-wrap`}>
@@ -177,6 +179,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const name = user?.firstName + ' ' + user?.lastName || 'User';
   const { recentActivities } = useActivityStore();
+  const isFreeUser = !user?.isSubscribed;
 
   // Metrics
   const { data: pronunciation, isLoading: pronunciationLoading, weeklyChange: weeklyPronunciation } = usePronunciation();
@@ -244,8 +247,16 @@ export default function HomeScreen() {
     }
   };
 
+  const [showHomePopup, setShowHomePopup] = useState(false);
+
+  useEffect(() => {
+    if (isFreeUser) {
+      setShowHomePopup(true);
+    }
+  }, [isFreeUser]);
+
   return (
-    <SafeAreaView edges={["top"]} style={tw`flex-1  bg-white`}>
+    <SafeAreaView edges={["top"]} style={tw`flex-1 bg-white dark:bg-neutral-900`}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={tw`pb-6`}
@@ -257,10 +268,10 @@ export default function HomeScreen() {
           style={tw`px-${isSmallScreen ? "4" : "6"} pt-4 pb-6 flex-row justify-between items-center`}
         >
           <View style={tw`flex-1 mr-4`}>
-            <AppText style={tw`text-${isSmallScreen ? "xl" : "2xl"} font-bold`}>
+            <AppText style={tw`text-${isSmallScreen ? "xl" : "2xl"} font-bold text-neutral-900 dark:text-white`}>
               Hello, {name}! 👋
             </AppText>
-            <AppText style={tw`text-neutral-500 text-${isSmallScreen ? "sm" : "base"} mt-1`}>
+            <AppText style={tw`text-neutral-500 dark:text-neutral-400 text-${isSmallScreen ? "sm" : "base"} mt-1`}>
               Good to see you again.
             </AppText>
           </View>
@@ -271,31 +282,38 @@ export default function HomeScreen() {
                 🔥 22
               </AppText>
             </View> */}
-            <TouchableOpacity style={tw`w-[40px] h-[40px] bg-neutral-100 rounded-full items-center justify-center`}>
+            <TouchableOpacity
+              style={tw`w-[40px] h-[40px] bg-neutral-100 dark:bg-neutral-800 rounded-full items-center justify-center`}
+              onPress={() => router.push('/notifications')}
+            >
               <BellIcon width={20} height={20} />
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={tw`px-${isSmallScreen ? "4" : "6"} mb-6 gap-3`}>
-          {/* <CallToActionCard
-            title="Book a call"
-            subtitle="Speak to an English language expert"
-            iconBackgroundColor="#FFFFFF"
-            gradientAngle={135}
-            icon={<Phone />}
-            gradientColors={['#3C8CE7', '#00EAFF']}
-            onPress={() => {
-              // router.push('/book-call');
-            }}
-          /> */}
-          <CallToActionCard
-            title="Upload your video"
-            subtitle="Write a message to your future self"
-            icon={<VideoIconWhite width={24} height={24} />}
-            gradientColors={['#FF96F9', '#C32BAC']}
-            onPress={handleFutureSelfPress}
-          />
+          {isFreeUser && (
+            <CallToActionCard
+              title="Book a call"
+              subtitle="Speak to an English language expert"
+              iconBackgroundColor="#FFFFFF"
+              gradientAngle={135}
+              icon={<Phone />}
+              gradientColors={['#3C8CE7', '#00EAFF']}
+              onPress={() => {
+                router.push('/book-call');
+              }}
+            />
+          )}
+          {!isFreeUser && !futureSelfVideo && (
+            <CallToActionCard
+              title="Upload your video"
+              subtitle="Write a message to your future self"
+              icon={<VideoIconWhite width={24} height={24} />}
+              gradientColors={['#FF96F9', '#C32BAC']}
+              onPress={handleFutureSelfPress}
+            />
+          )}
         </View>
         {/* TODAY'S FOCUS */}
         <View style={tw`px-${isSmallScreen ? "4" : "6"} mb-6`}>
@@ -413,7 +431,7 @@ export default function HomeScreen() {
 
         {/* PROGRESS */}
         <View style={tw`px-${isSmallScreen ? "4" : "6"} mb-6`}>
-          <AppText style={tw`text-lg font-bold mb-3`}>Your Progress</AppText>
+          <AppText style={tw`text-lg font-bold mb-3 text-neutral-900 dark:text-white`}>Your Progress</AppText>
           <View style={tw`flex-row gap-3`}>
             <ProgressCard
               title="Confidence"
@@ -442,62 +460,64 @@ export default function HomeScreen() {
         <View style={tw`px-${isSmallScreen ? "4" : "6"} mb-6`}>
           <View style={tw`flex-row gap-3`}>
             {/* LEFT: Daily Reflection */}
-            <Card variant="outlined" padding="md" style={tw`flex-1 bg-neutral-100`}>
-              <BoldText style={tw`text-5 mb-1`}>
-                📘 Daily Reflection
-              </BoldText>
-              <AppText style={tw`text-sm text-neutral-500 mb-3`}>
-                Log your experience as you go about learning
-              </AppText>
-
-              {/* Previous Reflections */}
-              {recentReflections.length > 0 && (
-                <View style={tw`mb-3 gap-2`}>
-                  {recentReflections.slice(0, 3).map((reflection) => {
-                    const dateLabel = formatTimeAgo(reflection.createdAt);
-
-                    return (
-                      <TouchableOpacity
-                        key={reflection._id}
-                        onPress={() => router.push(`/daily-reflection/${reflection._id}`)}
-                        style={tw`bg-gray-50 rounded-lg p-2.5 border border-gray-100`}
-                        activeOpacity={0.7}
-                      >
-                        <View style={tw`flex-row items-center justify-between mb-1`}>
-                          <AppText style={tw`text-xs text-gray-600 font-medium`}>
-                            {dateLabel}
-                          </AppText>
-                          {reflection.mood && (
-                            <AppText style={tw`text-xs`}>
-                              {reflection.mood === 'happy' ? '😊' :
-                                reflection.mood === 'sad' ? '😢' :
-                                  reflection.mood === 'excited' ? '🎉' :
-                                    reflection.mood === 'tired' ? '😴' :
-                                      reflection.mood === 'motivated' ? '💪' : '😐'}
-                            </AppText>
-                          )}
-                        </View>
-                        <AppText
-                          style={tw`text-xs text-gray-700`}
-                          numberOfLines={2}
-                        >
-                          {reflection.content || reflection.answer || 'No content'}
-                        </AppText>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-
-              <TouchableOpacity
-                onPress={() => router.push("/daily-reflection")}
-                style={tw`border border-neutral-200 bg-white rounded-full py-2.5 items-center mt-auto`}
-              >
-                <AppText style={tw`font-medium  text-sm`}>
-                  Record Journal Entry
+            {!isFreeUser && (
+              <Card variant="outlined" padding="md" style={tw`flex-1 bg-neutral-100 dark:bg-neutral-800`}>
+                <BoldText style={tw`text-5 mb-1 text-neutral-900 dark:text-white`}>
+                  📘 Daily Reflection
+                </BoldText>
+                <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400 mb-3`}>
+                  Log your experience as you go about learning
                 </AppText>
-              </TouchableOpacity>
-            </Card>
+
+                {/* Previous Reflections */}
+                {recentReflections.length > 0 && (
+                  <View style={tw`mb-3 gap-2`}>
+                    {recentReflections.slice(0, 3).map((reflection) => {
+                      const dateLabel = formatTimeAgo(reflection.createdAt);
+
+                      return (
+                        <TouchableOpacity
+                          key={reflection._id}
+                          onPress={() => router.push(`/daily-reflection/${reflection._id}`)}
+                          style={tw`bg-gray-50 dark:bg-neutral-800 rounded-lg p-2.5 border border-gray-100 dark:border-neutral-700`}
+                          activeOpacity={0.7}
+                        >
+                          <View style={tw`flex-row items-center justify-between mb-1`}>
+                            <AppText style={tw`text-xs text-gray-600 dark:text-gray-400 font-medium`}>
+                              {dateLabel}
+                            </AppText>
+                            {reflection.mood && (
+                              <AppText style={tw`text-xs`}>
+                                {reflection.mood === 'happy' ? '😊' :
+                                  reflection.mood === 'sad' ? '😢' :
+                                    reflection.mood === 'excited' ? '🎉' :
+                                      reflection.mood === 'tired' ? '😴' :
+                                        reflection.mood === 'motivated' ? '💪' : '😐'}
+                              </AppText>
+                            )}
+                          </View>
+                          <AppText
+                            style={tw`text-xs text-gray-700 dark:text-gray-300`}
+                            numberOfLines={2}
+                          >
+                            {reflection.content || reflection.answer || 'No content'}
+                          </AppText>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  onPress={() => router.push("/daily-reflection")}
+                  style={tw`border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 rounded-full py-2.5 items-center mt-auto`}
+                >
+                  <AppText style={tw`font-medium text-sm text-neutral-900 dark:text-white`}>
+                    Record Journal Entry
+                  </AppText>
+                </TouchableOpacity>
+              </Card>
+            )}
 
             {/* RIGHT: Saved Drills + Future Self */}
             <View style={tw`flex-1  gap-3`}>
@@ -505,48 +525,50 @@ export default function HomeScreen() {
               <SavedDrillsCard />
 
               {/* Future Self */}
-              <TouchableOpacity onPress={handleFutureSelfPress} style={tw`flex-1`}>
-                <Card variant="outlined" padding="md" style={tw`bg-neutral-100 flex-1`}>
-                  <View style={tw`flex-row items-center gap-2 mb-1`}>
-                    <AppText style={tw`text-lg`}>
-                      '🎥'
-                    </AppText>
-                    <BoldText style={tw` text-5 flex-1`} numberOfLines={1}>
-                      Future Self
-                    </BoldText>
-                  </View>
-                  <AppText style={tw`text-sm text-neutral-500`} numberOfLines={2}>
-
-
-                    A message you recorded for yourself
-                  </AppText>
-
-
-
-                  <View style={tw`flex-row items-center  justify-between`}>
-
-
-                    <AppText style={tw`text-blue-600 font-bold text-4 my-2`}>
-                      Upload
-                    </AppText>
-
-                    <Ionicons name="chevron-forward" style={tw`font-bold`} />
-
-                  </View>
-                  {futureSelfVideo ? <View style={tw`flex-row items-center gap-1`}><VideoIcon />
-                    <View>
-
-                      <AppText>
-                        Dear Future Self
-
+              {!isFreeUser && (
+                <TouchableOpacity onPress={handleFutureSelfPress} style={tw`flex-1`}>
+                  <Card variant="outlined" padding="md" style={tw`bg-neutral-100 dark:bg-neutral-800 flex-1`}>
+                    <View style={tw`flex-row items-center gap-2 mb-1`}>
+                      <AppText style={tw`text-lg`}>
+                        '🎥'
                       </AppText>
-                      <AppText>
-                        Video uploaded
-                      </AppText>
+                      <BoldText style={tw`text-5 flex-1 text-neutral-900 dark:text-white`} numberOfLines={1}>
+                        Future Self
+                      </BoldText>
                     </View>
-                  </View> : ""}
-                </Card>
-              </TouchableOpacity>
+                    <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400`} numberOfLines={2}>
+
+
+                      A message you recorded for yourself
+                    </AppText>
+
+
+
+                    <View style={tw`flex-row items-center justify-between`}>
+
+
+                      <AppText style={tw`text-primary-500 dark:text-primary-400 font-bold text-4 my-2`}>
+                        Upload
+                      </AppText>
+
+                      <Ionicons name="chevron-forward" style={tw`font-bold text-neutral-900 dark:text-white`} />
+
+                    </View>
+                    {futureSelfVideo ? <View style={tw`flex-row items-center gap-1`}><VideoIcon />
+                      <View>
+
+                        <AppText style={tw`text-neutral-900 dark:text-white`}>
+                          Dear Future Self
+
+                        </AppText>
+                        <AppText style={tw`text-neutral-500 dark:text-neutral-400`}>
+                          Video uploaded
+                        </AppText>
+                      </View>
+                    </View> : ""}
+                  </Card>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -554,9 +576,9 @@ export default function HomeScreen() {
         {/* RECENT ACTIVITY */}
         <View style={tw`px-${isSmallScreen ? "4" : "6"}`}>
           <View style={tw`flex-row justify-between items-center mb-3`}>
-            <AppText style={tw`text-lg font-bold`}>Recent Activity</AppText>
+            <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Recent Activity</AppText>
             <TouchableOpacity>
-              <AppText style={tw`text-green-600 font-medium text-sm`}>
+              <AppText style={tw`text-primary-500 dark:text-primary-400 font-medium text-sm`}>
                 See All
               </AppText>
             </TouchableOpacity>
@@ -564,8 +586,8 @@ export default function HomeScreen() {
 
           <View style={tw`gap-3`}>
             {recentActivities.length === 0 ? (
-              <View style={tw`items-center py-6 bg-gray-50 rounded-2xl`}>
-                <AppText style={tw`text-gray-400`}>No recent activity</AppText>
+              <View style={tw`items-center py-6 bg-gray-50 dark:bg-neutral-800 rounded-2xl`}>
+                <AppText style={tw`text-gray-400 dark:text-neutral-500`}>No recent activity</AppText>
               </View>
             ) : (
               recentActivities.map((activity) => (
@@ -576,7 +598,7 @@ export default function HomeScreen() {
                   score={activity.score ? `${activity.score}%` : ''}
                   tag={activity.type}
                   time={formatTimeAgo(activity.timestamp)}
-                  iconBg={activity.type === 'roleplay' ? 'bg-blue-50' : 'bg-green-50'}
+                  iconBg={activity.type === 'roleplay' ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-green-50 dark:bg-green-900/30'}
                   onPress={() => handleRedo(activity)}
                 />
               ))
@@ -587,6 +609,9 @@ export default function HomeScreen() {
 
       {/* Future Self Bottom Sheet */}
       <FutureSelfBottomSheet ref={futureSelfBottomSheetRef} />
+
+      {/* Home subscription popup for free users */}
+      <HomeFreeModePopup visible={showHomePopup} onClose={() => setShowHomePopup(false)} />
     </SafeAreaView>
   );
 }

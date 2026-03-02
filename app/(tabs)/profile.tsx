@@ -49,10 +49,10 @@ function StatCard({
   label: string;
 }) {
   return (
-    <View style={tw`flex-1 ${bg} rounded-2xl py-5 items-center`}>
-      <AppText style={tw`text-2xl mb-3`}>{icon}</AppText>
-      <AppText style={tw`text-2xl font-bold text-neutral-900`}>{value}</AppText>
-      <AppText style={tw`text-sm text-neutral-500 mt-1`}>{label}</AppText>
+    <View style={tw`flex-1 ${bg} rounded-[24px] py-6 px-1 items-center shadow-sm`}>
+      <AppText style={tw`text-2xl mb-2`}>{icon}</AppText>
+      <AppText style={tw`text-xl font-bold text-neutral-900 dark:text-white mb-1`}>{value}</AppText>
+      <AppText style={tw`text-[11px] text-neutral-500 dark:text-neutral-400 text-center`}>{label}</AppText>
     </View>
   );
 }
@@ -61,19 +61,19 @@ function StreakCard() {
   return (
     <Card variant="outlined" padding="lg">
       <View style={tw`flex-row justify-between items-center mb-4`}>
-        <AppText style={tw`text-lg font-bold`}>Streak</AppText>
+        <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Streak</AppText>
         <TouchableOpacity
           style={tw`flex-row items-center`}
           onPress={() => router.push("/streak")}
         >
-          <AppText style={tw`text-neutral-500 mr-1`}>calendar</AppText>
+          <AppText style={tw`text-neutral-500 dark:text-neutral-400 mr-1`}>calendar</AppText>
           <ChevronRightIcon color="#16a34a" />
         </TouchableOpacity>
       </View>
 
       <View style={tw`flex-row justify-between mb-4`}>
-        <AppText style={tw`font-medium`}>30 Days challenge</AppText>
-        <AppText style={tw`text-neutral-400`}>Day 22 of 30</AppText>
+        <AppText style={tw`font-medium text-neutral-900 dark:text-white`}>30 Days challenge</AppText>
+        <AppText style={tw`text-neutral-400 dark:text-neutral-500`}>Day 22 of 30</AppText>
       </View>
 
       {/* PROGRESS */}
@@ -87,12 +87,12 @@ function StreakCard() {
               <View style={tw`flex-row items-center w-full`}>
                 {index !== 0 && (
                   <View
-                    style={tw`flex-1 h-0.5 ${active ? "bg-yellow-400" : "bg-neutral-200"
+                    style={tw`flex-1 h-0.5 ${active ? "bg-yellow-400" : "bg-neutral-200 dark:bg-neutral-700"
                       }`}
                   />
                 )}
                 <View
-                  style={tw`w-6 h-6 rounded-full ${active ? "bg-yellow-400" : "bg-neutral-200"
+                  style={tw`w-6 h-6 rounded-full ${active ? "bg-yellow-400" : "bg-neutral-200 dark:bg-neutral-700"
                     } items-center justify-center`}
                 >
                   {current && (
@@ -118,11 +118,11 @@ function StreakCard() {
       </View>
 
       {/* MOTIVATION */}
-      <View style={tw`bg-amber-50 rounded-xl p-4 mb-4 flex-row gap-2`}>
+      <View style={tw`bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4 mb-4 flex-row gap-2`}>
         <AppText style={tw`text-xl`}>🔥</AppText>
         <View style={tw`flex-1`}>
-          <AppText style={tw`font-bold mb-1`}>Just 4 days left!</AppText>
-          <AppText style={tw`text-sm text-neutral-600`}>
+          <AppText style={tw`font-bold mb-1 text-neutral-900 dark:text-white`}>Just 4 days left!</AppText>
+          <AppText style={tw`text-sm text-neutral-600 dark:text-neutral-400`}>
             Keep your daily learning streak going and earn a badge when you
             practice or complete a lesson every day.
           </AppText>
@@ -148,13 +148,13 @@ export default function ProfileScreen() {
 
   // Default to Freemium if no subscription data available
   // TODO: Add subscription/plan data to user model or fetch from API
-  const userPlan = "Freemium";
+  const userPlan = authUser?.isSubscribed ? "Premium" : "Freemium";
   const planExpiry = null; // TODO: Get from subscription API when available
 
   // Show loading state
   if (authLoading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-[#F6F7F3] items-center justify-center`} edges={["top"]}>
+      <SafeAreaView style={tw`flex-1 bg-[#F6F7F3] dark:bg-neutral-900 items-center justify-center`} edges={["top"]}>
         <Loader />
       </SafeAreaView>
     );
@@ -163,9 +163,9 @@ export default function ProfileScreen() {
   // Show placeholder if no user
   if (!authUser) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-[#F6F7F3]`} edges={["top"]}>
+      <SafeAreaView style={tw`flex-1 bg-[#F6F7F3] dark:bg-neutral-900`} edges={["top"]}>
         <ScrollView showsVerticalScrollIndicator={false}>
-          <View style={tw`bg-primary-500 px-6 pt-4 pb-14 rounded-b-[32px]`}>
+          <View style={tw`bg-primary-500 px-6 pt-4 pb-20 rounded-b-[48px]`}>
             <View style={tw`flex-row justify-between items-center mb-6`}>
               <AppText style={tw`text-white text-xl font-semibold`}>Profile</AppText>
               <TouchableOpacity onPress={() => router.push("/settings")}>
@@ -182,10 +182,10 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F6F7F3]`} edges={["top"]}>
+    <SafeAreaView style={tw`flex-1 bg-[#F6F7F3] dark:bg-neutral-900`} edges={["top"]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* HEADER */}
-        <View style={tw`bg-primary-500 px-6 pt-4 pb-14 rounded-b-[32px]`}>
+        <View style={tw`bg-primary-500 px-6 pt-4 pb-20 rounded-b-[48px]`}>
           <View style={tw`flex-row justify-between items-center mb-6`}>
             <AppText style={tw`text-white text-xl font-semibold`}>Profile</AppText>
             <TouchableOpacity onPress={() => router.push("/settings")}>
@@ -194,9 +194,9 @@ export default function ProfileScreen() {
           </View>
 
           <View style={tw`flex-row items-center gap-4`}>
-            <View style={tw`w-20 h-20 rounded-full bg-white p-1`}>
+            <View style={tw`w-20 h-20 rounded-full border-2 border-white dark:border-primary-500 bg-white p-0.5 shadow-sm`}>
               <View
-                style={tw`flex-1 bg-neutral-100 rounded-full items-center justify-center overflow-hidden`}
+                style={tw`flex-1 bg-neutral-100 dark:bg-neutral-800 rounded-full items-center justify-center overflow-hidden`}
               >
                 {authUser.avatar ? (
                   <Image
@@ -224,82 +224,61 @@ export default function ProfileScreen() {
         </View>
 
         {/* CONTENT */}
-        <View style={tw`px-6 -mt-10`}>
+        <View style={tw`px-6 -mt-16`}>
           {/* STATS */}
-          <View style={tw`flex-row gap-4 mb-6`}>
+          <View style={tw`flex-row gap-3 mb-8`}>
             <StatCard
               icon="💪"
               value="+12%"
               label="Confidence"
-              bg="bg-green-100"
+              bg="bg-[#F2F7ED] dark:bg-green-900/30"
             />
             <StatCard
               icon="🎤"
               value="+9%"
               label="Pronunciation"
-              bg="bg-primary-100"
+              bg="bg-[#F3EFFF] dark:bg-blue-900/30"
             />
             <StatCard
               icon="⏱️"
               value="145m"
               label="Time Studied"
-              bg="bg-amber-100"
+              bg="bg-[#FFF8E7] dark:bg-orange-900/30"
             />
           </View>
 
-          {/* PLAN */}
-          <Card variant="outlined" padding="md" style={tw`mb-6`}>
-            <TouchableOpacity
-              style={tw`flex-row justify-between items-center`}
-            // onPress={() => router.push("/subscription")}
-            >
-              <View>
-                <View style={tw`bg-primary-500 px-3 py-1 rounded-full mb-2`}>
-                  <AppText style={tw`text-white text-xs font-semibold`}>
-                    Current Plan
-                  </AppText>
-                </View>
-                <AppText style={tw`text-lg font-bold`}>{userPlan}</AppText>
-                {planExpiry ? (
-                  <AppText style={tw`text-sm text-neutral-500`}>
-                    Expires on{" "}
-                    <AppText style={tw`text-primary-500 font-medium`}>
-                      {planExpiry}
-                    </AppText>
-                  </AppText>
-                ) : (
-                  <AppText style={tw`text-sm text-neutral-500`}>
-                    No expiration date
-                  </AppText>
-                )}
-              </View>
-              <ChevronRightIcon />
-            </TouchableOpacity>
-          </Card>
-
           {/* STREAK */}
-          <StreakCard />
+          <View style={tw`mb-8`}>
+            <StreakCard />
+          </View>
 
-          {/* SAVED DRILLS */}
-          <Card variant="outlined" padding="md" style={tw`mb-6`}>
-            <TouchableOpacity
-              style={tw`flex-row justify-between items-center`}
-              onPress={() => router.push("/practice/drills/saved")}
-            >
-              <View style={tw`flex-row items-center gap-3`}>
-                <View style={tw`w-10 h-10 bg-green-100 rounded-full items-center justify-center`}>
-                  <AppText style={tw`text-lg`}>📚</AppText>
+          {/* BADGES */}
+          <View style={tw`mb-8`}>
+            <View style={tw`flex-row justify-between items-center mb-6`}>
+              <AppText style={tw`text-xl font-bold text-neutral-900 dark:text-white`}>Badges</AppText>
+              <TouchableOpacity
+                style={tw`flex-row items-center`}
+                onPress={() => router.push("/badges")}
+              >
+                <AppText style={tw`text-primary-600 dark:text-primary-400 font-medium mr-1`}>See All</AppText>
+                <ChevronRightIcon />
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`-mx-6 px-6`} contentContainerStyle={tw`pb-4`}>
+              {[
+                { icon: "🌟", color: "bg-green-100 dark:bg-green-900/30", border: "border-green-500" },
+                { icon: "🏆", color: "bg-orange-100 dark:bg-orange-900/30", border: "border-orange-500" },
+                { icon: "🔔", color: "bg-blue-100 dark:bg-blue-900/30", border: "border-blue-500" },
+                { icon: "💎", color: "bg-primary-100 dark:bg-primary-900/30", border: "border-primary-500" },
+                { icon: "🎯", color: "bg-amber-100 dark:bg-amber-900/30", border: "border-amber-500" },
+              ].map((badge, i) => (
+                <View key={i} style={tw`w-16 h-16 ${badge.color} rounded-full mr-4 items-center justify-center border-2 ${badge.border}`}>
+                  <AppText style={tw`text-2xl`}>{badge.icon}</AppText>
                 </View>
-                <View>
-                  <AppText style={tw`text-base font-semibold`}>Saved Drills</AppText>
-                  <AppText style={tw`text-sm text-neutral-500`}>
-                    View your saved drills
-                  </AppText>
-                </View>
-              </View>
-              <ChevronRightIcon />
-            </TouchableOpacity>
-          </Card>
+              ))}
+              <View style={tw`w-4`} />
+            </ScrollView>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>

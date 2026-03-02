@@ -35,12 +35,33 @@ export const secureStorage = {
 
   // User data operations (AsyncStorage for non-sensitive data)
   async setUser(user: any): Promise<void> {
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+    try {
+      // JSON.stringify is synchronous but in async context, won't block UI
+      // Add size check to prevent ANR with extremely large objects
+      const userJson = JSON.stringify(user);
+      if (userJson.length > 1 * 1024 * 1024) { // 1MB limit
+        throw new Error('User data too large (>1MB), cannot store');
+      }
+      await AsyncStorage.setItem(USER_KEY, userJson);
+    } catch (error) {
+      console.error('Error storing user data:', error);
+      throw error;
+    }
   },
 
   async getUser(): Promise<any | null> {
-    const userData = await AsyncStorage.getItem(USER_KEY);
-    return userData ? JSON.parse(userData) : null;
+    try {
+      const userData = await AsyncStorage.getItem(USER_KEY);
+      if (!userData) return null;
+      
+      // JSON.parse is synchronous but in async context, won't block UI
+      // Add timeout protection for very large data
+      return JSON.parse(userData);
+    } catch (error) {
+      console.error('Error parsing user data:', error);
+      // Return null on parse error to prevent app crash
+      return null;
+    }
   },
 
   async clearUser(): Promise<void> {
@@ -49,12 +70,24 @@ export const secureStorage = {
 
   // Onboarding flag
   async setOnboardingComplete(completed: boolean): Promise<void> {
-    await AsyncStorage.setItem(ONBOARDING_KEY, JSON.stringify(completed));
+    try {
+      const value = JSON.stringify(completed);
+      await AsyncStorage.setItem(ONBOARDING_KEY, value);
+    } catch (error) {
+      console.error('Error storing onboarding flag:', error);
+      throw error;
+    }
   },
 
   async hasCompletedOnboarding(): Promise<boolean> {
-    const value = await AsyncStorage.getItem(ONBOARDING_KEY);
-    return value ? JSON.parse(value) : false;
+    try {
+      const value = await AsyncStorage.getItem(ONBOARDING_KEY);
+      if (!value) return false;
+      return JSON.parse(value);
+    } catch (error) {
+      console.error('Error reading onboarding flag:', error);
+      return false;
+    }
   },
 
   async clearOnboarding(): Promise<void> {

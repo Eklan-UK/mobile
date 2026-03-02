@@ -3,11 +3,17 @@ import {
   ScrollView,
   TouchableOpacity,
   View,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
-import { AppText } from "@/components/ui";
+import { Button } from "@/components/ui";
 import tw from "@/lib/tw";
+import { useAuth } from "@/hooks/useAuth";
+import { AppText } from "../ui/AppText";
+import { DetailedFeedbackLocked } from "@/components/gating/DetailedFeedbackLocked";
+import { FluencyReviewGate } from "@/components/gating/FluencyReviewGate";
+import { router } from "expo-router";
 import type {
   TextScore,
   WordScore,
@@ -396,6 +402,10 @@ export default function SpeechAnalysisReview({
     ];
   }, [drillType, wordAccuracy, sentenceClarity, avgScore]);
 
+  const { user } = useAuth();
+  const isFreeUser = !user?.isSubscribed;
+  const [showFluencyGate, setShowFluencyGate] = useState(false);
+
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
       {/* Header */}
@@ -478,95 +488,99 @@ export default function SpeechAnalysisReview({
         </CollapsibleSection>
 
         {/* Detailed Breakdown */}
-        <CollapsibleSection
-          title="Detailed breakdown"
-          subtitle="Here is a breakdown of your performance"
-          initiallyOpen={false}
-        >
-          {/* Syllables */}
-          {allSyllables.length > 0 && (
-            <View style={tw`mb-4`}>
-              <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>
-                Syllables
-              </AppText>
-              <View style={tw`flex-row flex-wrap`}>
-                {allSyllables.map((syl, idx) => (
-                  <View key={idx} style={tw`mr-4 mb-3 min-w-16`}>
-                    <AppText style={tw`text-sm text-neutral-900`}>
-                      {syl.letters}
+        {isFreeUser ? (
+          <DetailedFeedbackLocked onBookCall={() => setShowFluencyGate(true)} />
+        ) : (
+          <CollapsibleSection
+            title="Detailed breakdown"
+            subtitle="Here is a breakdown of your performance"
+            initiallyOpen={false}
+          >
+            {/* Syllables */}
+            {allSyllables.length > 0 && (
+              <View style={tw`mb-4`}>
+                <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>
+                  Syllables
+                </AppText>
+                <View style={tw`flex-row flex-wrap`}>
+                  {allSyllables.map((syl, idx) => (
+                    <View key={idx} style={tw`mr-4 mb-3 min-w-16`}>
+                      <AppText style={tw`text-sm text-neutral-900`}>
+                        {syl.letters}
+                      </AppText>
+                      <View style={tw`flex-row items-center gap-1`}>
+                        <AppText
+                          style={[
+                            tw`text-xs font-bold`,
+                            {
+                              color:
+                                syl.quality_score >= 80
+                                  ? "#16a34a"
+                                  : syl.quality_score >= 50
+                                  ? "#d97706"
+                                  : "#dc2626",
+                            },
+                          ]}
+                        >
+                          {Math.round(syl.quality_score)}
+                        </AppText>
+                        <AppText style={tw`text-xs text-neutral-400`}>
+                          stress: {syl.stress_level ?? 0}
+                        </AppText>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Phonemes */}
+            {allPhonemes.length > 0 && (
+              <View style={tw`mb-4`}>
+                <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>
+                  Phonemes
+                </AppText>
+                <View style={tw`flex-row flex-wrap`}>
+                  {allPhonemes.map((ph, idx) => (
+                    <ScorePill
+                      key={idx}
+                      label={ph.phone}
+                      score={ph.quality_score}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Letter-level Feedback */}
+            {allWords.length > 0 && (
+              <View>
+                <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>
+                  Letter level Feedback
+                </AppText>
+                {allWords.map((ws, wIdx) => (
+                  <View key={wIdx} style={tw`mb-3`}>
+                    <AppText style={tw`text-sm font-semibold text-neutral-700 mb-1`}>
+                      {ws.word}
                     </AppText>
-                    <View style={tw`flex-row items-center gap-1`}>
-                      <AppText
-                        style={[
-                          tw`text-xs font-bold`,
-                          {
-                            color:
-                              syl.quality_score >= 80
-                                ? "#16a34a"
-                                : syl.quality_score >= 50
-                                ? "#d97706"
-                                : "#dc2626",
-                          },
-                        ]}
-                      >
-                        {Math.round(syl.quality_score)}
-                      </AppText>
-                      <AppText style={tw`text-xs text-neutral-400`}>
-                        stress: {syl.stress_level ?? 0}
-                      </AppText>
+                    <View style={tw`flex-row flex-wrap`}>
+                      {ws.phone_score_list?.map((ph, pIdx) => (
+                        <ScorePill
+                          key={pIdx}
+                          label={ph.phone}
+                          score={ph.quality_score}
+                        />
+                      ))}
                     </View>
                   </View>
                 ))}
               </View>
-            </View>
-          )}
-
-          {/* Phonemes */}
-          {allPhonemes.length > 0 && (
-            <View style={tw`mb-4`}>
-              <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>
-                Phonemes
-              </AppText>
-              <View style={tw`flex-row flex-wrap`}>
-                {allPhonemes.map((ph, idx) => (
-                  <ScorePill
-                    key={idx}
-                    label={ph.phone}
-                    score={ph.quality_score}
-                  />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Letter-level Feedback */}
-          {allWords.length > 0 && (
-            <View>
-              <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>
-                Letter level Feedback
-              </AppText>
-              {allWords.map((ws, wIdx) => (
-                <View key={wIdx} style={tw`mb-3`}>
-                  <AppText style={tw`text-sm font-semibold text-neutral-700 mb-1`}>
-                    {ws.word}
-                  </AppText>
-                  <View style={tw`flex-row flex-wrap`}>
-                    {ws.phone_score_list?.map((ph, pIdx) => (
-                      <ScorePill
-                        key={pIdx}
-                        label={ph.phone}
-                        score={ph.quality_score}
-                      />
-                    ))}
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-        </CollapsibleSection>
+            )}
+          </CollapsibleSection>
+        )}
       </ScrollView>
 
-      {/* Bottom Buttons */}
+      {/* Bottom Buttons + Book a call */}
       <View style={tw`px-5 pb-4`}>
         <TouchableOpacity
           onPress={onDone}
@@ -580,15 +594,37 @@ export default function SpeechAnalysisReview({
 
         <TouchableOpacity
           onPress={onPracticeAgain}
-          style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`}
+          style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center mb-3`}
           activeOpacity={0.8}
         >
           <AppText style={tw`text-primary-500 text-base font-semibold`}>
             practice again
           </AppText>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            if (isFreeUser) {
+              setShowFluencyGate(true);
+            } else {
+              router.push("/book-call");
+            }
+          }}
+          style={tw`w-full border border-neutral-300 rounded-full py-3 items-center`}
+          activeOpacity={0.8}
+        >
+          <AppText style={tw`text-neutral-800 text-sm font-semibold`}>
+            Book a fluency review call
+          </AppText>
+        </TouchableOpacity>
       </View>
+
+      {/* Fluency call gating overlay */}
+      <FluencyReviewGate visible={isFreeUser && showFluencyGate} onClose={() => setShowFluencyGate(false)} />
     </SafeAreaView>
   );
 }
+
+
+
 

@@ -4,17 +4,17 @@ import { AppText, BoldText, Button } from "@/components/ui";
 import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
 import {
-    BottomSheetBackdrop,
-    BottomSheetModal,
-    BottomSheetView,
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import React, {
-    forwardRef,
-    useCallback,
-    useImperativeHandle,
-    useMemo,
-    useRef,
-    useState,
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 import { ActivityIndicator, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -43,7 +43,7 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const snapPoints = useMemo(() => ["70%"], []);
+    const snapPoints = useMemo(() => ["100%"], []);
     const insets = useSafeAreaInsets();
 
     useImperativeHandle(ref, () => bottomSheetRef.current as BottomSheetModal);
@@ -155,14 +155,18 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
         onChange={handleSheetChanges}
         enablePanDownToClose={currentStep !== "success"}
         backdropComponent={renderBackdrop}
-        handleIndicatorStyle={tw`bg-neutral-300 w-12`}
-        backgroundStyle={tw`bg-white rounded-t-3xl`}
+        handleIndicatorStyle={tw`bg-neutral-300 dark:bg-neutral-600 w-12`}
+        backgroundStyle={tw`bg-white dark:bg-neutral-900 rounded-t-3xl`}
+        keyboardBehavior="fillParent"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
       >
-        <BottomSheetView
-          style={[
-            tw`flex-1 px-6 pt-2 pb-8`,
+        <BottomSheetScrollView
+          contentContainerStyle={[
+            tw`px-6 pt-2 pb-8 mt-10`,
             { paddingBottom: Math.max(insets.bottom, 20) },
           ]}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Step 1: Email Entry */}
           {currentStep === "email" && (
@@ -172,16 +176,16 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
                 onPress={handleBack}
                 style={tw`flex-row items-center mb-6`}
               >
-                <Ionicons name="arrow-back" size={24} color="#1F2937" />
-                <AppText style={tw`ml-2 text-base text-gray-900`}>Back</AppText>
+                <Ionicons name="arrow-back" size={24} color={tw.prefixMatch('dark') ? '#F9FAFB' : '#1F2937'} />
+                <AppText style={tw`ml-2 text-base text-gray-900 dark:text-white`}>Back</AppText>
               </TouchableOpacity>
 
               {/* Header */}
-              <View style={tw`mb-6`}>
-                <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
+              <View style={tw`mb-6 items-center `}>
+                <BoldText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-2`}>
                   Forget password
                 </BoldText>
-                <AppText style={tw`text-neutral-500 text-center`}>
+                <AppText style={tw`text-neutral-500 dark:text-neutral-400 text-[16px] text-center`}>
                   Please enter the email address associated with this account
                 </AppText>
               </View>
@@ -210,9 +214,8 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
               {/* Send OTP Button */}
               <Button
                 onPress={handleSendOTP}
-                style={tw`${
-                  email && !isLoading ? "bg-primary-500" : "bg-gray-300"
-                } rounded-full py-4 items-center`}
+                style={tw`${email && !isLoading ? "bg-primary-500" : "bg-gray-300"
+                  } rounded-full py-4 items-center`}
                 disabled={!email || isLoading}
               >
                 {isLoading ? (
@@ -220,9 +223,8 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
                 ) : (
                   <AppText
                     weight="bold"
-                    style={tw`${
-                      email ? "text-white" : "text-gray-500"
-                    } font-semibold text-lg`}
+                    style={tw`${email ? "text-white" : "text-gray-500"
+                      } font-semibold text-lg`}
                   >
                     Send OTP
                   </AppText>
@@ -251,16 +253,16 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
                 onPress={handleBack}
                 style={tw`flex-row items-center mb-6`}
               >
-                <Ionicons name="arrow-back" size={24} color="#1F2937" />
-                <AppText style={tw`ml-2 text-base text-gray-900`}>Back</AppText>
+                <Ionicons name="arrow-back" size={24} color={tw.prefixMatch('dark') ? '#F9FAFB' : '#1F2937'} />
+                <AppText style={tw`ml-2 text-base text-gray-900 dark:text-white`}>Back</AppText>
               </TouchableOpacity>
 
               {/* Header */}
               <View style={tw`mb-6`}>
-                <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
+                <BoldText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-2`}>
                   Reset password
                 </BoldText>
-                <AppText style={tw`text-neutral-500 text-center`}>
+                <AppText style={tw`text-neutral-500 dark:text-neutral-400 text-center`}>
                   Welcome back, you have been missed 🥳
                 </AppText>
               </View>
@@ -301,11 +303,10 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
               {/* Reset Button */}
               <Button
                 onPress={handleResetPassword}
-                style={tw`${
-                  password && confirmPassword && password === confirmPassword && !isLoading
+                style={tw`${password && confirmPassword && password === confirmPassword && !isLoading
                     ? "bg-primary-500"
                     : "bg-gray-300"
-                } rounded-full py-4 items-center`}
+                  } rounded-full py-4 items-center`}
                 disabled={
                   !password || !confirmPassword || password !== confirmPassword || isLoading
                 }
@@ -315,11 +316,10 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
                 ) : (
                   <AppText
                     weight="bold"
-                    style={tw`${
-                      password && confirmPassword && password === confirmPassword
+                    style={tw`${password && confirmPassword && password === confirmPassword
                         ? "text-white"
                         : "text-gray-500"
-                    } font-semibold text-lg`}
+                      } font-semibold text-lg`}
                   >
                     Reset Password
                   </AppText>
@@ -344,15 +344,15 @@ const ForgotPasswordSheet = forwardRef<BottomSheetModal, ForgotPasswordSheetProp
               </View>
 
               {/* Success Message */}
-              <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
+              <BoldText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-2`}>
                 Password updated successfully
               </BoldText>
-              <AppText style={tw`text-neutral-500 text-center`}>
+              <AppText style={tw`text-neutral-500 dark:text-neutral-400 text-center`}>
                 You can now sign in with your new password.
               </AppText>
             </View>
           )}
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheetModal>
     );
   }

@@ -91,16 +91,16 @@ const LoginSheet = forwardRef<BottomSheetModal, LoginSheetProps>(({ onDismiss, o
       onChange={handleSheetChanges}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
-      handleIndicatorStyle={tw`bg-neutral-300 w-12`}
-      backgroundStyle={tw`bg-white rounded-t-3xl`}
+      handleIndicatorStyle={tw`bg-neutral-300 dark:bg-neutral-600 w-12`}
+      backgroundStyle={tw`bg-white dark:bg-neutral-900 rounded-t-3xl`}
     >
       <BottomSheetView style={[tw`flex-1 px-6 pt-2 pb-8`, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         {/* Header */}
         <View style={tw`mb-6`}>
-          <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-1`}>
+          <BoldText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-1`}>
             Let's sign you in
           </BoldText>
-          <AppText style={tw`text-neutral-500`}>
+          <AppText style={tw`text-neutral-500 dark:text-neutral-400`}>
             Welcome back, you have been missed 🥳
           </AppText>
         </View>
@@ -164,8 +164,8 @@ const LoginSheet = forwardRef<BottomSheetModal, LoginSheetProps>(({ onDismiss, o
 
         {/* Error Message */}
         {error && (
-          <View style={tw`mb-4 p-3 bg-red-50 rounded-lg`}>
-            <AppText style={tw`text-red-600 text-sm`}>{error}</AppText>
+          <View style={tw`mb-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg`}>
+            <AppText style={tw`text-red-600 dark:text-red-400 text-sm`}>{error}</AppText>
           </View>
         )}
 
@@ -181,7 +181,7 @@ const LoginSheet = forwardRef<BottomSheetModal, LoginSheetProps>(({ onDismiss, o
 
         {/* Switch to Signup */}
         <View style={tw`flex-row justify-center`}>
-          <AppText style={tw`text-sm text-neutral-500`}>
+          <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400`}>
             Don&apos;t have an account?{' '}
           </AppText>
           <TouchableOpacity onPress={onGoToSignup}>

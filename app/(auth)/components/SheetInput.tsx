@@ -28,21 +28,21 @@ const variantStyles: Record<
   { container: string; input: string }
 > = {
   default: {
-    container: "bg-neutral-50 border border-neutral-200",
-    input: "text-neutral-900",
+    container: "bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700",
+    input: "text-neutral-900 dark:text-white",
   },
   outline: {
     // Border colour applied dynamically based on focus state below
     container: "bg-transparent border",
-    input: "text-neutral-900",
+    input: "text-neutral-900 dark:text-white",
   },
   filled: {
-    container: "bg-neutral-100 border border-transparent",
-    input: "text-neutral-900",
+    container: "bg-neutral-100 dark:bg-neutral-800 border border-transparent",
+    input: "text-neutral-900 dark:text-white",
   },
   ghost: {
-    container: "bg-transparent border-b border-neutral-300 rounded-none",
-    input: "text-neutral-900",
+    container: "bg-transparent border-b border-neutral-300 dark:border-neutral-700 rounded-none",
+    input: "text-neutral-900 dark:text-white",
   },
 };
 

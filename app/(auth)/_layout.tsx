@@ -8,7 +8,7 @@ export default function AuthLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: tw`bg-cream-100`,
+          contentStyle: tw`bg-cream-100 dark:bg-neutral-900`,
           animation: "slide_from_bottom",
         }}
       >

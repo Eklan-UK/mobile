@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/auth-store";
 import { logger } from "@/utils/logger";
 import apiClient from "@/lib/api";
 import { FormData } from "./steps/types";
+import { profileService } from "@/services/profile.service";
 
 function CloverIcon() {
   return (
@@ -72,7 +73,81 @@ export default function WelcomeCompleteScreen() {
         return;
       }
 
-      const profileData: FormData = JSON.parse(profileDataJson);
+      // Parse JSON with error handling and timeout protection to prevent ANR
+      let profileData: FormData;
+      try {
+        // Use setTimeout to defer JSON.parse to next tick, preventing ANR
+        profileData = await new Promise<FormData>((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            reject(new Error('JSON parsing timeout'));
+          }, 1000); // 1 second timeout
+          
+          setTimeout(() => {
+            try {
+              clearTimeout(timeoutId);
+              resolve(JSON.parse(profileDataJson));
+            } catch (error) {
+              clearTimeout(timeoutId);
+              reject(error);
+            }
+          }, 0);
+        });
+      } catch (error: any) {
+        logger.error('❌ Error parsing profile data:', error);
+        // Fallback: mark onboarding complete and navigate to tabs
+        await secureStorage.setOnboardingComplete(true);
+        router.replace("/(tabs)");
+        return;
+      }
+      
+      // Split name into firstName and lastName
+      // If name has multiple words, first word is firstName, rest is lastName
+      const splitName = (fullName: string): { firstName: string; lastName: string } => {
+        const trimmedName = fullName.trim();
+        if (!trimmedName) {
+          return { firstName: '', lastName: '' };
+        }
+        
+        const parts = trimmedName.split(/\s+/);
+        if (parts.length === 1) {
+          return { firstName: parts[0], lastName: '' };
+        }
+        
+        const firstName = parts[0];
+        const lastName = parts.slice(1).join(' ');
+        return { firstName, lastName };
+      };
+
+      // Save name to user profile first
+      if (profileData.name && profileData.name.trim()) {
+        const { firstName, lastName } = splitName(profileData.name);
+        
+        if (firstName) {
+          logger.log('💾 Saving name to user profile...', { firstName, lastName });
+          try {
+            await profileService.updateProfile({
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+            });
+            logger.log('✅ Name saved to user profile successfully');
+            
+            // Update local user store
+            const currentUser = useAuthStore.getState().user;
+            if (currentUser) {
+              useAuthStore.setState({
+                user: {
+                  ...currentUser,
+                  firstName: firstName.trim(),
+                  lastName: lastName.trim(),
+                },
+              });
+            }
+          } catch (error: any) {
+            logger.error('⚠️ Failed to save name to profile:', error);
+            // Continue with onboarding even if name save fails
+          }
+        }
+      }
       
       // Map mobile form data to backend schema
       const mapRoleToUserType = (role: string): 'professional' | 'student' | 'browsing' | 'ancestor' => {

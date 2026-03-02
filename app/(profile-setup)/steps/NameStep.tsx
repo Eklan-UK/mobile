@@ -1,9 +1,10 @@
 import { AppText, BoldText, Button, Input } from "@/components/ui";
 import tw from "@/lib/tw";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { KeyboardAvoidingView, Platform, TouchableOpacity, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { StepProps } from "./types";
+import { useAuthStore } from "@/store/auth-store";
 
 function BackArrowIcon() {
   return (
@@ -55,6 +56,18 @@ function ProgressDots({ current, total }: { current: number; total: number }) {
 
 export default function NameStep({ data, onUpdate, onNext, onBack, isFirst, currentStep, totalSteps }: StepProps) {
   const [loading, setLoading] = useState(false);
+  const { user } = useAuthStore();
+
+  // Prefill name from user account if not already set
+  useEffect(() => {
+    if (!data.name && user) {
+      const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+      if (fullName) {
+        onUpdate({ name: fullName });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, data.name]);
 
   const handleContinue = async () => {
     if (!data.name.trim()) return;

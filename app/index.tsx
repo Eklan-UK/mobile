@@ -36,6 +36,9 @@ export default function RootSplashRouter() {
           const hasProfile = cachedUser.hasProfile === true || 
                              cachedUser.role === 'admin' || 
                              cachedUser.role === 'tutor';
+          const emailVerified =
+            cachedUser.emailVerified === true ||
+            cachedUser.isEmailVerified === true;
           
           logger.log('🔍 Profile check (cached):', {
             hasProfile,
@@ -43,6 +46,13 @@ export default function RootSplashRouter() {
             role: cachedUser.role,
             userId: cachedUser.id
           });
+
+          // If email is not verified, force user back into email verification flow
+          if (!emailVerified) {
+            logger.log('📧 Email not verified, navigating to verify-email auth flow');
+            router.replace("/(auth)/auth?mode=verify-email");
+            return;
+          }
           
           if (hasProfile) {
             logger.log('🏠 Navigating to main app (hasProfile: true)');

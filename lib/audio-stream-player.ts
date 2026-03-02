@@ -15,11 +15,14 @@ import { Buffer } from 'buffer';
  * and enqueue them into an expo-av Sound player loop.
  */
 export class AudioStreamPlayer {
-  private queue: string[] = []; // URIs to local WAV files
   private isPlaying: boolean = false;
   private currentSound: Audio.Sound | null = null;
   private chunkIndex: number = 0;
-  private sampleRate = 24000;
+  
+  // Audio chunk queue management
+  private uriQueue: string[] = []; // URIs pending to be preloaded
+  private soundQueue: { sound: Audio.Sound; uri: string }[] = []; // Preloaded Sounds ready to play
+  private isPreloading: boolean = false;
 
   constructor() {}
 
@@ -54,15 +57,14 @@ export class AudioStreamPlayer {
   private readonly BYTES_PER_SEC = 24000 * 2 * 1;  // 48 000
   // Flush after accumulating this many ms of audio.
   // Higher = fewer synchronous Buffer operations (less ANR risk), but slightly more latency.
-  // 800ms is a good balance between smooth playback and responsive UI.
-  private readonly MIN_CHUNK_MS = 800;
+  // 1000ms is a good mix between smooth gapless performance and acceptable time to first audio chunk.
+  private readonly MIN_CHUNK_MS = 1000;
   private get MIN_CHUNK_BYTES() {
     return Math.floor((this.MIN_CHUNK_MS / 1000) * this.BYTES_PER_SEC);
   }
 
   /**
    * Convert raw PCM bytes to a valid WAV base64 string.
-   * The Gemini Live API SSE stream sends raw L16 PCM — NOT pre-wrapped WAV.
    */
   private pcmBufferToWavBase64(pcmBuffer: Buffer): string {
     const sampleRate = this.SAMPLE_RATE;
@@ -92,6 +94,34 @@ export class AudioStreamPlayer {
   }
 
   /**
+   * Process pending URIs to preload Audio.Sound instances.
+   * This eliminates the 'gap' delay caused by Audio.Sound.createAsync between chunks.
+   */
+  private async processUriQueue() {
+    if (this.isPreloading || this.uriQueue.length === 0) return;
+    this.isPreloading = true;
+
+    while (this.uriQueue.length > 0) {
+      const uri = this.uriQueue.shift()!;
+      try {
+        const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: false });
+        this.soundQueue.push({ sound, uri });
+        
+        // Start playing if we are idle and now have an audio ready
+        if (!this.isPlaying && !this.currentSound) {
+          this.playNext();
+        }
+      } catch (error) {
+        logger.error('Failed to preload chunk:', error);
+        // Attempt cleanup on failure
+        try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch (e) {}
+      }
+    }
+
+    this.isPreloading = false;
+  }
+
+  /**
    * Write the currently accumulated PCM buffer to a temp WAV file and enqueue it.
    */
   private async _flushPendingPcm() {
@@ -105,11 +135,12 @@ export class AudioStreamPlayer {
     try {
       const wavBase64 = this.pcmBufferToWavBase64(combined);
       const tempUri = `${FileSystem.cacheDirectory}stream_chunk_${Date.now()}_${this.chunkIndex++}.wav`;
+      
       await FileSystem.writeAsStringAsync(tempUri, wavBase64, { encoding: 'base64' });
-      this.queue.push(tempUri);
-      if (!this.isPlaying) {
-        this.playNext();
-      }
+      
+      this.uriQueue.push(tempUri);
+      // Trigger preload worker
+      this.processUriQueue();
     } catch (e) {
       logger.error('Failed to flush audio chunk to queue:', e);
     }
@@ -117,7 +148,7 @@ export class AudioStreamPlayer {
 
   /**
    * Add a raw base64 PCM chunk (from the Gemini Live API SSE stream).
-   * Chunks are accumulated until we have enough audio (~400ms) before writing
+   * Chunks are accumulated until we have enough audio (~1000ms) before writing
    * to disk — this prevents the per-file startup gap that makes audio sound choppy.
    */
   async addCompressedChunkBase64(pcmBase64: string) {
@@ -142,60 +173,65 @@ export class AudioStreamPlayer {
     await this._flushPendingPcm();
   }
 
-  /**
-   * Add a raw PCM chunk buffer to the queue if the backend isn't sending WAV.
-   * Note: The current backend actually sends base64 WAVs, so `addCompressedChunkBase64` is enough.
-   */
   addChunk(pcmData: Float32Array) {
      logger.warn('addChunk (raw Float32Array) not fully implemented on React Native. Using base64 WAV chunks is preferred.');
   }
 
   /**
-   * Plays the next chunk in the queue sequence.
+   * Plays the next preloaded chunk in the queue sequence.
    */
   private async playNext() {
-    if (this.queue.length === 0) {
+    if (this.soundQueue.length === 0) {
       this.isPlaying = false;
       this.currentSound = null;
       return;
     }
 
     this.isPlaying = true;
-    const uri = this.queue.shift()!;
+    const { sound, uri } = this.soundQueue.shift()!;
+    this.currentSound = sound;
+
+    sound.setOnPlaybackStatusUpdate(async (status) => {
+      // isLoaded should be true since we successfully created it, 
+      // but we add type guards based on status
+      if (status.isLoaded && status.didJustFinish) {
+        // Playback finished, move to next immediately
+        try {
+           // We do not await unload sequentially so that we minimize latency 
+           // to start the next chunk
+           sound.unloadAsync().then(() => {
+             FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+           });
+        } catch(e) {}
+        this.playNext();
+      }
+    });
 
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true }
-      );
-      this.currentSound = sound;
-
-      sound.setOnPlaybackStatusUpdate(async (status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          // Playback finished, move to next
-          try {
-             await sound.unloadAsync();
-             // Clean up file to save storage
-             await FileSystem.deleteAsync(uri, { idempotent: true });
-          } catch(e) {}
-          this.playNext();
-        }
-      });
-    } catch (error) {
-      logger.error('Failed to play audio chunk:', error);
-      // Skip this chunk and try the next one
-      try {
-         await FileSystem.deleteAsync(uri, { idempotent: true });
-      } catch(e) {}
-      this.playNext();
+      await sound.playAsync();
+    } catch (e) {
+      logger.error('Failed to play preloaded sound:', e);
+      this.playNext(); // skip and continue
     }
   }
 
   /**
-   * Stop processing completely, flush the queue, and unload the current sound.
+   * Stop processing completely, flush the queues, and unload the current sound.
    */
   async stop() {
-    this.queue = [];
+    this.isPlaying = false;
+    this.isPreloading = false;
+    this.uriQueue = [];
+    
+    // Clear pending sounds
+    for (const { sound, uri } of this.soundQueue) {
+      try {
+        await sound.unloadAsync();
+        await FileSystem.deleteAsync(uri, { idempotent: true });
+      } catch (e) {}
+    }
+    this.soundQueue = [];
+    
     if (this.currentSound) {
       try {
         await this.currentSound.stopAsync();
@@ -203,6 +239,8 @@ export class AudioStreamPlayer {
       } catch (e) {}
       this.currentSound = null;
     }
-    this.isPlaying = false;
+    
+    this.pendingPcmBuffers = [];
+    this.pendingPcmBytes = 0;
   }
 }

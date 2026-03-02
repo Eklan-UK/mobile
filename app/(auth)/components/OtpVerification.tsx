@@ -8,9 +8,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, TextInput, TouchableOpacity, View } from "react-native";
 import { logger } from "@/utils/logger";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ─── Public handle exposed via ref ────────────────────────
 export interface OtpVerificationHandle {
@@ -60,8 +59,7 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
     const otpInputRefs = useRef<(TextInput | null)[]>([]);
-    const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const insets = useSafeAreaInsets();
+    const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // ── Imperative handle ─────────────────────────────────
     useImperativeHandle(ref, () => ({
@@ -206,8 +204,8 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
         logger.error("OTP resend failed:", e);
         setError(
           e?.response?.data?.message ||
-            e?.message ||
-            "Failed to resend OTP. Please try again."
+          e?.message ||
+          "Failed to resend OTP. Please try again."
         );
       } finally {
         setIsLoading(false);
@@ -219,16 +217,13 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
       subtitle || `We sent a 6-digit code to ${email}. Please enter it below.`;
 
     return (
-      <KeyboardAvoidingView
-        behavior="padding"
-        keyboardVerticalOffset={Platform.OS === "ios" ? -20 : -insets.bottom}
-      >
+      <View style={tw`flex-1`}>
         {/* Header */}
         <View style={tw`mb-8`}>
-          <BoldText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
+          <BoldText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-2`}>
             {title}
           </BoldText>
-          <AppText style={tw`text-neutral-500 text-center`}>
+          <AppText style={tw`text-neutral-500 dark:text-neutral-400 text-center`}>
             {displaySubtitle}
           </AppText>
         </View>
@@ -241,9 +236,8 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
               ref={(el) => {
                 otpInputRefs.current[index] = el;
               }}
-              style={tw`w-12 h-14 border-2 ${
-                digit ? "border-primary-500" : "border-gray-300"
-              } rounded-xl text-center text-xl font-bold text-gray-900`}
+              style={tw`w-12 h-14 border-2 ${digit ? "border-primary-500" : "border-gray-300 dark:border-neutral-700"
+                } rounded-xl text-center text-xl font-bold text-gray-900 dark:text-white`}
               value={digit}
               onChangeText={(value) => handleOtpChange(index, value)}
               onKeyPress={({ nativeEvent: { key } }) =>
@@ -257,24 +251,23 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
 
         {/* Resend */}
         <View style={tw`flex-row justify-center mb-8`}>
-          <AppText style={tw`text-neutral-500`}>Didn't get it? </AppText>
+          <AppText style={tw`text-neutral-500 dark:text-neutral-400`}>Didn't get it? </AppText>
           <TouchableOpacity
             onPress={handleResend}
             disabled={countdown > 0 || isLoading}
           >
             <AppText
               weight="bold"
-              style={tw`${
-                countdown > 0 || isLoading
-                  ? "text-gray-400"
-                  : "text-primary-500"
-              } font-bold`}
+              style={tw`${countdown > 0 || isLoading
+                ? "text-gray-400"
+                : "text-primary-500"
+                } font-bold`}
             >
               Resend
             </AppText>
           </TouchableOpacity>
           {countdown > 0 && (
-            <AppText style={tw`text-neutral-500`}>
+            <AppText style={tw`text-neutral-500 dark:text-neutral-400`}>
               {" "}
               ({Math.floor(countdown / 60)}:
               {(countdown % 60).toString().padStart(2, "0")})
@@ -292,11 +285,10 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
         {/* Verify Button */}
         <Button
           onPress={() => handleVerify(otp)}
-          style={tw`${
-            otp.every((d) => d) && !isLoading
-              ? "bg-primary-500"
-              : "bg-gray-300"
-          } rounded-full py-4 items-center mb-4`}
+          style={tw`${otp.every((d) => d) && !isLoading
+            ? "bg-primary-500"
+            : "bg-gray-300"
+            } rounded-full py-4 items-center mb-4`}
           disabled={!otp.every((d) => d) || isLoading}
         >
           {isLoading ? (
@@ -304,9 +296,8 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
           ) : (
             <AppText
               weight="bold"
-              style={tw`${
-                otp.every((d) => d) ? "text-white" : "text-gray-500"
-              } font-semibold text-lg`}
+              style={tw`${otp.every((d) => d) ? "text-white" : "text-gray-500"
+                } font-semibold text-lg`}
             >
               Verify
             </AppText>
@@ -316,12 +307,12 @@ const OtpVerification = forwardRef<OtpVerificationHandle, OtpVerificationProps>(
         {/* Edit Email (optional) */}
         {onEditEmail && (
           <TouchableOpacity onPress={onEditEmail}>
-            <AppText style={tw`text-center text-neutral-500`}>
+            <AppText style={tw`text-center text-neutral-500 dark:text-neutral-400`}>
               Wrong email? Edit
             </AppText>
           </TouchableOpacity>
         )}
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 );

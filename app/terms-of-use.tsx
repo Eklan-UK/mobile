@@ -1,4 +1,4 @@
-import { AppText, BoldText } from "@/components/ui";
+import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -6,13 +6,12 @@ import { ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
-// Icons
 function BackIcon() {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
         d="M19 12H5M12 19l-7-7 7-7"
-        stroke="#171717"
+        stroke={tw.prefixMatch('dark') ? "#F9FAFB" : "#171717"}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -49,7 +48,6 @@ function MinusIcon() {
   );
 }
 
-// Section Item Component
 function SectionItem({
   number,
   title,
@@ -64,134 +62,91 @@ function SectionItem({
   onToggle: () => void;
 }) {
   return (
-    <View style={tw`bg-white rounded-xl mb-3 overflow-hidden`}>
+    <View style={tw`bg-white dark:bg-neutral-800 rounded-[16px] border border-neutral-200 dark:border-neutral-700 mb-3 overflow-hidden`}>
       <TouchableOpacity
         onPress={onToggle}
-        style={tw`flex-row items-center justify-between p-4`}
+        style={tw`flex-row items-center justify-between p-5`}
       >
-        <AppText style={tw`text-base text-neutral-900 flex-1 pr-4`}>
+        <AppText style={tw`text-[15px] font-medium text-neutral-900 dark:text-white flex-1 pr-4`}>
           {number}. {title}
         </AppText>
         {isExpanded ? <MinusIcon /> : <PlusIcon />}
       </TouchableOpacity>
       {isExpanded && (
-        <View style={tw`px-4 pb-4`}>
-          <View style={tw`h-px bg-neutral-100 mb-3`} />
-          <AppText style={tw`text-sm text-neutral-600 leading-5`}>{content}</AppText>
+        <View style={tw`px-5 pb-5`}>
+          <AppText style={tw`text-[15px] text-neutral-600 dark:text-neutral-400 leading-[22px]`}>{content}</AppText>
         </View>
       )}
     </View>
   );
 }
 
-// Terms Data
 const sections = [
   {
-    title: "Acceptance of Terms",
-    content:
-      "By accessing or using Eklan's services, you agree to be bound by these Terms of Use. If you do not agree to these terms, please do not use our services. These terms constitute a legally binding agreement between you and Eklan.",
+    title: "The App and Services",
+    content: "We grant you a personal, worldwide, royalty-free, non-assignable, nonexclusive, revocable, and non-sublicensable license to access and use our Services. This license is for the sole purpose of letting you use and enjoy the Services' benefits.",
   },
   {
-    title: "Description of Services",
-    content:
-      "Eklan provides an AI-powered English learning platform that includes pronunciation practice, speaking exercises, and personalized feedback. Our services are available through mobile applications and web platforms. Features may vary based on subscription level.",
+    title: "Registration",
+    content: "To use Certain features of the Services, you must register for an account. By registering, you agree to provide accurate, current, and complete information.",
   },
   {
-    title: "User Accounts",
-    content:
-      "You must create an account to access our services. You are responsible for maintaining the confidentiality of your account credentials. You agree to provide accurate information and update it as necessary. One account per person is permitted.",
+    title: "Payments",
+    content: "Certain Services require payment in advance. We use third-party payment processors to process transactions. You agree to pay all applicable fees related to your account.",
   },
   {
-    title: "Subscription & Payments",
-    content:
-      "Some features require a paid subscription. Subscriptions automatically renew unless cancelled. Refunds are available within 7 days of purchase for annual plans. You can manage your subscription through your app store account settings.",
+    title: "Intellectual Property and License",
+    content: "All content, features, and functionality of our Services are owned by Eklan and are protected by international copyright, trademark, patent, trade secret, and other intellectual property or proprietary rights laws.",
   },
   {
-    title: "User Content & Conduct",
-    content:
-      "You retain ownership of content you create. By using our services, you grant us a license to use your voice recordings for providing feedback. You agree not to use the service for illegal purposes, harassment, or any activity that could harm other users.",
-  },
-  {
-    title: "Intellectual Property",
-    content:
-      "All content, features, and functionality of Eklan are owned by us and protected by copyright, trademark, and other intellectual property laws. You may not copy, modify, distribute, or create derivative works without our written permission.",
-  },
-  {
-    title: "Privacy & Data",
-    content:
-      "Your use of our services is also governed by our Privacy Policy. By using Eklan, you consent to our collection and use of data as described in the Privacy Policy. We take reasonable measures to protect your personal information.",
-  },
-  {
-    title: "Disclaimers",
-    content:
-      "Our services are provided 'as is' without warranties of any kind. We do not guarantee specific learning outcomes. While we strive for accuracy, AI-generated feedback may occasionally be imperfect. Use your judgment when applying our suggestions.",
-  },
-  {
-    title: "Limitation of Liability",
-    content:
-      "To the maximum extent permitted by law, Eklan shall not be liable for any indirect, incidental, special, or consequential damages. Our total liability shall not exceed the amount you paid for our services in the past 12 months.",
-  },
-  {
-    title: "Termination",
-    content:
-      "We may terminate or suspend your account for violations of these terms. You may delete your account at any time through the app settings. Upon termination, your right to use the service ceases immediately.",
-  },
-  {
-    title: "Changes to Terms",
-    content:
-      "We reserve the right to modify these terms at any time. We will provide notice of significant changes through the app or email. Your continued use after changes constitutes acceptance of the modified terms.",
-  },
-  {
-    title: "Governing Law",
-    content:
-      "These terms are governed by the laws of the Republic of Korea. Any disputes shall be resolved in the courts of Seoul, Korea. You agree to submit to the personal jurisdiction of such courts.",
-  },
-  {
-    title: "Contact Information",
-    content:
-      "For questions about these Terms of Use, please contact us at legal@eklanAI.com or through the Help section in the app. We aim to respond to all inquiries within 48 hours.",
+    title: "User Content and Generated Content",
+    content: "You retain all rights to your content. By submitting content through our Services, you grant us a worldwide, non-exclusive, royalty-free license to use, copy, reproduce, process, adapt, modify, publish, transmit, display, and distribute such content.",
   },
 ];
 
 export default function TermsOfUseScreen() {
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
 
-  const handleBack = () => {
-    router.back();
-  };
-
-  const handleToggle = (index: number) => {
-    setExpandedIndex(expandedIndex === index ? null : index);
-  };
+  const handleBack = () => router.back();
+  const handleToggle = (index: number) => setExpandedIndex(expandedIndex === index ? null : index);
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
+    <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900`} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={tw`px-6 pt-4 pb-4 flex-row items-center gap-4`}>
-        <TouchableOpacity onPress={handleBack}>
+        <TouchableOpacity onPress={handleBack} style={tw`w-10 h-10 rounded-full border border-neutral-200 dark:border-neutral-700 items-center justify-center`}>
           <BackIcon />
         </TouchableOpacity>
-        <AppText style={tw`text-xl font-bold text-neutral-900`}>Terms of Use</AppText>
+        <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Terms of use</AppText>
       </View>
 
-      <ScrollView
-        style={tw`flex-1`}
-        contentContainerStyle={tw`px-6 pb-6`}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={tw`px-6 pb-6 pt-2`} showsVerticalScrollIndicator={false}>
         {/* Intro */}
-        <View style={tw`mb-6`}>
-          <AppText style={tw`text-2xl font-bold text-neutral-900 mb-4`}>Terms of Use</AppText>
-          <AppText style={tw`text-base text-neutral-600 leading-6`}>
-            Welcome to Eklan. These Terms of Use ("Terms") govern your access
-            to and use of our AI-powered English learning platform, including our
-            mobile applications, websites, and related services (collectively, the
-            "Services").
+        <View style={tw`mb-8`}>
+          <AppText style={tw`text-[28px] font-bold text-neutral-900 dark:text-white mb-4`}>Terms of use</AppText>
+          <AppText style={tw`text-[15px] text-neutral-900 dark:text-neutral-300 leading-[22px]`}>
+            These terms and conditions ("Terms and Conditions")
+            constitute a legally binding agreement between you, the
+            user who will be utilizing Eklan AI's webapp (referenced
+            below as "You" or "User"), and Eklan AI Ltd., a company
+            incorporated under the laws of Canada ("Eklan", "We", or
+            "Us"), with respect to your use of Eklan's services (as
+            defined below) which are available via Eklan's webapp
+            and mobile applications (the "App").
           </AppText>
-          <AppText style={tw`text-base text-neutral-600 leading-6 mt-4`}>
-            Please read these Terms carefully before using our Services. By using
-            Eklan, you acknowledge that you have read, understood, and agree to
-            be bound by these Terms.
+          <AppText style={tw`text-[15px] text-neutral-900 dark:text-neutral-300 leading-[22px] mt-4`}>
+            By accessing or using the App and/or Services you
+            accept and agree to be bound by these Terms and
+            Conditions and our Privacy Policy, which is incorporated
+            herein by reference. Eklan reserves the right, in its sole
+            discretion, to modify these Terms and Conditions
+            (including any other policies incorporated herein) at any
+            time by posting the modified provisions at https://
+            www.eklan.ai/. Any such modifications shall become
+            effective immediately upon posting. IF YOU DO NOT
+            AGREE TO ALL OF THESE TERMS AND CONDITIONS,
+            DO NOT ACCESS OR USE ANY PART OF THE APP OR
+            SERVICES.
           </AppText>
         </View>
 
@@ -206,21 +161,7 @@ export default function TermsOfUseScreen() {
             onToggle={() => handleToggle(index)}
           />
         ))}
-
-        {/* Contact */}
-        <View style={tw`bg-primary-50 rounded-xl p-4 mt-4 border border-primary-200`}>
-          <AppText style={tw`text-sm text-primary-800`}>
-            Questions about our Terms of Use? Contact us at{" "}
-            <AppText style={tw`font-bold`}>legal@eklanAI.com</AppText>
-          </AppText>
-        </View>
-
-        {/* Last Updated */}
-        <AppText style={tw`text-sm text-neutral-400 text-center mt-6`}>
-          Last updated: January 2026
-        </AppText>
       </ScrollView>
     </SafeAreaView>
   );
 }
-

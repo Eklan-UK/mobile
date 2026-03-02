@@ -1,7 +1,7 @@
 import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { Tabs } from "expo-router";
-import { View } from "react-native";
+import { View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HomeIcon from "@/assets/icons/home.svg";
 import HomeFillIcon from "@/assets/icons/home-fill.svg";
@@ -11,6 +11,7 @@ import ProfileIcon from "@/assets/icons/profile.svg";
 import ProfileActiveIcon from "@/assets/icons/user-fill.svg";
 import PracticeActiveIcon from "@/assets/icons/practice-grey.svg";
 import TargetArrowActiveIcon from "@/assets/icons/target-arrow-green.svg";
+import { useThemeStore } from "@/store/theme-store";
 
 
 function TabIcon({
@@ -36,7 +37,7 @@ function TabIcon({
       />
       <AppText
         style={tw`text-xs ${
-          focused ? "text-green-800 font-medium" : "text-neutral-400"
+          focused ? "text-green-800 dark:text-green-400 font-medium" : "text-neutral-400 dark:text-neutral-500"
         }`}
         numberOfLines={1}
       >
@@ -48,15 +49,20 @@ function TabIcon({
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { theme } = useThemeStore();
+  const systemColorScheme = useColorScheme();
+  
+  // Calculate effective theme (reactive - will cause re-render when theme changes)
+  const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#ffffff",
+          backgroundColor: isDark ? "#171717" : "#ffffff", // neutral-900
           borderTopWidth: 1,
-          borderTopColor: "#F3F4F6",
+          borderTopColor: isDark ? "#262626" : "#F3F4F6", // neutral-800
           height: 50 + insets.bottom,
           paddingBottom: insets.bottom,
           padding: 14, 

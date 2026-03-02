@@ -1,6 +1,8 @@
 import { Text, TextProps } from 'react-native';
 import { Fonts } from '@/constants/fonts';
 
+import tw from '@/lib/tw';
+
 interface AppTextProps extends TextProps {
   weight?: 'regular' | 'medium' | 'bold' | 'black' | 'light';
 }
@@ -14,7 +16,7 @@ export function AppText({
   
   return (
     <Text 
-      style={[{ fontFamily }, style]} 
+      style={[tw`text-neutral-900 dark:text-white`, { fontFamily }, style]} 
       {...props} 
     />
   );

@@ -40,18 +40,18 @@ const LoadingSheet = forwardRef<BottomSheetModal, LoadingSheetProps>(({ onDismis
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
       enablePanDownToClose={false}
-      handleIndicatorStyle={tw`bg-neutral-300 w-12`}
-      backgroundStyle={tw`bg-white rounded-t-3xl`}
+      handleIndicatorStyle={tw`bg-neutral-300 dark:bg-neutral-600 w-12`}
+      backgroundStyle={tw`bg-white dark:bg-neutral-900 rounded-t-3xl`}
       backdropComponent={renderBackdrop}
     >
       <BottomSheetView style={tw`flex-1 px-6 py-10 items-center`}>
         <Loader />
 
-        <BoldText style={tw`text-xl font-semibold text-neutral-900 mt-6`}>
+        <BoldText style={tw`text-xl font-semibold text-neutral-900 dark:text-white mt-6`}>
           Setting up your account...
         </BoldText>
 
-        <AppText style={tw`text-neutral-500 mb-10 mt-2`}>
+        <AppText style={tw`text-neutral-500 dark:text-neutral-400 mb-10 mt-2`}>
           Just a moment
         </AppText>
       </BottomSheetView>

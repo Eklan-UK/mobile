@@ -15,6 +15,11 @@ export interface User {
   emailVerified?: boolean;
   isEmailVerified?: boolean;
   hasProfile?: boolean; // Backend flag: true when user has completed profile/onboarding
+  // Subscription
+  subscriptionPlan?: "free" | "premium";
+  subscriptionActivatedAt?: string | null;
+  subscriptionExpiresAt?: string | null;
+  isSubscribed?: boolean;
 }
 
 export interface Session {
@@ -139,6 +144,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           emailVerified: userData.emailVerified || userData.isEmailVerified,
           isEmailVerified: userData.emailVerified || userData.isEmailVerified,
           hasProfile,
+          subscriptionPlan: userData.subscriptionPlan || "free",
+          subscriptionActivatedAt: userData.subscriptionActivatedAt || null,
+          subscriptionExpiresAt: userData.subscriptionExpiresAt || null,
+          isSubscribed: userData.isSubscribed ?? false,
         };
 
         // Update stored user data
@@ -251,11 +260,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const hasProfile = user.hasProfile === true || 
                          user.role === 'admin' || 
                          user.role === 'tutor';
+      const emailVerified =
+        user.emailVerified === true ||
+        user.isEmailVerified === true;
       
       // Update user object with hasProfile
       const userWithProfile = {
         ...user,
         hasProfile,
+        emailVerified: emailVerified,
       };
       
       await secureStorage.setUser(userWithProfile);
@@ -269,10 +282,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
 
-      // Use hasProfile from backend instead of local onboarding flag
-      logger.log('🔍 Checking profile status...', { hasProfile, role: user.role });
+      // Use hasProfile and email verification status from backend
+      logger.log('🔍 Checking profile & email verification status...', { hasProfile, emailVerified, role: user.role });
       
-      if (!hasProfile) {
+      // If email is not verified yet, send user to verify-email flow
+      if (!emailVerified) {
+        logger.log('📧 Email not verified, navigating to verify-email auth flow');
+        router.replace('/(auth)/auth?mode=verify-email');
+      } else if (!hasProfile) {
         logger.log('🚀 Navigating to profile setup...');
         router.replace('/(profile-setup)');
       } else {

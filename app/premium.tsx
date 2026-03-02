@@ -1,4 +1,4 @@
-import { AppText, BoldText, Button } from "@/components/ui";
+import { AppText, Button } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
 import { ScrollView, TouchableOpacity, View } from "react-native";
@@ -12,7 +12,7 @@ function CloseIcon() {
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
         d="M18 6L6 18M6 6l12 12"
-        stroke="#171717"
+        stroke={tw.prefixMatch('dark') ? "#F9FAFB" : "#171717"}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -37,7 +37,7 @@ function CheckIcon({ color = "#22c55e" }: { color?: string }) {
 
 function CrownIcon() {
   return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
       <Path
         d="M2 17l3-12 7 4 7-4 3 12H2z"
         fill="#fbbf24"
@@ -66,13 +66,13 @@ function FeatureRow({
   premiumIncluded: boolean;
 }) {
   return (
-    <View style={tw`flex-row items-center py-4 border-b border-neutral-100`}>
-      <AppText style={tw`flex-1 text-base text-neutral-700`}>{label}</AppText>
+    <View style={tw`flex-row items-center py-5 border-b border-[#f5f5f5] dark:border-neutral-800`}>
+      <AppText style={tw`flex-1 text-[15px] font-medium text-neutral-900 dark:text-white`}>{label}</AppText>
       <View style={tw`w-20 items-center`}>
-        {freeIncluded ? <CheckIcon color="#22c55e" /> : <View style={tw`w-5 h-0.5 bg-neutral-300`} />}
+        {freeIncluded && <CheckIcon color="#22c55e" />}
       </View>
-      <View style={tw`w-24 items-center`}>
-        {premiumIncluded ? <CheckIcon color="#22c55e" /> : <View style={tw`w-5 h-0.5 bg-neutral-300`} />}
+      <View style={tw`w-28 items-center`}>
+        {premiumIncluded && <CheckIcon color="#22c55e" />}
       </View>
     </View>
   );
@@ -84,9 +84,8 @@ export default function PremiumScreen() {
   };
 
   const handleStartTrial = () => {
-    // TODO: Implement subscription flow
-    logger.log("Start trial");
-    router.back();
+    logger.log("Start trial -> book call");
+    router.push("/book-call");
   };
 
   const handleSkip = () => {
@@ -98,44 +97,43 @@ export default function PremiumScreen() {
     { label: "Offline learning", freeIncluded: false, premiumIncluded: true },
     { label: "Premium content", freeIncluded: false, premiumIncluded: true },
     { label: "Unlimited Chatbot Access", freeIncluded: false, premiumIncluded: true },
-    { label: "Ad-free experience", freeIncluded: false, premiumIncluded: true },
-    { label: "Priority support", freeIncluded: false, premiumIncluded: true },
-    { label: "Advanced analytics", freeIncluded: false, premiumIncluded: true },
   ];
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
+    <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900`} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={tw`px-6 pt-4 flex-row justify-end`}>
-        <TouchableOpacity onPress={handleClose}>
+        <TouchableOpacity onPress={handleClose} style={tw`w-10 h-10 items-center justify-center rounded-full bg-neutral-50 dark:bg-neutral-800`}>
           <CloseIcon />
         </TouchableOpacity>
       </View>
 
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={tw`px-6 pb-6`}
+        contentContainerStyle={tw`px-6 pt-6 pb-6`}
         showsVerticalScrollIndicator={false}
       >
         {/* Title */}
-        <View style={tw`py-6`}>
-          <AppText style={tw`text-2xl font-bold text-neutral-900`}>
+        <View style={tw`mb-10`}>
+          <AppText style={tw`text-[32px] font-bold text-neutral-900 dark:text-white leading-[40px]`}>
             Elevate your English learning{"\n"}experience with
           </AppText>
         </View>
 
         {/* Comparison Table */}
-        <View style={tw`bg-white rounded-2xl px-4 shadow-sm`}>
+        <View style={tw`bg-white dark:bg-neutral-900`}>
           {/* Table Header */}
-          <View style={tw`flex-row items-center py-4 border-b border-neutral-100`}>
+          <View style={tw`flex-row items-end pb-4 border-b border-[#f5f5f5] dark:border-neutral-800`}>
             <View style={tw`flex-1`} />
-            <View style={tw`w-20 items-center`}>
-              <AppText style={tw`text-base font-semibold text-neutral-900`}>FREE</AppText>
+            <View style={tw`w-20 items-center pb-2`}>
+              <AppText style={tw`text-sm font-bold text-neutral-900 dark:text-white tracking-wider`}>FREE</AppText>
             </View>
-            <View style={tw`w-24 items-center`}>
-              <View style={tw`flex-row items-center bg-primary-50 px-3 py-1.5 rounded-full`}>
-                <AppText style={tw`text-base font-semibold text-primary-600 mr-1`}>Premium</AppText>
-                <CrownIcon />
+            <View style={tw`w-28 items-center relative`}>
+              <View style={tw`flex-row items-center bg-[#E8F5E9] dark:bg-green-900/30 px-4 py-2 rounded-2xl`}>
+                <AppText style={tw`text-[17px] font-bold text-primary-600 dark:text-primary-400 mr-1`}>Premium</AppText>
+                <View style={tw`absolute -top-3 -right-2`}>
+                  <CrownIcon />
+                </View>
               </View>
             </View>
           </View>
@@ -145,59 +143,15 @@ export default function PremiumScreen() {
             <FeatureRow key={index} {...feature} />
           ))}
         </View>
-
-        {/* Benefits Section */}
-        <View style={tw`mt-8`}>
-          <AppText style={tw`text-lg font-bold text-neutral-900 mb-4`}>Why go Premium?</AppText>
-          
-          <View style={tw`gap-3`}>
-            <View style={tw`flex-row items-start gap-3`}>
-              <View style={tw`w-8 h-8 rounded-full bg-primary-100 items-center justify-center`}>
-                <AppText>🚀</AppText>
-              </View>
-              <View style={tw`flex-1`}>
-                <AppText style={tw`text-base font-medium text-neutral-900`}>Learn faster</AppText>
-                <AppText style={tw`text-sm text-neutral-500`}>
-                  Access premium lessons and accelerate your progress
-                </AppText>
-              </View>
-            </View>
-
-            <View style={tw`flex-row items-start gap-3`}>
-              <View style={tw`w-8 h-8 rounded-full bg-amber-100 items-center justify-center`}>
-                <AppText>💬</AppText>
-              </View>
-              <View style={tw`flex-1`}>
-                <AppText style={tw`text-base font-medium text-neutral-900`}>Unlimited AI practice</AppText>
-                <AppText style={tw`text-sm text-neutral-500`}>
-                  Practice conversations anytime with our AI tutor
-                </AppText>
-              </View>
-            </View>
-
-            <View style={tw`flex-row items-start gap-3`}>
-              <View style={tw`w-8 h-8 rounded-full bg-blue-100 items-center justify-center`}>
-                <AppText>📱</AppText>
-              </View>
-              <View style={tw`flex-1`}>
-                <AppText style={tw`text-base font-medium text-neutral-900`}>Learn offline</AppText>
-                <AppText style={tw`text-sm text-neutral-500`}>
-                  Download lessons and practice without internet
-                </AppText>
-              </View>
-            </View>
-          </View>
-        </View>
       </ScrollView>
 
       {/* Bottom Actions */}
-      <View style={tw`px-6 pb-4 pt-2`}>
-        <Button onPress={handleStartTrial}>Try 7 days for free</Button>
-        <TouchableOpacity onPress={handleSkip} style={tw`py-3 items-center`}>
-          <AppText style={tw`text-base text-neutral-600 font-medium`}>Skip</AppText>
+      <View style={tw`px-6 pb-6 pt-4`}>
+        <Button onPress={handleStartTrial}>Try 7days for free</Button>
+        <TouchableOpacity onPress={handleSkip} style={tw`py-4 items-center mt-3`}>
+          <AppText style={tw`text-[17px] text-[#ca8a04] dark:text-yellow-500 font-bold`}>Skip</AppText>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 }
-

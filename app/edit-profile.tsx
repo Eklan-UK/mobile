@@ -1,15 +1,17 @@
 import { AppText, Button, Input, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { ScrollView, TouchableOpacity, View, Image, ActivityIndicator } from "react-native";
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 import { logger } from "@/utils/logger";
 import * as ImagePicker from "expo-image-picker";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/auth-store";
 import { profileService } from "@/services/profile.service";
+import { BottomSheetModal, BottomSheetBackdrop, BottomSheetView } from "@gorhom/bottom-sheet";
 
 // Icons
 function BackIcon() {
@@ -17,7 +19,7 @@ function BackIcon() {
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
         d="M19 12H5M12 19l-7-7 7-7"
-        stroke="#171717"
+        stroke={tw.prefixMatch('dark') ? "#F9FAFB" : "#171717"}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -29,10 +31,10 @@ function BackIcon() {
 function UserIcon() {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={8} r={4} stroke="#737373" strokeWidth={1.5} />
+      <Circle cx={12} cy={8} r={4} stroke={tw.prefixMatch('dark') ? "#A3A3A3" : "#737373"} strokeWidth={1.5} />
       <Path
         d="M4 20c0-4 4-6 8-6s8 2 8 6"
-        stroke="#737373"
+        stroke={tw.prefixMatch('dark') ? "#A3A3A3" : "#737373"}
         strokeWidth={1.5}
         strokeLinecap="round"
       />
@@ -45,14 +47,14 @@ function EmailIcon() {
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
-        stroke="#737373"
+        stroke={tw.prefixMatch('dark') ? "#A3A3A3" : "#737373"}
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <Path
         d="M22 6l-10 7L2 6"
-        stroke="#737373"
+        stroke={tw.prefixMatch('dark') ? "#A3A3A3" : "#737373"}
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -64,18 +66,27 @@ function EmailIcon() {
 export default function EditProfileScreen() {
   const { user: authUser, checkSession } = useAuthStore();
   
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const snapPoints = useMemo(() => ["35%"], []);
+
+  const renderBackdrop = useCallback(
+    (props: any) => (
+      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.5} />
+    ),
+    []
+  );
+
   // Load user data on mount
   useEffect(() => {
     if (authUser) {
-      setFirstName(authUser.firstName || "");
-      setLastName(authUser.lastName || "");
+      const fullName = [authUser.firstName, authUser.lastName].filter(Boolean).join(" ");
+      setName(fullName || "");
       setEmail(authUser.email || "");
       setAvatarUri(authUser.avatar || null);
     }
@@ -93,10 +104,15 @@ export default function EditProfileScreen() {
 
     setLoading(true);
     try {
+      // Split name intelligently
+      const nameParts = name.trim().split(" ");
+      const newFirstName = nameParts[0] || "";
+      const newLastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+
       // Update profile
       await profileService.updateProfile({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        firstName: newFirstName,
+        lastName: newLastName,
         email: email.trim(),
       });
 
@@ -113,9 +129,36 @@ export default function EditProfileScreen() {
     }
   };
 
-  const handleChangePhoto = async () => {
+  const handleChangePhoto = () => {
+    bottomSheetModalRef.current?.present();
+  };
+
+  const handleTakePhoto = async () => {
+    bottomSheetModalRef.current?.dismiss();
     try {
-      // Request permissions
+      const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+      if (cameraStatus.granted) {
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets[0]) {
+          await uploadAvatar(result.assets[0].uri);
+        }
+      } else {
+        Alert.alert("Permission Required", "We need camera access to take a photo.");
+      }
+    } catch (error: any) {
+      logger.error("Error picking camera image:", error);
+    }
+  };
+
+  const handleChooseFromLibrary = async () => {
+    bottomSheetModalRef.current?.dismiss();
+    try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
         Alert.alert(
@@ -125,55 +168,18 @@ export default function EditProfileScreen() {
         return;
       }
 
-      // Show image picker options
-      Alert.alert(
-        "Change Profile Photo",
-        "Choose an option",
-        [
-          {
-            text: "Camera",
-            onPress: async () => {
-              const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
-              if (cameraStatus.granted) {
-                const result = await ImagePicker.launchCameraAsync({
-                  mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                  allowsEditing: true,
-                  aspect: [1, 1],
-                  quality: 0.8,
-                });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-                if (!result.canceled && result.assets[0]) {
-                  await uploadAvatar(result.assets[0].uri);
-                }
-              } else {
-                Alert.alert("Permission Required", "We need camera access to take a photo.");
-              }
-            },
-          },
-          {
-            text: "Photo Library",
-            onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.8,
-              });
-
-              if (!result.canceled && result.assets[0]) {
-                await uploadAvatar(result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-        ],
-        { cancelable: true }
-      );
+      if (!result.canceled && result.assets[0]) {
+        await uploadAvatar(result.assets[0].uri);
+      }
     } catch (error: any) {
-      logger.error("Error picking image:", error);
+      logger.error("Error picking library image:", error);
       Alert.alert("Error", "Failed to pick image");
     }
   };
@@ -223,37 +229,36 @@ export default function EditProfileScreen() {
     );
   };
 
-  // Show loading state if no user data
   if (!authUser) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-cream-100 items-center justify-center`} edges={["top", "bottom"]}>
+      <SafeAreaView style={tw`flex-1 bg-cream-100 dark:bg-neutral-900 items-center justify-center`} edges={["top", "bottom"]}>
         <Loader />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
+    <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900`} edges={["top", "bottom"]}>
       {/* Header */}
       <View style={tw`px-6 pt-4 pb-4 flex-row items-center gap-4`}>
-        <TouchableOpacity onPress={handleBack}>
+        <TouchableOpacity onPress={handleBack} style={tw`w-10 h-10 rounded-full border border-neutral-200 dark:border-neutral-700 items-center justify-center`}>
           <BackIcon />
         </TouchableOpacity>
-        <AppText style={tw`text-xl font-bold text-neutral-900`}>Edit profile</AppText>
+        <AppText style={tw`text-xl font-bold text-neutral-900 dark:text-white`}>Edit profile</AppText>
       </View>
 
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={tw`px-6 pb-6`}
+        contentContainerStyle={tw`px-6 pb-6 pt-2`}
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Photo */}
         <View style={tw`flex-row items-center gap-4 mb-8`}>
           <View
-            style={tw`w-24 h-24 rounded-full bg-neutral-100 items-center justify-center overflow-hidden relative`}
+            style={tw`w-20 h-20 rounded-full border-2 border-[#C1F0C0] dark:border-primary-500 items-center justify-center overflow-hidden relative`}
           >
             {uploadingAvatar ? (
-              <View style={tw`absolute inset-0 items-center justify-center bg-black/20`}>
+              <View style={tw`absolute inset-0 items-center justify-center bg-black/20 z-10`}>
                 <ActivityIndicator size="small" color="#16a34a" />
               </View>
             ) : null}
@@ -264,17 +269,19 @@ export default function EditProfileScreen() {
                 resizeMode="cover"
               />
             ) : (
-              <AppText style={tw`text-4xl`}>👩‍🎨</AppText>
+              <View style={tw`bg-neutral-100 dark:bg-neutral-800 w-full h-full items-center justify-center`}>
+                <AppText style={tw`text-3xl`}>👩‍🎨</AppText>
+              </View>
             )}
           </View>
           <TouchableOpacity
             onPress={handleChangePhoto}
             disabled={uploadingAvatar}
-            style={tw`px-4 py-2 rounded-lg border border-neutral-300 bg-white ${
+            style={tw`px-5 py-2.5 rounded-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 ${
               uploadingAvatar ? "opacity-50" : ""
             }`}
           >
-            <AppText style={tw`text-sm text-neutral-700`}>
+            <AppText style={tw`text-sm text-neutral-600 dark:text-neutral-400`}>
               {uploadingAvatar ? "Uploading..." : "Change photo"}
             </AppText>
           </TouchableOpacity>
@@ -283,19 +290,10 @@ export default function EditProfileScreen() {
         {/* Form */}
         <View style={tw`gap-5`}>
           <Input
-            label="First Name"
-            placeholder="Enter your first name"
-            value={firstName}
-            onChangeText={setFirstName}
-            autoCapitalize="words"
-            icon={<UserIcon />}
-          />
-
-          <Input
-            label="Last Name"
-            placeholder="Enter your last name"
-            value={lastName}
-            onChangeText={setLastName}
+            label="Name"
+            placeholder="Enter your name"
+            value={name}
+            onChangeText={setName}
             autoCapitalize="words"
             icon={<UserIcon />}
           />
@@ -325,6 +323,50 @@ export default function EditProfileScreen() {
           Save Changes
         </Button>
       </View>
+
+      <BottomSheetModal
+        ref={bottomSheetModalRef}
+        index={0}
+        snapPoints={snapPoints}
+        backdropComponent={renderBackdrop}
+        handleIndicatorStyle={tw`bg-neutral-300 dark:bg-neutral-600 w-12`}
+        backgroundStyle={tw`bg-white dark:bg-neutral-900 rounded-t-3xl`}
+      >
+        <BottomSheetView style={tw`flex-1 p-6 pb-8`}>
+          <View style={tw`flex-row items-center justify-between mb-6`}>
+            <AppText style={tw`text-[20px] font-bold text-neutral-900 dark:text-white`}>
+              Change Profile Photo
+            </AppText>
+            <TouchableOpacity onPress={() => bottomSheetModalRef.current?.dismiss()} style={tw`p-2 -mr-2`}>
+              <Ionicons name="close" size={24} color={tw.prefixMatch('dark') ? "#f5f5f5" : "#171717"} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={tw`flex-row gap-4`}>
+            <TouchableOpacity 
+              style={tw`flex-1 items-center justify-center py-8`}
+              onPress={handleTakePhoto}
+              activeOpacity={0.7}
+            >
+              <View style={tw`w-16 h-16 items-center justify-center mb-1`}>
+                <Ionicons name="camera-outline" size={48} color="#9CA3AF" />
+              </View>
+              <AppText style={tw`text-sm text-gray-700 dark:text-gray-300 text-center`}>Camera</AppText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={tw`flex-1 items-center justify-center py-8`}
+              onPress={handleChooseFromLibrary}
+              activeOpacity={0.7}
+            >
+              <View style={tw`w-16 h-16 items-center justify-center mb-1`}>
+                <Ionicons name="image-outline" size={48} color="#9CA3AF" />
+              </View>
+              <AppText style={tw`text-sm text-gray-700 dark:text-gray-300 text-center`}>Gallery</AppText>
+            </TouchableOpacity>
+          </View>
+        </BottomSheetView>
+      </BottomSheetModal>
     </SafeAreaView>
   );
 }

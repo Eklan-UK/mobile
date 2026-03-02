@@ -1,6 +1,8 @@
 import { Text, TextProps } from 'react-native';
 import { Fonts } from '@/constants/fonts';
 
+import tw from '@/lib/tw';
+
 interface BoldTextProps extends TextProps {
   weight?: 'regular' | 'medium' | 'semibold' | 'bold' | 'extrabold' | 'black' | 'light' | 'extralight';
 }
@@ -14,7 +16,7 @@ export function BoldText({
   
   return (
     <Text 
-      style={[{ fontFamily }, style]} 
+      style={[tw`text-neutral-900 dark:text-white`, { fontFamily }, style]} 
       {...props} 
     />
   );

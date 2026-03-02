@@ -17,7 +17,7 @@ function BackIcon() {
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
         d="M15 18l-6-6 6-6"
-        stroke="#171717"
+        stroke={tw.prefixMatch('dark') ? "#F9FAFB" : "#171717"}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -126,16 +126,16 @@ export default function VerifyCodeScreen() {
           style={tw`flex-row items-center mb-6`}
         >
           <BackIcon />
-          <AppText style={tw`text-base text-neutral-900 ml-1`}>Back</AppText>
+          <AppText style={tw`text-base text-neutral-900 dark:text-white ml-1`}>Back</AppText>
         </TouchableOpacity>
 
         {/* Title */}
-        <AppText style={tw`text-2xl font-bold text-neutral-900 mb-2`}>
+        <AppText style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-2`}>
           Enter verification code
         </AppText>
-        <AppText style={tw`text-base text-neutral-500 mb-8`}>
+        <AppText style={tw`text-base text-neutral-500 dark:text-neutral-400 mb-8`}>
           We sent a code to{" "}
-          <AppText style={tw`text-neutral-900 font-medium`}>{email}</AppText>
+          <AppText style={tw`text-neutral-900 dark:text-neutral-200 font-medium`}>{email}</AppText>
         </AppText>
 
         {/* Code Input */}
@@ -144,7 +144,7 @@ export default function VerifyCodeScreen() {
             <TextInput
               key={index}
               ref={(ref: any) => (inputRefs.current[index] = ref)}
-              style={tw`w-12 h-14 border ${error ? "border-error" : digit ? "border-primary-500" : "border-neutral-200"} rounded-2xl text-center text-xl font-semibold text-neutral-900 bg-white`}
+              style={tw`w-12 h-14 border ${error ? "border-error" : digit ? "border-primary-500" : "border-neutral-200 dark:border-neutral-700"} rounded-2xl text-center text-xl font-semibold text-neutral-900 dark:text-white bg-white dark:bg-neutral-800`}
               maxLength={1}
               keyboardType="number-pad"
               value={digit}
@@ -159,7 +159,7 @@ export default function VerifyCodeScreen() {
 
         {/* Resend */}
         <View style={tw`flex-row items-center justify-center mb-10`}>
-          <AppText style={tw`text-neutral-500`}>Didn't receive the code? </AppText>
+          <AppText style={tw`text-neutral-500 dark:text-neutral-400`}>Didn't receive the code? </AppText>
           <TouchableOpacity onPress={handleResend} disabled={countdown > 0}>
             <AppText
               style={tw`${countdown > 0 ? "text-neutral-400" : "text-primary-500"} font-medium`}

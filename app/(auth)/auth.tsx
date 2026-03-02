@@ -34,7 +34,7 @@ export default function AccessGatewayScreen() {
   const forgotPasswordSheetRef = useRef<BottomSheetModal>(null);
   const verifyEmailOtpSheetRef = useRef<BottomSheetModal>(null);
 
-  const { signInWithGoogle, signInWithApple, register, isLoading } = useAuth();
+  const { signInWithGoogle, signInWithApple, register, isLoading, user, isAuthenticated } = useAuth();
   const [oauthLoading, setOauthLoading] = useState(false);
   const [signupEmail, setSignupEmail] = useState("");
   const [showLoaderOverlay, setShowLoaderOverlay] = useState(false);
@@ -169,6 +169,46 @@ export default function AccessGatewayScreen() {
       setOauthLoading(false);
     }
   };
+
+  // If we are in "verify-email" mode (e.g. user reopened app while unverified),
+  // automatically show the verify-email OTP sheet and send a fresh OTP.
+  useEffect(() => {
+    if (mode !== 'verify-email') return;
+
+    // Require an authenticated user with an email
+    if (!isAuthenticated || !user?.email) {
+      // Fallback: go back to default auth entry
+      router.replace("/(auth)/auth");
+      return;
+    }
+
+    setSignupEmail(user.email);
+
+    const openVerifyFlow = async () => {
+      try {
+        logger.log("📧 Sending verification OTP (re-entry into verify-email flow)...");
+        await apiClient.post("/api/v1/auth/email/send-verification-otp");
+        logger.log("✅ Verification OTP sent (verify-email mode)");
+      } catch (err: any) {
+        logger.error("❌ Failed to send verification OTP in verify-email mode:", {
+          message: err?.message,
+          response: err?.response?.data,
+        });
+        Alert.alert(
+          "Verification Error",
+          err?.message || "Failed to send verification email. Please try again."
+        );
+        return;
+      }
+
+      // Open the OTP sheet after a small delay for smoother UX
+      setTimeout(() => {
+        verifyEmailOtpSheetRef.current?.present();
+      }, 300);
+    };
+
+    openVerifyFlow();
+  }, [mode, isAuthenticated, user]);
 
   // Handle back button to close bottom sheets
   useEffect(() => {
@@ -320,12 +360,12 @@ export default function AccessGatewayScreen() {
         <View
           style={[
             StyleSheet.absoluteFillObject,
-            tw`bg-white items-center justify-center`,
+            tw`bg-white dark:bg-neutral-900 flex items-center justify-center`,
             { zIndex: 999 },
           ]}
         >
           <Loader size={120} />
-          <AppText style={tw`text-neutral-500 mt-4`}>Just a moment…</AppText>
+          <AppText style={tw`text-neutral-500 dark:text-neutral-400 mt-4`}>Just a moment…</AppText>
         </View>
       )}
     </ImageBackground>

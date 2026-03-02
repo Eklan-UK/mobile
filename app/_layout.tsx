@@ -1,5 +1,7 @@
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import { useColorScheme, Appearance } from "react-native";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -10,15 +12,47 @@ import { queryClient } from "@/lib/query-client";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { AlertProvider } from "@/contexts/AlertContext";
+import { NotificationToastProvider } from "@/contexts/NotificationToastContext";
 import { BackgroundPrefetcher } from "@/components/BackgroundPrefetcher";
 import * as Updates from "expo-updates";
+import * as SystemUI from "expo-system-ui";
+import tw from "@/lib/tw";
+import { useDeviceContext, useAppColorScheme } from "twrnc";
+import { useThemeStore } from "@/store/theme-store";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  // Initialize push notifications
-  usePushNotifications();
+  // Load selected theme color from store
+  const { theme } = useThemeStore();
+  const systemColorScheme = useColorScheme();
+
+  // Attach twrnc to the React Native device context so `tw` works everywhere
+  useDeviceContext(tw);
+
+  // Control twrnc's color scheme from our theme store (or system when set to "system")
+  const [twColorScheme, , setTwColorScheme] = useAppColorScheme(tw);
+
+  useEffect(() => {
+    const effectiveTheme =
+      theme === "system" ? (systemColorScheme || "light") : theme;
+
+    // Only update twrnc if the desired scheme actually changed to avoid render loops
+    if (twColorScheme !== effectiveTheme) {
+      setTwColorScheme(effectiveTheme as "light" | "dark");
+    }
+
+    // Sync React Native's native Appearance module with our Zustand store
+    Appearance.setColorScheme(theme === "system" ? null : theme);
+
+    // Set the system UI background color to match
+    SystemUI.setBackgroundColorAsync(
+      effectiveTheme === "dark" ? "#171717" : "#ffffff"
+    );
+  }, [theme, systemColorScheme, twColorScheme, setTwColorScheme]);
+
+  const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";
 
   const [fontsLoaded, fontError] = useFonts({
     // Nunito - for headers
@@ -89,29 +123,37 @@ export default function RootLayout() {
         <AlertProvider>
           <BottomSheetModalProvider>
             <SafeAreaProvider>
+              <NotificationToastProvider>
               <BackgroundPrefetcher />
-              <StatusBar style="dark" backgroundColor="#2E7D32" />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" options={{ headerShown: false }} />
-                {/* First-install onboarding / splash */}
-                <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-                {/* Auth flow */}
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                {/* Post-auth profile setup */}
-                <Stack.Screen name="(profile-setup)" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="practice" options={{ headerShown: false }} />
-                <Stack.Screen name="settings" options={{ headerShown: false }} />
-                <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
-                <Stack.Screen name="lesson" options={{ headerShown: false }} />
-                <Stack.Screen
-                  name="notifications-permission"
-                  options={{
-                    presentation: "modal",
-                    animation: "slide_from_bottom",
-                  }}
-                />
-              </Stack>
+              <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+                <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0d1f0e' : '#2E7D32'} />
+                <Stack screenOptions={{ headerShown: false, contentStyle: tw`bg-white dark:bg-neutral-900` }}>
+                  <Stack.Screen name="index" options={{ headerShown: false }} />
+                  {/* First-install onboarding / splash */}
+                  <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
+                  {/* Auth flow */}
+                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                  {/* Post-auth profile setup */}
+                  <Stack.Screen name="(profile-setup)" options={{ headerShown: false }} />
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="practice" options={{ headerShown: false }} />
+                  <Stack.Screen name="settings" options={{ headerShown: false }} />
+                  <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
+                  <Stack.Screen name="lesson" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="notifications"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="notifications-permission"
+                    options={{
+                      presentation: "modal",
+                      animation: "slide_from_bottom",
+                    }}
+                  />
+                </Stack>
+              </ThemeProvider>
+              </NotificationToastProvider>
             </SafeAreaProvider>
           </BottomSheetModalProvider>
         </AlertProvider>
