@@ -5,9 +5,9 @@ import tw from "@/lib/tw";
 import { AppText, Button } from "@/components/ui";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useThemeStore } from "@/store/theme-store";
+import { useUpdatePreferences } from "@/hooks/useSettings";
 import * as Updates from "expo-updates";
 
-// Helper hook to get the effective theme (reactive)
 function useEffectiveTheme() {
   const { theme } = useThemeStore();
   const systemColorScheme = useColorScheme();
@@ -79,6 +79,8 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
     const [localTheme, setLocalTheme] = useState(theme);
     const [loading, setLoading] = useState(false);
 
+    const prefMutation = useUpdatePreferences();
+
     useEffect(() => {
       setLocalTheme(theme);
     }, [theme]);
@@ -90,37 +92,47 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
       []
     );
 
-    const handleSave = async () => {
-      const previousTheme = theme;
-      setTheme(localTheme);
-      handleClose();
-      
-      // Only reload if theme actually changed
-      if (previousTheme !== localTheme) {
-        setLoading(true);
-        // Small delay to ensure state is saved to AsyncStorage
-        setTimeout(async () => {
-          try {
-            // Reload the app to apply theme changes everywhere
-            await Updates.reloadAsync();
-          } catch (error) {
-            // If reload fails (e.g., in dev mode), just continue
-            // The theme will still be saved and apply on next app start
-            console.log('Theme saved. App will reload on next start.');
-            setLoading(false);
-          }
-        }, 200);
-      }
-    };
-
-    const handleOptionSelect = (selectedTheme: typeof theme) => {
-      setLocalTheme(selectedTheme);
-    };
-
     const handleClose = () => {
       if (ref && "current" in ref) {
         ref.current?.dismiss();
       }
+    };
+
+    const handleSave = async () => {
+      const previousTheme = theme;
+      if (previousTheme === localTheme) {
+        handleClose();
+        return;
+      }
+
+      // §13: apply theme synchronously first (instant local feedback)
+      setTheme(localTheme);
+      handleClose();
+
+      // Persist to server; rollback is handled inside useUpdatePreferences on error
+      prefMutation.mutate(
+        { theme: localTheme },
+        {
+          onError: () => {
+            // Roll back local theme store on server failure
+            setTheme(previousTheme);
+          },
+        }
+      );
+
+      // Reload the app after a short delay so NativeWind picks up the new class
+      setLoading(true);
+      setTimeout(async () => {
+        try {
+          await Updates.reloadAsync();
+        } catch {
+          setLoading(false);
+        }
+      }, 200);
+    };
+
+    const handleOptionSelect = (selectedTheme: typeof theme) => {
+      setLocalTheme(selectedTheme);
     };
 
     return (
@@ -142,7 +154,6 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
             </TouchableOpacity>
           </View>
 
-          {/* Subtitle */}
           <AppText style={tw`text-[15px] font-medium text-neutral-900 dark:text-white mb-1`}>Theme colour</AppText>
           <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400 mb-6 leading-5`}>
             Turn on dark mode or let eklan visually match your device settings
@@ -169,11 +180,11 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
                     {option.label}
                   </AppText>
                 </TouchableOpacity>
-              )
+              );
             })}
           </View>
 
-          {/* Save Action */}
+          {/* Save */}
           <View style={tw`mt-6`}>
             <Button onPress={handleSave} loading={loading}>
               Save settings

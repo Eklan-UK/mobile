@@ -103,14 +103,10 @@ apiClient.interceptors.request.use(
       });
     }
     
-    // Set Origin header for Better Auth validation (production only)
-    // React Native doesn't automatically send Origin header like web browsers do
-    // Better Auth requires this header in production to validate trusted origins
-    // In development, Better Auth is more lenient and doesn't require this
-    if (!isDev && config.headers && !config.headers['Origin']) {
-      // Use the API base URL as origin (should be in Better Auth trusted origins)
-      // Fallback to mobile app scheme if API URL is not available
-      // The mobile scheme 'elkan://' is also in trusted origins as a backup
+    // Set Origin header for Better Auth / CORS-style validation
+    // React Native doesn't send Origin like browsers; many APIs reject requests without it
+    if (config.headers && !config.headers['Origin']) {
+      // Must match backend trusted origins (e.g. Better Auth trustedOrigins)
       const origin = API_BASE_URL || 'elkan://';
       config.headers['Origin'] = origin;
     }

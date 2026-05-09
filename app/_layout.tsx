@@ -19,6 +19,7 @@ import * as SystemUI from "expo-system-ui";
 import tw from "@/lib/tw";
 import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
+import { LocalePreferenceProbe } from "@/components/LocalePreferenceProbe";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -119,6 +120,7 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <LocalePreferenceProbe />
       <GestureHandlerRootView style={{ flex: 1 }}>
         <AlertProvider>
           <BottomSheetModalProvider>

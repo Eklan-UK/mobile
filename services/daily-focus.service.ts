@@ -82,28 +82,37 @@ export interface DailyFocusCompleteResponse {
  */
 export const dailyFocusService = {
   /**
-   * Get today's daily focus
+   * Get today's daily focus.
+   * Returns null when the backend confirms there is genuinely no focus for today.
+   * Throws for network errors and 5xx so React Query can retry and surface an error state.
    */
   async getToday(): Promise<DailyFocus | null> {
-    try {
-      logger.log('📤 Fetching today\'s daily focus');
-      const response = await apiClient.get('/api/v1/daily-focus/today');
-      
-      if (response.data?.code === 'NotFound' || !response.data?.dailyFocus) {
-        logger.log('✅ No daily focus found for today');
-        return null;
-      }
+    logger.log("📤 Fetching today's daily focus");
 
-      logger.log('✅ Today\'s daily focus fetched successfully');
-      return response.data.dailyFocus;
+    let response;
+    try {
+      response = await apiClient.get('/api/v1/daily-focus/today');
     } catch (error: any) {
-      logger.error('❌ Error fetching today\'s daily focus:', error);
-      // Return null instead of throwing - it's okay if there's no focus today
-      if (error.response?.status === 404 || error.response?.data?.code === 'NotFound') {
+      // 404 with NotFound code → no focus today, not an error
+      if (
+        error.response?.status === 404 ||
+        error.response?.data?.code === 'NotFound'
+      ) {
+        logger.log('✅ No daily focus found for today (404)');
         return null;
       }
-      throw new Error(error.response?.data?.message || error.message || 'Failed to fetch today\'s focus');
+      // Network error, 401, 5xx, etc. → let React Query handle retry/error state
+      logger.error('❌ Error fetching today\'s daily focus:', error.message);
+      throw error;
     }
+
+    if (response.data?.code === 'NotFound' || !response.data?.dailyFocus) {
+      logger.log('✅ No daily focus found for today');
+      return null;
+    }
+
+    logger.log('✅ Today\'s daily focus fetched successfully');
+    return response.data.dailyFocus;
   },
 
   /**

@@ -49,3 +49,17 @@ export async function getConfidenceMetrics(): Promise<ConfidenceMetrics> {
   const response = await apiClient.get('/api/v1/confidence');
   return response.data?.data?.confidence;
 }
+
+// ── Streak ─────────────────────────────────────────────────────
+
+export interface StreakData {
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate?: string;
+  weeklyActivity?: boolean[]; // 7 booleans, index 0 = Monday
+}
+
+export async function fetchUserStreak(): Promise<StreakData> {
+  const response = await apiClient.get('/api/v1/users/streak');
+  return response.data?.data ?? response.data;
+}

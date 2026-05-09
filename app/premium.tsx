@@ -5,6 +5,7 @@ import { ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import { logger } from "@/utils/logger";
+import { useUserCurrent } from "@/hooks/useSettings";
 
 // Icons
 function CloseIcon() {
@@ -78,7 +79,18 @@ function FeatureRow({
   );
 }
 
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
 export default function PremiumScreen() {
+  const { data: me } = useUserCurrent();
+  const user = me?.user;
+
+  const isPro = user?.subscriptionPlan === 'premium' || user?.isSubscribed === true;
+  const expiresAt = user?.subscriptionExpiresAt;
+
   const handleClose = () => {
     router.back();
   };
@@ -113,6 +125,30 @@ export default function PremiumScreen() {
         contentContainerStyle={tw`px-6 pt-6 pb-6`}
         showsVerticalScrollIndicator={false}
       >
+        {/* Current plan banner */}
+        {isPro ? (
+          <View style={tw`bg-green-50 dark:bg-green-900/30 rounded-2xl px-5 py-4 mb-6 flex-row items-center justify-between`}>
+            <View>
+              <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400`}>Current Plan</AppText>
+              <AppText style={tw`text-lg font-bold text-green-600 dark:text-green-400`}>Pro</AppText>
+              {expiresAt ? (
+                <AppText style={tw`text-xs text-neutral-400 dark:text-neutral-500 mt-0.5`}>
+                  Expires {formatDate(expiresAt)}
+                </AppText>
+              ) : null}
+            </View>
+            <CrownIcon />
+          </View>
+        ) : (
+          <View style={tw`bg-neutral-50 dark:bg-neutral-800 rounded-2xl px-5 py-4 mb-6`}>
+            <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400`}>Current Plan</AppText>
+            <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Free</AppText>
+            <AppText style={tw`text-xs text-neutral-400 dark:text-neutral-500 mt-1`}>
+              Upgrade to unlock premium features
+            </AppText>
+          </View>
+        )}
+
         {/* Title */}
         <View style={tw`mb-10`}>
           <AppText style={tw`text-[32px] font-bold text-neutral-900 dark:text-white leading-[40px]`}>
@@ -147,10 +183,16 @@ export default function PremiumScreen() {
 
       {/* Bottom Actions */}
       <View style={tw`px-6 pb-6 pt-4`}>
-        <Button onPress={handleStartTrial}>Try 7days for free</Button>
-        <TouchableOpacity onPress={handleSkip} style={tw`py-4 items-center mt-3`}>
-          <AppText style={tw`text-[17px] text-[#ca8a04] dark:text-yellow-500 font-bold`}>Skip</AppText>
-        </TouchableOpacity>
+        {isPro ? (
+          <Button onPress={handleClose}>Back to Settings</Button>
+        ) : (
+          <>
+            <Button onPress={handleStartTrial}>Try 7 days for free</Button>
+            <TouchableOpacity onPress={handleSkip} style={tw`py-4 items-center mt-3`}>
+              <AppText style={tw`text-[17px] text-[#ca8a04] dark:text-yellow-500 font-bold`}>Skip</AppText>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </SafeAreaView>
   );

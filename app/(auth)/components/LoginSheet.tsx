@@ -66,9 +66,19 @@ const LoginSheet = forwardRef<BottomSheetModal, LoginSheetProps>(({ onDismiss, o
         ref.current.dismiss();
       }
     } catch (err: any) {
-      // Error is already set in the store
-      Alert.alert('Login Failed', error || 'An error occurred. Please try again.');
-      logger.log(err)
+      logger.log(err);
+      const isNetworkError =
+        err?.message === 'Network Error' ||
+        err?.code === 'ERR_NETWORK' ||
+        err?.code === 'ECONNREFUSED';
+      if (isNetworkError) {
+        Alert.alert(
+          'Cannot reach server',
+          'Make sure the backend is running and your device is connected to the same network. (npm run dev in eklana-ai-frontend)'
+        );
+      } else {
+        Alert.alert('Login Failed', error || err?.message || 'An error occurred. Please try again.');
+      }
     }
   };
 
@@ -165,7 +175,11 @@ const LoginSheet = forwardRef<BottomSheetModal, LoginSheetProps>(({ onDismiss, o
         {/* Error Message */}
         {error && (
           <View style={tw`mb-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg`}>
-            <AppText style={tw`text-red-600 dark:text-red-400 text-sm`}>{error}</AppText>
+            <AppText style={tw`text-red-600 dark:text-red-400 text-sm`}>
+              {error === 'Network Error'
+                ? 'Cannot reach server — is the backend running?'
+                : error}
+            </AppText>
           </View>
         )}
 

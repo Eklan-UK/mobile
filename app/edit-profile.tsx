@@ -12,6 +12,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "@/store/auth-store";
 import { profileService } from "@/services/profile.service";
 import { BottomSheetModal, BottomSheetBackdrop, BottomSheetView } from "@gorhom/bottom-sheet";
+import { useQueryClient } from "@tanstack/react-query";
+import { USER_CURRENT_KEY } from "@/hooks/useSettings";
 
 // Icons
 function BackIcon() {
@@ -65,6 +67,7 @@ function EmailIcon() {
 
 export default function EditProfileScreen() {
   const { user: authUser, checkSession } = useAuthStore();
+  const queryClient = useQueryClient();
   
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -116,8 +119,9 @@ export default function EditProfileScreen() {
         email: email.trim(),
       });
 
-      // Refresh user data
+      // Refresh auth state and invalidate the shared React Query cache
       await checkSession();
+      queryClient.invalidateQueries({ queryKey: USER_CURRENT_KEY });
 
       Alert.alert("Success", "Profile updated successfully");
       router.back();
@@ -194,10 +198,11 @@ export default function EditProfileScreen() {
     try {
       const avatarUrl = await profileService.uploadAvatar(imageUri);
       setAvatarUri(avatarUrl);
-      
-      // Refresh user data to get updated avatar
+
+      // Refresh auth state and invalidate the shared React Query cache
       await checkSession();
-      
+      queryClient.invalidateQueries({ queryKey: USER_CURRENT_KEY });
+
       Alert.alert("Success", "Profile picture updated successfully");
     } catch (error: any) {
       logger.error("Failed to upload avatar:", error);
