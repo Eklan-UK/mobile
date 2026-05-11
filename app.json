@@ -11,9 +11,7 @@
     "updates": {
       "url": "https://u.expo.dev/74671476-d20e-46aa-88fb-6dba53dbea27"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.1.0",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.eklan.ai",
