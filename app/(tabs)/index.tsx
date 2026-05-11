@@ -19,29 +19,10 @@ import { useDrills } from "@/hooks/useDrills";
 import { Drill, DrillAssignment, DrillType, getDrillCategory } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { usePrefetch } from "@/hooks/usePrefetch";
-import apiClient from "@/lib/api";
+import { useUserStreakCount } from "@/hooks/useUserStreakCount";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const isSmallScreen = SCREEN_WIDTH < 375;
-
-/* ─── Streak (fetched from backend) ─────────────────────── */
-
-async function fetchStreak(): Promise<number> {
-  try {
-    const res = await apiClient.get("/api/v1/users/current");
-    const user = res.data?.data?.user ?? res.data?.user ?? res.data;
-    const fromCount = user?.streakCount;
-    if (typeof fromCount === "number" && !Number.isNaN(fromCount)) return fromCount;
-    const streak = user?.streak;
-    if (typeof streak === "number" && !Number.isNaN(streak)) return streak;
-    if (streak && typeof streak === "object" && typeof streak.currentStreak === "number") {
-      return streak.currentStreak;
-    }
-    return 0;
-  } catch {
-    return 0;
-  }
-}
 
 /* ─── Category metadata ─────────────────────────────────── */
 
@@ -332,12 +313,8 @@ export default function HomeScreen() {
 
   const { prefetchDrill } = usePrefetch();
 
-  // Streak count from /users/current (separate cache key from Profile's /users/streak object query)
-  const { data: streakCount = 0 } = useQuery({
-    queryKey: ["user-streak-count"],
-    queryFn: fetchStreak,
-    staleTime: 5 * 60 * 1000,
-  });
+  // Streak count — shared hook with My Plan (GET /users/current)
+  const { data: streakCount = 0 } = useUserStreakCount();
 
   // Metrics
   const { data: pronunciation, isLoading: pronunciationLoading, weeklyChange: weeklyPronunciation } = usePronunciation();

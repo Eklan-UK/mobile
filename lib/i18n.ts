@@ -31,7 +31,7 @@ export const LANGUAGE_NAME_TO_LOCALE: Record<string, string> = {
 
 const translations = {
   en: {
-    tabs: { home: 'Home', practice: 'Practice', plan: 'Plan', profile: 'Profile' },
+    tabs: { home: 'Home', practice: 'Practice', plan: 'My Plan', profile: 'Profile' },
     common: {
       save: 'Save', cancel: 'Cancel', continue: 'Continue', back: 'Back',
       loading: 'Loading…', error: 'Error', retry: 'Retry', done: 'Done',
@@ -73,7 +73,7 @@ const translations = {
   },
 
   ko: {
-    tabs: { home: '홈', practice: '연습', plan: '플랜', profile: '프로필' },
+    tabs: { home: '홈', practice: '연습', plan: '내 플랜', profile: '프로필' },
     common: {
       save: '저장', cancel: '취소', continue: '계속', back: '뒤로',
       loading: '로딩 중…', error: '오류', retry: '다시 시도', done: '완료',
@@ -115,7 +115,7 @@ const translations = {
   },
 
   zh: {
-    tabs: { home: '首页', practice: '练习', plan: '计划', profile: '个人' },
+    tabs: { home: '首页', practice: '练习', plan: '我的计划', profile: '个人' },
     common: {
       save: '保存', cancel: '取消', continue: '继续', back: '返回',
       loading: '加载中…', error: '错误', retry: '重试', done: '完成',
@@ -157,7 +157,7 @@ const translations = {
   },
 
   ja: {
-    tabs: { home: 'ホーム', practice: '練習', plan: 'プラン', profile: 'プロフィール' },
+    tabs: { home: 'ホーム', practice: '練習', plan: 'マイプラン', profile: 'プロフィール' },
     common: {
       save: '保存', cancel: 'キャンセル', continue: '続ける', back: '戻る',
       loading: '読み込み中…', error: 'エラー', retry: '再試行', done: '完了',
@@ -199,7 +199,7 @@ const translations = {
   },
 
   es: {
-    tabs: { home: 'Inicio', practice: 'Práctica', plan: 'Plan', profile: 'Perfil' },
+    tabs: { home: 'Inicio', practice: 'Práctica', plan: 'Mi Plan', profile: 'Perfil' },
     common: {
       save: 'Guardar', cancel: 'Cancelar', continue: 'Continuar', back: 'Atrás',
       loading: 'Cargando…', error: 'Error', retry: 'Reintentar', done: 'Listo',
@@ -241,7 +241,7 @@ const translations = {
   },
 
   fr: {
-    tabs: { home: 'Accueil', practice: 'Pratique', plan: 'Plan', profile: 'Profil' },
+    tabs: { home: 'Accueil', practice: 'Pratique', plan: 'Mon Plan', profile: 'Profil' },
     common: {
       save: 'Enregistrer', cancel: 'Annuler', continue: 'Continuer', back: 'Retour',
       loading: 'Chargement…', error: 'Erreur', retry: 'Réessayer', done: 'Terminer',

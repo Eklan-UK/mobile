@@ -52,6 +52,9 @@ export async function getConfidenceMetrics(): Promise<ConfidenceMetrics> {
 
 // ── Streak ─────────────────────────────────────────────────────
 
+/** React Query key — shared by `useStreak` (profile / streak screen) and `useUserStreakCount` (home / My Plan pill). */
+export const userStreakQueryKey = ['user-streak'] as const;
+
 export interface StreakData {
   currentStreak: number;
   longestStreak: number;

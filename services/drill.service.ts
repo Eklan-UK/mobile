@@ -37,7 +37,7 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
     pagination: data.pagination || {
       total: data.drills?.length || 0,
       page: params?.page || 1,
-      limit: params?.limit || 50,
+      limit: params?.limit ?? data.drills?.length ?? 0,
     },
   };
 

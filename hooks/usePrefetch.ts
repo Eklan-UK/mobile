@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { getDrillById, getMyDrills } from '@/services/drill.service';
 import { futureSelfService } from '@/services/future-self.service';
-import { drillKeys } from './useDrills';
+import { drillKeys, MY_DRILLS_FULL_LIST_LIMIT } from './useDrills';
 
 /**
  * Hook for prefetching data in the background
@@ -35,8 +35,8 @@ export function usePrefetch() {
   const prefetchDrills = useCallback(
     (status?: 'pending' | 'in_progress' | 'completed') => {
       queryClient.prefetchQuery({
-        queryKey: drillKeys.list(status),
-        queryFn: () => getMyDrills({ status, limit: 50 }),
+        queryKey: drillKeys.list(status, MY_DRILLS_FULL_LIST_LIMIT),
+        queryFn: () => getMyDrills({ status, limit: MY_DRILLS_FULL_LIST_LIMIT }),
         staleTime: 1000 * 60 * 5, // 5 minutes
       });
     },

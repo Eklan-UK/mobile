@@ -189,11 +189,17 @@ export interface DrillAttempt {
   completedAt?: string;
   timeSpent?: number;
   answers?: any[];
-  
+  /** Tutor review state on the attempt (GET /users/current my-drills — see MOBILE_MY_PLAN.md). */
+  reviewStatus?: 'pending' | 'reviewed';
+
   // Results with review status
   grammarResults?: { reviewStatus?: 'pending' | 'reviewed' };
   sentenceResults?: { reviewStatus?: 'pending' | 'reviewed' };
   summaryResults?: { reviewStatus?: 'pending' | 'reviewed' };
+  sentenceWritingResults?: { reviewStatus?: 'pending' | 'reviewed' };
+  definitionResults?: { reviewStatus?: 'pending' | 'reviewed' };
+  listeningResults?: { reviewStatus?: 'pending' | 'reviewed' };
+  fillBlankResults?: { reviewStatus?: 'pending' | 'reviewed' };
   roleplayResults?: { 
     sceneScores?: Array<{
       sceneName: string;

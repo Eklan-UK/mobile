@@ -2,13 +2,17 @@ import { completeDrill, getDrillById, getMyDrills } from '@/services/drill.servi
 import { DrillStatus } from '@/types/drill.types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+/** Full-list page size for `my-drills` (My Plan, warm-up prefetch). MOBILE_MY_PLAN.md §4 — high `limit` for main listing. */
+export const MY_DRILLS_FULL_LIST_LIMIT = 200;
+
 /**
  * Query keys for drill-related queries
  */
 export const drillKeys = {
   all: ['drills'] as const,
   lists: () => [...drillKeys.all, 'list'] as const,
-  list: (status?: DrillStatus) => [...drillKeys.lists(), { status }] as const,
+  list: (status?: DrillStatus, limit?: number) =>
+    [...drillKeys.lists(), { status, limit }] as const,
   details: () => [...drillKeys.all, 'detail'] as const,
   detail: (id: string) => [...drillKeys.details(), id] as const,
 };
@@ -16,11 +20,11 @@ export const drillKeys = {
 /**
  * Hook to fetch user's assigned drills
  * @param status - Filter by drill status (optional)
- * @param limit - Number of drills to fetch (default: 50)
+ * @param limit - Max drills to fetch; omit or pass `undefined` to let the API apply its default (no `limit` query param)
  */
-export function useDrills(status?: DrillStatus, limit: number = 50) {
+export function useDrills(status?: DrillStatus, limit?: number) {
   return useQuery({
-    queryKey: drillKeys.list(status),
+    queryKey: drillKeys.list(status, limit),
     queryFn: () => getMyDrills({ status, limit }),
     staleTime: 1000 * 60 * 5, // 5 minutes
     // Enable background refetching - will refetch when data becomes stale

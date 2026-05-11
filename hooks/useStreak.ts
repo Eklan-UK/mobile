@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchUserStreak, StreakData } from '@/services/metrics.service';
+import { fetchUserStreak, StreakData, userStreakQueryKey } from '@/services/metrics.service';
 import { useMemo } from 'react';
 
 /**
@@ -35,7 +35,7 @@ function deriveWeeklyDisplay(data: StreakData): boolean[] {
 
 export function useStreak() {
   const query = useQuery<StreakData>({
-    queryKey: ['user-streak'],
+    queryKey: userStreakQueryKey,
     queryFn: fetchUserStreak,
     staleTime: 60_000, // 1 minute
     retry: false, // endpoint may not exist yet — fail silently, UI falls back to zeros

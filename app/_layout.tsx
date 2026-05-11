@@ -19,7 +19,6 @@ import * as SystemUI from "expo-system-ui";
 import tw from "@/lib/tw";
 import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
-import { LocalePreferenceProbe } from "@/components/LocalePreferenceProbe";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 // Keep the splash screen visible while we fetch resources
@@ -121,7 +120,6 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <LocalePreferenceProbe />
       <LanguageProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <AlertProvider>
@@ -141,6 +139,7 @@ export default function RootLayout() {
                   <Stack.Screen name="(profile-setup)" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="practice" options={{ headerShown: false }} />
+                  <Stack.Screen name="sessions" options={{ headerShown: false }} />
                   <Stack.Screen name="settings" options={{ headerShown: false }} />
                   <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
                   <Stack.Screen name="lesson" options={{ headerShown: false }} />
