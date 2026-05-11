@@ -1,17 +1,17 @@
-import DrillCard from "@/components/practice/DrillCard";
 import { DrillCardSkeletonList } from "@/components/drills/DrillCardSkeleton";
+import { MyPlanHeader } from "@/components/plan/MyPlanHeader";
+import DrillCard from "@/components/practice/DrillCard";
+import { NextSessionCard } from "@/components/sessions/NextSessionCard";
 import { AppText, BoldText } from "@/components/ui";
+import { MY_DRILLS_FULL_LIST_LIMIT, useDrills } from "@/hooks/useDrills";
+import { useLearnerClasses } from "@/hooks/useLearnerClasses";
 import tw from "@/lib/tw";
 import { DrillAssignment } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
-import { useState, useMemo } from "react";
-import { ScrollView, TouchableOpacity, View, RefreshControl } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useDrills, MY_DRILLS_FULL_LIST_LIMIT } from "@/hooks/useDrills";
-import { NextSessionCard } from "@/components/sessions/NextSessionCard";
-import { useLearnerClasses } from "@/hooks/useLearnerClasses";
-import { MyPlanHeader } from "@/components/plan/MyPlanHeader";
 import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
+import { useMemo, useState } from "react";
+import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 // Types
 type TabType = "ongoing" | "reviewed" | "completed";
