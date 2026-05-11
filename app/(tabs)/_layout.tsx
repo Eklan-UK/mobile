@@ -12,6 +12,7 @@ import ProfileActiveIcon from "@/assets/icons/user-fill.svg";
 import PracticeActiveIcon from "@/assets/icons/practice-grey.svg";
 import TargetArrowActiveIcon from "@/assets/icons/target-arrow-green.svg";
 import { useThemeStore } from "@/store/theme-store";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 
 function TabIcon({
@@ -51,6 +52,7 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { theme } = useThemeStore();
   const systemColorScheme = useColorScheme();
+  const { t } = useTranslation();
   
   // Calculate effective theme (reactive - will cause re-render when theme changes)
   const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";
@@ -60,9 +62,9 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: isDark ? "#171717" : "#ffffff", // neutral-900
+          backgroundColor: isDark ? "#171717" : "#ffffff",
           borderTopWidth: 1,
-          borderTopColor: isDark ? "#262626" : "#F3F4F6", // neutral-800
+          borderTopColor: isDark ? "#262626" : "#F3F4F6",
           height: 50 + insets.bottom,
           paddingBottom: insets.bottom,
           padding: 14, 
@@ -73,12 +75,12 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: t('tabs.home'),
           tabBarIcon: ({ focused }) => (
             <TabIcon 
               icon={HomeIcon} 
               focusedIcon={HomeFillIcon} 
-              label="Home" 
+              label={t('tabs.home')} 
               focused={focused} 
             />
           ),
@@ -87,27 +89,27 @@ export default function TabLayout() {
       <Tabs.Screen
         name="practice"
         options={{
-          title: "",
+          title: t('tabs.practice'),
           tabBarIcon: ({ focused }) => (
-            <TabIcon focusedIcon={PracticeIcon} icon={PracticeActiveIcon} label="Practice" focused={focused} />
+            <TabIcon focusedIcon={PracticeIcon} icon={PracticeActiveIcon} label={t('tabs.practice')} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
         name="plan"
         options={{
-            title: "My Plan",
+          title: t('tabs.plan'),
           tabBarIcon: ({ focused }) => (
-            <TabIcon icon={TargetArrowIcon} focusedIcon={TargetArrowActiveIcon} label="My Plan" focused={focused} />
+            <TabIcon icon={TargetArrowIcon} focusedIcon={TargetArrowActiveIcon} label={t('tabs.plan')} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-            title: "Profile",
+          title: t('tabs.profile'),
           tabBarIcon: ({ focused }) => (
-            <TabIcon icon={ProfileIcon} focusedIcon={ProfileActiveIcon} label="Profile" focused={focused} />
+            <TabIcon icon={ProfileIcon} focusedIcon={ProfileActiveIcon} label={t('tabs.profile')} focused={focused} />
           ),
         }}
       />

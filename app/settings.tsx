@@ -1,7 +1,7 @@
 import { AppText, BoldText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { ActivityIndicator, Image, ScrollView, TouchableOpacity, View, useColorScheme } from "react-native";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { ThemeSheet } from "@/components/settings/ThemeSheet";
@@ -13,6 +13,7 @@ import { useThemeStore } from "@/store/theme-store";
 import { useUserCurrent, useResendVerification } from "@/hooks/useSettings";
 import type { UserProfile } from "@/types/settings";
 import { LEARNING_GOAL_ITEMS } from "@/constants/settings-options";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 // ─── Helper hook ───────────────────────────────────────────────────────────────
 
@@ -82,6 +83,8 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
+const VALUE_COLOR = "#6366f1";
+
 function SettingsItem({
   label,
   value,
@@ -102,12 +105,12 @@ function SettingsItem({
         <AppText style={tw`text-base text-neutral-900 dark:text-white`}>{label}</AppText>
         <View style={tw`flex-row items-center gap-2`}>
           {value ? (
-            <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400`}>{value}</AppText>
+            <AppText style={[tw`text-sm`, { color: VALUE_COLOR }]}>{value}</AppText>
           ) : null}
           <ChevronRightIcon />
         </View>
       </TouchableOpacity>
-      {showDivider && <View style={tw`h-px bg-neutral-200 dark:bg-neutral-800`} />}
+      {showDivider && <View style={tw`h-px bg-neutral-100 dark:bg-neutral-800`} />}
     </>
   );
 }
@@ -131,29 +134,13 @@ export default function SettingsScreen() {
   const { user: authUser, logout } = useAuth();
   const themeSheetRef = useRef<BottomSheetModal>(null);
   const { theme } = useThemeStore();
+  const { t } = useTranslation();
 
   const { data: me, isLoading: loadingUser } = useUserCurrent();
   const resendMutation = useResendVerification();
 
   const user = me?.user ?? authUser;
   const profile = me?.profile;
-
-  // #region agent log
-  useEffect(() => {
-    fetch("http://127.0.0.1:7624/ingest/74037ddc-a470-40c1-9b13-02763f9ac390", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "83f2a9" },
-      body: JSON.stringify({
-        sessionId: "83f2a9",
-        location: "settings.tsx:profile.language",
-        message: "Settings hub profile.language",
-        data: { profileLanguage: profile?.language ?? null },
-        timestamp: Date.now(),
-        hypothesisId: "H3_H4",
-      }),
-    }).catch(() => {});
-  }, [profile?.language]);
-  // #endregion
 
   const displayName = user
     ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'User'
@@ -212,7 +199,7 @@ export default function SettingsScreen() {
         contentContainerStyle={tw`px-6 pb-6`}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile header */}
+        {/* ── Profile header ───────────────────────────────────────────── */}
         <TouchableOpacity
           style={tw`flex-row items-center gap-4 py-4`}
           onPress={() => router.push("/edit-profile")}
@@ -228,128 +215,103 @@ export default function SettingsScreen() {
           </View>
           <View style={tw`flex-1`}>
             <BoldText style={tw`text-lg text-neutral-900 dark:text-white`}>{displayName}</BoldText>
-            <AppText style={tw`text-sm text-primary-500 dark:text-primary-400 mt-0.5`}>Edit profile</AppText>
+            <AppText style={tw`text-sm text-primary-500 dark:text-primary-400 mt-0.5`}>{t('settings.editProfile')}</AppText>
           </View>
         </TouchableOpacity>
 
-        {/* ── Account section ──────────────────────────────────────────── */}
-        <SectionHeader title="Account" />
-        <View style={tw`bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl px-4`}>
-          {/* Email with verification status */}
-          <View style={tw`flex-row items-center justify-between py-4 border-b border-neutral-200 dark:border-neutral-800`}>
-            <AppText style={tw`text-base text-neutral-900 dark:text-white`}>Email</AppText>
-            <View style={tw`flex-row items-center gap-2 flex-shrink`}>
-              <AppText
-                numberOfLines={1}
-                style={tw`text-sm text-neutral-500 dark:text-neutral-400 max-w-[180px]`}
-              >
-                {email}
-              </AppText>
-              {isEmailVerified ? <VerifiedIcon /> : <UnverifiedIcon />}
-            </View>
+        <View style={tw`h-px bg-neutral-100 dark:bg-neutral-800`} />
+
+        {/* ── SECURITY section ─────────────────────────────────────────── */}
+        <SectionHeader title="Security" />
+
+        {/* Email Verification */}
+        <TouchableOpacity
+          onPress={!isEmailVerified ? handleResendVerification : undefined}
+          disabled={resendMutation.isPending}
+          style={tw`flex-row items-center justify-between py-4`}
+          activeOpacity={isEmailVerified ? 1 : 0.6}
+        >
+          <View>
+            <AppText style={tw`text-base text-neutral-900 dark:text-white`}>Email Verification</AppText>
+            <AppText style={[tw`text-sm mt-0.5`, { color: isEmailVerified ? "#22c55e" : "#f59e0b" }]}>
+              {resendMutation.isPending
+                ? "Sending…"
+                : isEmailVerified
+                  ? "Verified"
+                  : "Tap to resend verification"}
+            </AppText>
           </View>
+          {!isEmailVerified && <ChevronRightIcon />}
+        </TouchableOpacity>
+        <View style={tw`h-px bg-neutral-100 dark:bg-neutral-800`} />
 
-          {/* Resend verification (only when not verified) */}
-          {!isEmailVerified && (
-            <TouchableOpacity
-              onPress={handleResendVerification}
-              disabled={resendMutation.isPending}
-              style={tw`py-4 border-b border-neutral-200 dark:border-neutral-800`}
-            >
-              <AppText style={tw`text-base text-amber-600 dark:text-amber-400`}>
-                {resendMutation.isPending ? "Sending…" : "Resend verification email"}
-              </AppText>
-            </TouchableOpacity>
-          )}
+        {/* Change Password */}
+        <SettingsItem
+          label="Change Password"
+          onPress={() => router.push("/change-password")}
+        />
 
-          {/* Change password */}
-          <TouchableOpacity
-            onPress={() => router.push("/change-password")}
-            style={tw`flex-row items-center justify-between py-4`}
-          >
-            <AppText style={tw`text-base text-neutral-900 dark:text-white`}>Change Password</AppText>
-            <ChevronRightIcon />
-          </TouchableOpacity>
-        </View>
+        {/* ── PREFERENCES section ──────────────────────────────────────── */}
+        <SectionHeader title={t('settings.preferences')} />
 
-        {/* ── Preferences section ──────────────────────────────────────── */}
-        <SectionHeader title="Preferences" />
-        <View style={tw`bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl px-4`}>
-          <SettingsItem
-            label="Nationality"
-            value={profile?.nationality ?? undefined}
-            onPress={() => router.push("/nationality")}
-          />
-          <SettingsItem
-            label="App language"
-            value={profile?.language ?? undefined}
-            onPress={() => router.push("/app-language")}
-          />
-          <SettingsItem
-            label="Learning goals"
-            value={goalLabel(profile)}
-            onPress={() => router.push("/learning-goals")}
-          />
-          <SettingsItem
-            label="Notifications"
-            onPress={() => router.push("/notifications-settings")}
-          />
-          <SettingsItem
-            label="Lesson"
-            onPress={() => router.push("/lesson-settings")}
-          />
-          <SettingsItem
-            label="Theme"
-            value={theme.charAt(0).toUpperCase() + theme.slice(1)}
-            onPress={() => themeSheetRef.current?.present()}
-            showDivider={false}
-          />
-        </View>
+        <SettingsItem
+          label={t('settings.nationality')}
+          value={profile?.nationality ?? undefined}
+          onPress={() => router.push("/nationality")}
+        />
+        <SettingsItem
+          label={t('settings.appLanguage')}
+          value={profile?.language ?? undefined}
+          onPress={() => router.push("/app-language")}
+        />
+        <SettingsItem
+          label={t('settings.learningGoals')}
+          value={goalLabel(profile)}
+          onPress={() => router.push("/learning-goals")}
+        />
+        <SettingsItem
+          label={t('settings.notifications')}
+          onPress={() => router.push("/notifications-settings")}
+        />
+        <SettingsItem
+          label={t('settings.lesson')}
+          onPress={() => router.push("/lesson-settings")}
+        />
+        <SettingsItem
+          label={t('settings.theme')}
+          value={theme.charAt(0).toUpperCase() + theme.slice(1)}
+          onPress={() => themeSheetRef.current?.present()}
+        />
 
-        {/* ── Support section ──────────────────────────────────────────── */}
-        <SectionHeader title="Support" />
-        <View style={tw`bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl px-4`}>
-          <SettingsItem label="Help" onPress={() => router.push("/help")} />
-          <SettingsItem label="FAQ" onPress={() => router.push("/faq")} />
-          <SettingsItem label="Contact Us" onPress={() => router.push("/contact")} showDivider={false} />
-        </View>
-
-        {/* ── Legal section ─────────────────────────────────────────────── */}
-        <SectionHeader title="Legal" />
-        <View style={tw`bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl px-4`}>
-          <SettingsItem
-            label="Privacy Policy"
-            onPress={() => router.push("/privacy-policy")}
-          />
-          <SettingsItem
-            label="Terms of Service"
-            onPress={() => router.push("/terms-of-use")}
-            showDivider={false}
-          />
-        </View>
-
-        {/* ── Subscription ──────────────────────────────────────────────── */}
-        <SectionHeader title="Subscription" />
-        <View style={tw`bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl px-4`}>
-          <SettingsItem
-            label="Subscriptions"
-            value={user?.subscriptionPlan === 'premium' ? 'Pro' : 'Free'}
-            onPress={() => router.push("/premium")}
-            showDivider={false}
-          />
-        </View>
+        {/* ── Flat items (no section header) ───────────────────────────── */}
+        <SettingsItem
+          label="Help"
+          onPress={() => router.push("/help")}
+        />
+        <SettingsItem
+          label="Subscriptions"
+          value={user?.subscriptionPlan === 'premium' ? 'Pro' : 'Free'}
+          onPress={() => router.push("/premium")}
+        />
+        <SettingsItem
+          label="Privacy policy"
+          onPress={() => router.push("/privacy-policy")}
+        />
+        <SettingsItem
+          label="Terms of use"
+          onPress={() => router.push("/terms-of-use")}
+          showDivider={false}
+        />
 
         {/* Logout */}
-        <TouchableOpacity onPress={handleLogout} style={tw`py-6`}>
+        <TouchableOpacity onPress={handleLogout} style={tw`py-6 items-center`}>
           <AppText style={tw`text-base text-red-500 font-bold`}>Logout</AppText>
         </TouchableOpacity>
 
         {/* Version */}
-        <View style={tw`items-center flex-row justify-center gap-2`}>
-          <AppText style={tw`text-sm text-neutral-200`}>{"<"}</AppText>
-          <AppText style={tw`text-sm text-neutral-400`}>eklan version 1.0</AppText>
-          <AppText style={tw`text-sm text-neutral-200`}>{">"}</AppText>
-        </View>
+        <AppText style={tw`text-sm text-neutral-400 text-center pb-2`}>
+          eklan version 1.0
+        </AppText>
       </ScrollView>
 
       <ThemeSheet ref={themeSheetRef} />

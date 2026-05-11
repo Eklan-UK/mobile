@@ -27,6 +27,7 @@ export type LearningGoalId =
 export interface LanguageOption {
   locale: string;
   name: string;
+  native: string;
 }
 
 export interface NationalityOption {

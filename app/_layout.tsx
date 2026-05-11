@@ -20,6 +20,7 @@ import tw from "@/lib/tw";
 import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
 import { LocalePreferenceProbe } from "@/components/LocalePreferenceProbe";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -121,6 +122,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <LocalePreferenceProbe />
+      <LanguageProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <AlertProvider>
           <BottomSheetModalProvider>
@@ -160,6 +162,7 @@ export default function RootLayout() {
           </BottomSheetModalProvider>
         </AlertProvider>
       </GestureHandlerRootView>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

@@ -31,6 +31,7 @@ function getInitials(user: {
 
 function formatStudyTime(totalSeconds: number): string {
   if (!totalSeconds || totalSeconds <= 0) return "0m";
+  if (totalSeconds < 60) return "<1m";
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   if (h > 0) return `${h}h ${m}m`;
@@ -128,23 +129,41 @@ function ChevronRightIcon({ color = "#16a34a" }: { color?: string }) {
   );
 }
 
+function CalendarStreakIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Rect x={3} y={4} width={18} height={18} rx={2} stroke="#16a34a" strokeWidth={2} />
+      <Path
+        d="M16 2v4M8 2v4M3 10h18"
+        stroke="#16a34a"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function InlineBar({
   label,
   value,
   color = "#16a34a",
+  decimalPlaces,
 }: {
   label: string;
   value: number;
   color?: string;
+  decimalPlaces?: number;
 }) {
   const pct = Math.min(Math.max(value, 0), 100);
+  const pctLabel =
+    decimalPlaces !== undefined ? `${pct.toFixed(decimalPlaces)}%` : `${Math.round(pct)}%`;
   return (
     <View style={tw`mb-3`}>
       <View style={tw`flex-row justify-between mb-1`}>
         <AppText style={tw`text-xs text-neutral-500`}>{label}</AppText>
-        <AppText style={tw`text-xs font-semibold text-neutral-700`}>{pct}%</AppText>
+        <AppText style={[tw`text-xs font-semibold`, { color }]}>{pctLabel}</AppText>
       </View>
       <View style={tw`h-1.5 bg-neutral-100 rounded-full`}>
         <View
@@ -158,6 +177,16 @@ function InlineBar({
   );
 }
 
+function ConfidenceIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={10} stroke="#16a34a" strokeWidth={2} />
+      <Circle cx={12} cy={12} r={6} stroke="#16a34a" strokeWidth={2} />
+      <Circle cx={12} cy={12} r={2} fill="#16a34a" />
+    </Svg>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
@@ -166,10 +195,10 @@ export default function ProfileScreen() {
   const { data: confData } = useConfidence();
   const { data: streakData, weeklyDisplay } = useStreak();
 
-  // Fetch drills to compute total time studied (limit kept at 50 — safe default)
-  const { data: drillsData } = useQuery({
+  // Fetch drills to compute total time studied — limit 200 matches web app
+  const { data: drillsData, isPending: drillsPending } = useQuery({
     queryKey: ["learner-drills-profile"],
-    queryFn: () => getMyDrills({ limit: 50 }),
+    queryFn: () => getMyDrills({ limit: 200 }),
     staleTime: 1000 * 60 * 5,
     retry: false,
   });
@@ -202,7 +231,7 @@ export default function ProfileScreen() {
     );
   }, [drillsData]);
 
-  const studyTimeLabel = formatStudyTime(totalStudySeconds);
+  const studyTimeLabel = drillsPending ? "—" : formatStudyTime(totalStudySeconds);
 
   const pronScore = Math.round(pronData?.overallScore ?? 0);
   const confScore = Math.round(confData?.confidenceScore ?? 0);
@@ -216,6 +245,15 @@ export default function ProfileScreen() {
 
   // Weekly dot labels: Sun Mon Tue Wed Thu Fri Sat → display as S M T W T F S
   const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+
+  // Mask out future days within the current ISO Mon–Sun week so they never
+  // show as active even if the backend includes them.
+  // Display order [S M T W T F S] → ISO-week indices [6 0 1 2 3 4 5]
+  const DISPLAY_TO_ISO = [6, 0, 1, 2, 3, 4, 5];
+  const todayIso = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; })();
+  const maskedWeekly = weeklyDisplay.map(
+    (active, idx) => active && DISPLAY_TO_ISO[idx] <= todayIso
+  );
 
   if (userLoading) {
     return (
@@ -380,10 +418,14 @@ export default function ProfileScreen() {
 
           {/* ── CONFIDENCE SCORE CARD ────────────────────────────────── */}
           {confData && (
-            <View style={tw`bg-white rounded-2xl p-5 shadow-sm`}>
-              <AppText style={tw`text-base font-bold text-neutral-900 mb-4`}>
-                Confidence Score
-              </AppText>
+            <View style={tw`bg-white dark:bg-neutral-800 rounded-2xl p-5 shadow-sm border border-neutral-200 dark:border-neutral-700`}>
+              {/* Header */}
+              <View style={tw`flex-row items-center gap-2 mb-4`}>
+                <ConfidenceIcon />
+                <AppText style={tw`text-xs font-bold text-neutral-900 dark:text-white tracking-widest uppercase`}>
+                  Confidence Score
+                </AppText>
+              </View>
 
               <View style={tw`flex-row items-start gap-5 mb-4`}>
                 {/* Circle */}
@@ -395,9 +437,7 @@ export default function ProfileScreen() {
                   backgroundColor="#fef3c7"
                 >
                   <View style={tw`items-center`}>
-                    <AppText
-                      style={tw`text-xl font-bold text-neutral-900`}
-                    >
+                    <AppText style={tw`text-xl font-bold text-neutral-900`}>
                       {confScore}
                     </AppText>
                     <AppText style={tw`text-[10px] text-neutral-400`}>
@@ -407,52 +447,42 @@ export default function ProfileScreen() {
                 </ProgressCircle>
 
                 <View style={tw`flex-1`}>
+                  {/* Status label + trend pill */}
                   <View style={tw`flex-row items-center gap-2 mb-1`}>
-                    <AppText
-                      style={tw`text-base font-semibold text-neutral-900`}
-                    >
+                    <AppText style={[tw`text-base font-semibold`, { color: "#ea580c" }]}>
                       {confLabel}
                     </AppText>
-                    {/* Trend chip */}
-                    <View
-                      style={[
-                        tw`px-2 py-0.5 rounded-full`,
-                        { backgroundColor: trendColor + "20" },
-                      ]}
-                    >
-                      <AppText
-                        style={[
-                          tw`text-[10px] font-semibold`,
-                          { color: trendColor },
-                        ]}
-                      >
-                        {trendLabel}
+                    <View style={tw`bg-neutral-100 dark:bg-neutral-700 px-2 py-0.5 rounded-full`}>
+                      <AppText style={tw`text-[10px] font-semibold text-neutral-500 dark:text-neutral-300`}>
+                        — {trendLabel}
                       </AppText>
                     </View>
                   </View>
 
                   <AppText style={tw`text-xs text-neutral-500 mb-3`}>
-                    {confData.drillsCompleted ?? confData.drillsAssigned ?? 0} drills completed
+                    {confData.drillsCompleted ?? 0} of {confData.drillsAssigned ?? 0} drills completed
                   </AppText>
 
                   <InlineBar
-                    label="Quality Score"
-                    value={Math.round(confData.qualityScore ?? 0)}
-                    color="#f59e0b"
+                    label="Pronunciation"
+                    value={confData.qualityScore ?? 0}
+                    color="#16a34a"
+                    decimalPlaces={1}
                   />
                   <InlineBar
-                    label="Completion Rate"
-                    value={Math.round(confData.completionRate ?? 0)}
-                    color="#16a34a"
+                    label="Completion"
+                    value={(confData.completionRate ?? 0) * 100}
+                    color="#3B82F6"
                   />
                 </View>
               </View>
 
-              <View
-                style={tw`border-t border-neutral-100 pt-3 flex-row items-center`}
-              >
-                <AppText style={tw`text-[11px] text-neutral-400 flex-1`}>
-                  Based on your recent drill performance
+              <View style={tw`border-t border-neutral-100 dark:border-neutral-700 pt-3 flex-row justify-between items-center`}>
+                <AppText style={tw`text-[11px] text-neutral-400`}>
+                  Completion 40% + Quality 60%
+                </AppText>
+                <AppText style={tw`text-[11px] text-neutral-400`}>
+                  Based on Speechace scores
                 </AppText>
               </View>
             </View>
@@ -538,8 +568,8 @@ export default function ProfileScreen() {
 
           {/* ── STREAK SECTION ───────────────────────────────────────── */}
           <View style={tw`bg-white rounded-2xl p-5 shadow-sm mb-4`}>
-            {/* Header */}
-            <View style={tw`flex-row justify-between items-center mb-4`}>
+            {/* Header: "Streak" + calendar icon + "View streak >" */}
+            <View style={tw`flex-row justify-between items-center mb-3`}>
               <AppText style={tw`text-base font-bold text-neutral-900`}>
                 Streak
               </AppText>
@@ -547,6 +577,7 @@ export default function ProfileScreen() {
                 onPress={() => router.push("/streak" as any)}
                 style={tw`flex-row items-center gap-1`}
               >
+                <CalendarStreakIcon />
                 <AppText style={tw`text-primary-600 text-xs font-medium`}>
                   View streak
                 </AppText>
@@ -554,72 +585,61 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Streak count + best */}
-            <View style={tw`flex-row items-baseline gap-3 mb-4`}>
-              <AppText style={tw`text-2xl font-bold text-neutral-900`}>
-                {currentStreak}-day streak
+            {/* Streak count + best on same row */}
+            <View style={tw`flex-row justify-between items-baseline mb-4`}>
+              <AppText style={tw`text-sm font-semibold text-neutral-900`}>
+                {currentStreak > 0 ? `${currentStreak}-day streak` : "No streak yet"}
+              </AppText>
+              <AppText style={tw`text-xs text-neutral-500`}>
+                Best: {longestStreak} days
               </AppText>
             </View>
-            <AppText style={tw`text-xs text-neutral-500 -mt-3 mb-4`}>
-              Best: {longestStreak} days
-            </AppText>
 
-            {/* 7-dot weekly grid */}
+            {/* 7-dot weekly grid — letters inside circles, future days grey */}
             <View style={tw`flex-row justify-between mb-4`}>
               {DAY_LABELS.map((label, idx) => {
-                const active = weeklyDisplay[idx];
+                const active = maskedWeekly[idx];
                 return (
-                  <View key={idx} style={tw`items-center gap-1.5`}>
+                  <View key={idx} style={tw`items-center`}>
                     <View
                       style={[
-                        tw`w-8 h-8 rounded-full items-center justify-center`,
-                        active
-                          ? { backgroundColor: "#16a34a" }
-                          : tw`bg-neutral-100`,
+                        tw`w-9 h-9 rounded-full items-center justify-center`,
+                        active ? { backgroundColor: "#16a34a" } : tw`bg-neutral-200`,
                       ]}
                     >
-                      {active && (
-                        <View style={tw`w-2 h-2 rounded-full bg-white`} />
-                      )}
+                      <AppText
+                        style={[
+                          tw`text-sm font-semibold`,
+                          active ? tw`text-white` : tw`text-neutral-500`,
+                        ]}
+                      >
+                        {label}
+                      </AppText>
                     </View>
-                    <AppText
-                      style={[
-                        tw`text-[11px]`,
-                        active
-                          ? tw`text-primary-600 font-semibold`
-                          : tw`text-neutral-400`,
-                      ]}
-                    >
-                      {label}
-                    </AppText>
                   </View>
                 );
               })}
             </View>
 
-            {/* Motivational amber box */}
+            {/* Motivational amber box — matches web copy */}
             <View
               style={tw`bg-amber-50 border border-amber-100 rounded-xl p-4 mb-4 flex-row gap-3`}
             >
-              <AppText style={tw`text-xl`}>🔥</AppText>
+              <AppText style={tw`text-base`}>🔥</AppText>
               <View style={tw`flex-1`}>
-                <AppText
-                  style={tw`text-sm font-bold text-neutral-900 mb-1`}
-                >
-                  {currentStreak > 0
-                    ? `${currentStreak}-day streak — keep it up!`
-                    : "Start your streak today!"}
+                <AppText style={tw`text-sm font-bold text-neutral-900 mb-1`}>
+                  {currentStreak > 0 ? "Keep it going" : "Start a streak"}
                 </AppText>
-                <AppText style={tw`text-xs text-neutral-600 leading-5`}>
-                  Keep your daily learning streak going and earn a badge when
-                  you practice or complete a lesson every day.
+                <AppText style={tw`text-xs text-neutral-500 leading-5`}>
+                  Complete daily focus and lessons on consecutive days to grow
+                  your streak. Open the streak page for a full view.
                 </AppText>
               </View>
             </View>
 
             {/* CTA */}
             <Button onPress={() => router.push("/practice" as any)}>
-              Continue Practice
+              Continue practice
             </Button>
           </View>
         </View>

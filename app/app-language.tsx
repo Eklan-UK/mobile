@@ -8,6 +8,7 @@ import Svg, { Path } from "react-native-svg";
 import { Alert } from "@/utils/alert";
 import { useUserCurrent, useUpdatePreferences } from "@/hooks/useSettings";
 import { LANGUAGE_OPTIONS } from "@/constants/settings-options";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 function BackIcon() {
   return (
@@ -27,6 +28,7 @@ export default function AppLanguageScreen() {
   const insets = useSafeAreaInsets();
   const { data: me } = useUserCurrent();
   const mutation = useUpdatePreferences();
+  const { t } = useTranslation();
 
   // Language is stored on the profile as a display name string (e.g. "Korean")
   const initialName = useMemo(() => {
@@ -42,7 +44,7 @@ export default function AppLanguageScreen() {
     if (initialName) setSelected(initialName);
   }, [initialName]);
 
-  const handleDone = async () => {
+  const handleSave = async () => {
     if (!selected) {
       Alert.alert("Select language", "Please select a language before continuing.");
       return;
@@ -50,36 +52,8 @@ export default function AppLanguageScreen() {
     try {
       // §8.4: save the display name, not the locale code
       await mutation.mutateAsync({ language: selected });
-      // #region agent log
-      fetch("http://127.0.0.1:7624/ingest/74037ddc-a470-40c1-9b13-02763f9ac390", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "83f2a9" },
-        body: JSON.stringify({
-          sessionId: "83f2a9",
-          location: "app-language.tsx:handleDone",
-          message: "language preference mutateAsync resolved",
-          data: { selectedDisplayName: selected },
-          timestamp: Date.now(),
-          hypothesisId: "H2",
-        }),
-      }).catch(() => {});
-      // #endregion
       router.back();
     } catch {
-      // #region agent log
-      fetch("http://127.0.0.1:7624/ingest/74037ddc-a470-40c1-9b13-02763f9ac390", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "83f2a9" },
-        body: JSON.stringify({
-          sessionId: "83f2a9",
-          location: "app-language.tsx:handleDone",
-          message: "language preference mutateAsync rejected",
-          data: {},
-          timestamp: Date.now(),
-          hypothesisId: "H2",
-        }),
-      }).catch(() => {});
-      // #endregion
       Alert.alert("Error", "Could not save your language preference. Please try again.");
     }
   };
@@ -98,7 +72,7 @@ export default function AppLanguageScreen() {
 
       <View style={tw`px-6 pt-2 pb-4`}>
         <AppText style={tw`text-2xl font-bold text-neutral-900 dark:text-white`}>
-          What language should the app use?
+          {t('language.screenTitle')}
         </AppText>
       </View>
 
@@ -120,6 +94,9 @@ export default function AppLanguageScreen() {
               <AppText style={tw`text-base text-neutral-900 dark:text-white font-medium`}>
                 {item.name}
               </AppText>
+              <AppText style={tw`text-sm text-neutral-400 dark:text-neutral-500`}>
+                {item.native}
+              </AppText>
             </TouchableOpacity>
           );
         }}
@@ -132,8 +109,8 @@ export default function AppLanguageScreen() {
           { paddingBottom: Math.max(insets.bottom, 16) },
         ]}
       >
-        <Button onPress={handleDone} loading={mutation.isPending} disabled={!selected}>
-          Done
+        <Button onPress={handleSave} loading={mutation.isPending} disabled={!selected}>
+          {t('common.save')}
         </Button>
       </View>
     </SafeAreaView>
