@@ -10,7 +10,8 @@ export type DrillType =
   | "sentence_writing"
   | "sentence"
   | "listening"
-  | "fill_blank";
+  | "fill_blank"
+  | "pronunciation";
 
 export type DrillDifficulty = "beginner" | "intermediate" | "advanced";
 
@@ -59,6 +60,16 @@ export interface GrammarItem {
 export interface SentenceWritingItem {
   word: string;
   hint?: string;
+  audioUrl?: string;
+}
+
+export interface PronunciationItem {
+  sound: string;
+  word: string;
+  sentence: string;
+  soundAudioUrl?: string;
+  wordAudioUrl?: string;
+  sentenceAudioUrl?: string;
 }
 
 export interface FillBlankItem {
@@ -108,6 +119,7 @@ export interface Drill {
 
   // Sentence drill fields
   sentence_drill_word?: string;
+  sentence_drill_audio_url?: string;
 
   // Listening fields
   listening_drill_title?: string;
@@ -121,6 +133,9 @@ export interface Drill {
 
   // Fill blank fields
   fill_blank_items?: FillBlankItem[];
+
+  // Pronunciation fields
+  pronunciation_items?: PronunciationItem[];
 
   // Metadata
   created_by: string;
@@ -149,6 +164,7 @@ export const getDrillCategory = (type: DrillType): string => {
     sentence: "Sentence",
     listening: "Listening",
     fill_blank: "Fill in the Blank",
+    pronunciation: "Pronunciation",
   };
   // Type guard: ensure the type exists in categories
   if (type in categories) {
@@ -168,16 +184,17 @@ export const formatDuration = (durationDays: number): string => {
 // Helper to get estimated time
 export const getEstimatedTime = (type: DrillType): string => {
   const times: Record<DrillType, string> = {
-    vocabulary: "3-5 mins",
-    roleplay: "7-10 mins",
-    matching: "5 mins",
-    definition: "5 mins",
-    summary: "10-15 mins",
-    grammar: "5-7 mins",
-    sentence_writing: "5-7 mins",
-    sentence: "5 mins",
-    listening: "10-15 mins",
-    fill_blank: "5-7 mins",
+    vocabulary: "5-15 mins",
+    roleplay: "5-15 mins",
+    matching: "5-15 mins",
+    definition: "5-15 mins",
+    summary: "5-15 mins",
+    grammar: "5-15 mins",
+    sentence_writing: "5-15 mins",
+    sentence: "5-15 mins",
+    listening: "5-15 mins",
+    fill_blank: "5-15 mins",
+    pronunciation: "5-15 mins",
   };
   return times[type];
 };
@@ -206,6 +223,7 @@ export interface DrillAttempt {
       score: number;
     }>;
   };
+  pronunciationResults?: { reviewStatus?: 'pending' | 'reviewed' };
 }
 
 export interface DrillAssignment {

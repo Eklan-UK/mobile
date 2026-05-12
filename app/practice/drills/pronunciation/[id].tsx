@@ -6,14 +6,22 @@ import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import DrillHeader from "@/components/drills/DrillHeader";
 import RecordButton from "@/components/drills/RecordButton";
 import { AppText, Loader } from "@/components/ui";
-import { getDrillById, completeDrill, bookmarkWord } from "@/services/drill.service";
+import { getDrillById, completeDrill } from "@/services/drill.service";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
+import type { PronunciationItem } from "@/types/drill.types";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { View, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
+import {
+  View,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
 import { Alert } from "@/utils/alert";
 import { setAudioModeSafely } from "@/utils/audio";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,7 +33,6 @@ import ConfettiCannon from "react-native-confetti-cannon";
 import { logger } from "@/utils/logger";
 import apiClient from "@/lib/api";
 
-// Pass threshold per spec
 const PASS_THRESHOLD = 65;
 
 type StepType = "word" | "sentence";
@@ -36,20 +43,6 @@ type ItemProgress = {
   sentencePassed: boolean;
   sentenceScore: number;
 };
-
-function HintIcon() {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-        stroke="#6B7280"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
 
 function BookmarkIcon({ color = "#6B7280" }: { color?: string }) {
   return (
@@ -66,7 +59,7 @@ function BookmarkIcon({ color = "#6B7280" }: { color?: string }) {
   );
 }
 
-export default function VocabularyDrill() {
+export default function PronunciationDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
@@ -79,20 +72,16 @@ export default function VocabularyDrill() {
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Per-item navigation
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [currentStep, setCurrentStep] = useState<StepType>("word");
 
-  // Per-item progress tracking
   const [itemProgress, setItemProgress] = useState<ItemProgress[]>([]);
 
-  // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [permissionResponse, requestPermission] = Audio.usePermissions();
 
-  // UI states
   const [showSuccess, setShowSuccess] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
@@ -101,13 +90,6 @@ export default function VocabularyDrill() {
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
 
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
-
-  // Store completion data to submit after review
-  const completionDataRef = useRef<{
-    score: number;
-    timeSpent: number;
-    vocabularyResults: any;
-  } | null>(null);
 
   // Restore progress
   useEffect(() => {
@@ -122,14 +104,10 @@ export default function VocabularyDrill() {
       if (saved.data?.itemProgress) {
         setItemProgress(saved.data.itemProgress);
       }
-      if (saved.currentStep) {
-        // currentStep in the outer progress is the global step counter (1-based)
-        // not to be confused with our word/sentence step
-      }
     }
   }, [drillId]);
 
-  // Track 5-min duration
+  // Track 5-min duration for recent activity
   useEffect(() => {
     return () => {
       const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
@@ -148,7 +126,7 @@ export default function VocabularyDrill() {
   // Save progress
   useEffect(() => {
     if (drill) {
-      const totalItems = drill.target_sentences?.length || 1;
+      const totalItems = drill.pronunciation_items?.length || 1;
       updateDrillProgress({
         drillId,
         title: drill.title,
@@ -177,7 +155,6 @@ export default function VocabularyDrill() {
       isMounted = false;
       timeoutRefs.current.forEach(clearTimeout);
       timeoutRefs.current = [];
-      if (recording) stopRecording();
     };
   }, [drillId]);
 
@@ -187,7 +164,7 @@ export default function VocabularyDrill() {
       const drillData = await getDrillById(drillId, assignmentId);
       setDrill(drillData);
 
-      const totalItems = drillData.target_sentences?.length || 0;
+      const totalItems = drillData.pronunciation_items?.length || 0;
       setItemProgress(
         Array.from({ length: totalItems }, () => ({
           wordPassed: false,
@@ -216,10 +193,10 @@ export default function VocabularyDrill() {
         playsInSilentModeIOS: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
+      const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
-      setRecording(recording);
+      setRecording(newRecording);
       setIsRecording(true);
     } catch (err) {
       logger.error("Failed to start recording:", err);
@@ -262,20 +239,19 @@ export default function VocabularyDrill() {
   }
 
   const analyzeRecording = async (base64: string) => {
-    const currentSentence = drill?.target_sentences?.[currentItemIndex];
-    if (!currentSentence) return;
+    const currentItem = drill?.pronunciation_items?.[currentItemIndex];
+    if (!currentItem) return;
 
     const referenceText =
       currentStep === "word"
-        ? currentSentence.word || currentSentence.text?.split(" ")[0] || "word"
-        : currentSentence.text;
+        ? currentItem.word.trim() || ""
+        : currentItem.sentence.trim() || "";
 
     logger.log(`Analyzing ${currentStep} pronunciation for: "${referenceText}"`);
 
     try {
       const result = await speechaceService.scorePronunciation(referenceText, base64);
 
-      // Check for "No speech detected"
       if (result.status === "error" && result.short_message === "error_no_speech") {
         Alert.alert(
           "No Speech Detected",
@@ -289,7 +265,6 @@ export default function VocabularyDrill() {
 
       logger.log(`Score for ${currentStep}: ${qualityScore}`);
 
-      // Save for review screen
       setAnalysisResults((prev) => [
         ...prev,
         { text: referenceText, score: qualityScore, textScore },
@@ -309,9 +284,8 @@ export default function VocabularyDrill() {
         });
 
         if (passed) {
-          // Fire-and-forget pronunciation attempt log
           logPronunciationAttempt(referenceText, base64);
-          handleWordPassed(qualityScore);
+          handleWordPassed();
         } else {
           Alert.alert(
             "Keep Trying",
@@ -319,7 +293,6 @@ export default function VocabularyDrill() {
           );
         }
       } else {
-        // sentence step
         setItemProgress((prev) => {
           const updated = [...prev];
           updated[currentItemIndex] = {
@@ -332,7 +305,7 @@ export default function VocabularyDrill() {
 
         if (passed) {
           logPronunciationAttempt(referenceText, base64);
-          handleSentencePassed(qualityScore);
+          handleSentencePassed();
         } else {
           Alert.alert(
             "Keep Trying",
@@ -352,13 +325,13 @@ export default function VocabularyDrill() {
         text,
         audioBase64,
         drillId,
-        drillType: "vocabulary",
+        drillType: "pronunciation",
         passingThreshold: PASS_THRESHOLD,
       })
       .catch((err) => logger.warn("Failed to log pronunciation attempt (non-critical):", err));
   };
 
-  const handleWordPassed = (score: number) => {
+  const handleWordPassed = () => {
     setShowSuccess(true);
     setShowConfetti(true);
     const t = setTimeout(() => {
@@ -368,11 +341,11 @@ export default function VocabularyDrill() {
     timeoutRefs.current.push(t);
   };
 
-  const handleSentencePassed = (score: number) => {
+  const handleSentencePassed = () => {
     setShowSuccess(true);
     setShowConfetti(true);
 
-    const totalItems = drill?.target_sentences?.length || 1;
+    const totalItems = drill?.pronunciation_items?.length || 1;
     const isLastItem = currentItemIndex >= totalItems - 1;
 
     const t = setTimeout(() => {
@@ -380,12 +353,10 @@ export default function VocabularyDrill() {
       setShowSuccess(false);
 
       if (!isLastItem) {
-        // Move to next item
         setCurrentItemIndex((prev) => prev + 1);
         setCurrentStep("word");
         setIsBookmarked(false);
       } else {
-        // All done — go to review
         if (drill) {
           const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
           addRecentActivity({
@@ -422,17 +393,10 @@ export default function VocabularyDrill() {
     setCurrentStep("sentence");
   };
 
-  const handleBookmark = async () => {
-    if (!drill) return;
-    try {
-      const currentSentence = drill.target_sentences?.[currentItemIndex];
-      const word =
-        currentSentence?.word || currentSentence?.text?.split(" ")[0] || drill.title;
-      await bookmarkWord(word, drill._id);
-      setIsBookmarked(true);
-      Alert.alert("Saved", `"${word}" has been bookmarked.`);
-    } catch (error) {
-      Alert.alert("Error", "Failed to bookmark.");
+  const handlePreviousItem = () => {
+    if (currentItemIndex > 0 && currentStep === "word") {
+      setCurrentItemIndex((prev) => prev - 1);
+      setCurrentStep("word");
     }
   };
 
@@ -441,19 +405,20 @@ export default function VocabularyDrill() {
   const handleSubmitAfterReview = async () => {
     if (!drill) return;
 
-    const totalItems = drill.target_sentences?.length || 0;
+    const items = drill.pronunciation_items || [];
+    const totalItems = items.length;
     const passedItems = itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length;
     const score = totalItems > 0 ? Math.round((passedItems / totalItems) * 100) : 0;
     const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
-    const wordScores = (drill.target_sentences || []).map((sentence, idx) => {
+    const wordScores = items.map((item, idx) => {
       const progress = itemProgress[idx] || {
         wordPassed: false,
         wordScore: 0,
         sentencePassed: false,
         sentenceScore: 0,
       };
-      const word = sentence.word || sentence.text?.split(" ")[0] || "word";
+      const word = item.word.trim() || `Item ${idx + 1}`;
       const itemScore =
         progress.wordPassed && progress.sentencePassed
           ? Math.round((progress.wordScore + progress.sentenceScore) / 2)
@@ -472,11 +437,11 @@ export default function VocabularyDrill() {
         score,
         timeSpent,
         answers: [],
-        vocabularyResults: { wordScores },
+        pronunciationResults: { wordScores },
       });
       clearDrillProgress(drillId);
     } catch (error) {
-      logger.error("Failed to submit vocabulary drill:", error);
+      logger.error("Failed to submit pronunciation drill:", error);
       Alert.alert("Error", "Failed to submit results. Please try again.");
       return;
     }
@@ -486,13 +451,9 @@ export default function VocabularyDrill() {
 
   // ── Derived data ─────────────────────────────────────────────────────────
 
-  const totalItems = drill?.target_sentences?.length || 1;
-  const currentSentence = drill?.target_sentences?.[currentItemIndex];
-  const word =
-    currentSentence?.word || currentSentence?.text?.split(" ")[0] || "Word";
-  const sentence = currentSentence?.text || "";
-  const wordTranslation = currentSentence?.wordTranslation || "";
-  const sentenceTranslation = currentSentence?.translation || "";
+  const items = drill?.pronunciation_items || [];
+  const totalItems = items.length;
+  const currentItem: PronunciationItem | undefined = items[currentItemIndex];
   const currentProgress = itemProgress[currentItemIndex] || {
     wordPassed: false,
     wordScore: 0,
@@ -506,7 +467,7 @@ export default function VocabularyDrill() {
     return (
       <SpeechAnalysisReview
         analysisResults={analysisResults}
-        drillType="vocabulary"
+        drillType="pronunciation"
         onDone={handleSubmitAfterReview}
         onPracticeAgain={() => {
           setShowReview(false);
@@ -517,7 +478,6 @@ export default function VocabularyDrill() {
           setAnalysisResults([]);
           setIsBookmarked(false);
           startTimeRef.current = Date.now();
-          const totalItems = drill.target_sentences?.length || 0;
           setItemProgress(
             Array.from({ length: totalItems }, () => ({
               wordPassed: false,
@@ -538,7 +498,7 @@ export default function VocabularyDrill() {
         completed={itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length}
         total={totalItems}
         title="Lesson completed"
-        message={`Great job! You've practiced pronunciation for all ${totalItems} word${totalItems > 1 ? "s" : ""}.`}
+        message={`Great job! You've practiced pronunciation for all ${totalItems} item${totalItems > 1 ? "s" : ""}.`}
         onContinue={() => router.back()}
         onClose={() => router.back()}
       />
@@ -561,11 +521,11 @@ export default function VocabularyDrill() {
     );
   }
 
-  if (!drill.target_sentences || drill.target_sentences.length === 0) {
+  if (items.length === 0) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center px-5`}>
         <AppText style={tw`text-gray-600 text-center`}>
-          No vocabulary items found in this drill.
+          No pronunciation items found in this drill.
         </AppText>
       </SafeAreaView>
     );
@@ -574,6 +534,8 @@ export default function VocabularyDrill() {
   // ── WORD STEP ────────────────────────────────────────────────────────────
 
   if (currentStep === "word") {
+    const word = currentItem?.word?.trim() || "";
+    const soundFocus = currentItem?.sound?.trim() || "";
     const tutorMessage = `Hello! Today, we'll practice how to pronounce the word "${word}"`;
 
     return (
@@ -604,33 +566,34 @@ export default function VocabularyDrill() {
             <AITutorMessage message={tutorMessage} showAudio={true} />
 
             {/* Word card */}
-            {currentSentence && (
+            {currentItem && (
               <View style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-4`}>
                 <View style={tw`flex-row items-center justify-between w-full mb-2`}>
                   <View style={tw`flex-1`}>
                     <AppText style={tw`text-pink-500 text-base font-semibold mb-1`}>
                       {word}
                     </AppText>
-                    {wordTranslation ? (
-                      <AppText style={tw`text-sm text-gray-500`}>{wordTranslation}</AppText>
+                    {soundFocus ? (
+                      <AppText style={tw`text-sm text-gray-500`}>
+                        Sound focus: {soundFocus}
+                      </AppText>
                     ) : null}
                   </View>
                   <AudioButton
                     text={word}
-                    audioUri={currentSentence.wordAudioUrl}
+                    audioUri={currentItem.wordAudioUrl}
                     size={20}
                   />
                 </View>
-                {sentence ? (
+                {currentItem.sentence ? (
                   <View style={tw`mt-3 pt-3 border-t border-gray-100`}>
-                    <AppText style={tw`text-sm text-gray-700 mb-1`}>{sentence}</AppText>
-                    {sentenceTranslation ? (
-                      <AppText style={tw`text-xs text-gray-500`}>{sentenceTranslation}</AppText>
-                    ) : null}
+                    <AppText style={tw`text-sm text-gray-700 mb-1`}>
+                      {currentItem.sentence}
+                    </AppText>
                     <View style={tw`mt-2`}>
                       <AudioButton
-                        text={sentence}
-                        audioUri={currentSentence.sentenceAudioUrl}
+                        text={currentItem.sentence}
+                        audioUri={currentItem.sentenceAudioUrl}
                         size={18}
                       />
                     </View>
@@ -644,10 +607,15 @@ export default function VocabularyDrill() {
               {showConfetti && (
                 <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} />
               )}
-              <AppText style={tw`text-6xl font-bold text-gray-900 mb-4`}>{word}</AppText>
+              <AppText style={tw`text-6xl font-bold text-gray-900 mb-2`}>{word}</AppText>
+              {soundFocus ? (
+                <AppText style={tw`text-base text-indigo-600 mb-4`}>
+                  Sound focus: {soundFocus}
+                </AppText>
+              ) : null}
               <AudioButton
                 text={word}
-                audioUri={currentSentence?.wordAudioUrl}
+                audioUri={currentItem?.wordAudioUrl}
                 size={24}
               />
             </View>
@@ -656,14 +624,6 @@ export default function VocabularyDrill() {
               <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
                 <AppText style={tw`text-green-700 text-center font-semibold`}>
                   Word passed! Score: {Math.round(currentProgress.wordScore)}% 🎉
-                </AppText>
-              </View>
-            )}
-
-            {showSuccess && !currentProgress.wordPassed && (
-              <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
-                <AppText style={tw`text-green-700 text-center font-semibold`}>
-                  Great job!
                 </AppText>
               </View>
             )}
@@ -695,11 +655,12 @@ export default function VocabularyDrill() {
             <View style={tw`flex-row items-center justify-center gap-4`}>
               <TouchableOpacity
                 style={tw`w-12 h-12 items-center justify-center bg-gray-100 rounded-full ${
-                  isBookmarked ? "bg-yellow-100" : ""
+                  currentItemIndex > 0 ? "" : "opacity-30"
                 }`}
-                onPress={handleBookmark}
+                onPress={handlePreviousItem}
+                disabled={currentItemIndex === 0}
               >
-                <BookmarkIcon color={isBookmarked ? "#F59E0B" : "#6B7280"} />
+                <BookmarkIcon />
               </TouchableOpacity>
 
               <RecordButton
@@ -715,7 +676,15 @@ export default function VocabularyDrill() {
                   currentProgress.wordPassed ? "" : "opacity-30"
                 }`}
               >
-                <HintIcon />
+                <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M9 18l6-6-6-6"
+                    stroke="#6B7280"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
               </TouchableOpacity>
             </View>
           </View>
@@ -726,7 +695,9 @@ export default function VocabularyDrill() {
 
   // ── SENTENCE STEP ────────────────────────────────────────────────────────
 
-  const tutorSentenceMessage = `Now let's practice the full sentence. Listen carefully and then record yourself.`;
+  const word = currentItem?.word?.trim() || "";
+  const sentence = currentItem?.sentence?.trim() || "";
+  const tutorSentenceMessage = `Great job on the word! Now let's practice the full sentence. Listen carefully and then record yourself.`;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
@@ -756,20 +727,20 @@ export default function VocabularyDrill() {
           <AITutorMessage message={tutorSentenceMessage} showAudio={true} />
 
           {/* Sentence card */}
-          {currentSentence && sentence ? (
+          {currentItem && sentence ? (
             <View style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-4`}>
               <View style={tw`flex-row items-start justify-between w-full`}>
                 <View style={tw`flex-1 mr-3`}>
                   <AppText style={tw`text-base text-gray-800 leading-6 mb-1`}>
                     {sentence}
                   </AppText>
-                  {sentenceTranslation ? (
-                    <AppText style={tw`text-xs text-gray-500`}>{sentenceTranslation}</AppText>
-                  ) : null}
+                  <AppText style={tw`text-xs text-gray-400`}>
+                    Target word: {word}
+                  </AppText>
                 </View>
                 <AudioButton
                   text={sentence}
-                  audioUri={currentSentence.sentenceAudioUrl}
+                  audioUri={currentItem.sentenceAudioUrl}
                   size={20}
                 />
               </View>
@@ -788,7 +759,7 @@ export default function VocabularyDrill() {
             </AppText>
             <AudioButton
               text={sentence || word}
-              audioUri={currentSentence?.sentenceAudioUrl}
+              audioUri={currentItem?.sentenceAudioUrl}
               size={24}
             />
           </View>
@@ -797,14 +768,6 @@ export default function VocabularyDrill() {
             <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
               <AppText style={tw`text-green-700 text-center font-semibold`}>
                 Sentence passed! Score: {Math.round(currentProgress.sentenceScore)}% 🎉
-              </AppText>
-            </View>
-          )}
-
-          {showSuccess && !currentProgress.sentencePassed && (
-            <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
-              <AppText style={tw`text-green-700 text-center font-semibold`}>
-                Great job!
               </AppText>
             </View>
           )}
@@ -822,14 +785,7 @@ export default function VocabularyDrill() {
         {/* Bottom bar */}
         <View style={tw`px-5 pb-6`}>
           <View style={tw`flex-row items-center justify-center gap-4`}>
-            <TouchableOpacity
-              style={tw`w-12 h-12 items-center justify-center bg-gray-100 rounded-full ${
-                isBookmarked ? "bg-yellow-100" : ""
-              }`}
-              onPress={handleBookmark}
-            >
-              <BookmarkIcon color={isBookmarked ? "#F59E0B" : "#6B7280"} />
-            </TouchableOpacity>
+            <View style={tw`w-12 h-12`} />
 
             <RecordButton
               onPress={handleRecord}

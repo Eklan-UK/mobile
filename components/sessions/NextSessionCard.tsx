@@ -99,10 +99,13 @@ export function NextSessionCard({ session }: NextSessionCardProps) {
             </>
           ) : (
             <AppText style={tw`text-white/90 text-sm leading-5`}>
-              When you’re enrolled in a class, your next live session will show here.
+              {hasSession
+                ? 'You have a class'
+                : 'No upcoming session scheduled. When your tutor adds one, it will appear here.'}
             </AppText>
           )}
         </View>
+   
 
         {/* Action buttons */}
         <View style={tw`flex-row gap-3`}>

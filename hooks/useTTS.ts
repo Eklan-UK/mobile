@@ -83,7 +83,10 @@ export function useTTS(options: UseTTSOptions = {}) {
         logger.error('TTS Error:', error);
       }
     },
-    [autoPlay, onPlayStart, onPlayEnd, onError, isPlaying]
+    // isPlaying intentionally omitted — adding it would recreate the callback on every
+    // play-state change and cause stale-closure issues.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [autoPlay, onPlayStart, onPlayEnd, onError]
   );
 
   const stopAudio = useCallback(async () => {

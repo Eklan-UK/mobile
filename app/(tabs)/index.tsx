@@ -37,6 +37,7 @@ const CATEGORY_COLORS: Record<DrillType, string> = {
   sentence_writing: "#6155F5",
   sentence: "#6155F5",
   fill_blank: "#00C0E8",
+  pronunciation: "#F43F5E",
 };
 
 const CATEGORY_BG: Record<DrillType, string> = {
@@ -50,6 +51,7 @@ const CATEGORY_BG: Record<DrillType, string> = {
   sentence_writing: "#F0EFFE",
   sentence: "#F0EFFE",
   fill_blank: "#E5FAFF",
+  pronunciation: "#FFF1F2",
 };
 
 const CATEGORY_EMOJI: Record<DrillType, string> = {
@@ -63,6 +65,7 @@ const CATEGORY_EMOJI: Record<DrillType, string> = {
   sentence_writing: "✍️",
   sentence: "💬",
   fill_blank: "📝",
+  pronunciation: "🗣️",
 };
 
 /* ─── Inline icons ───────────────────────────────────────── */

@@ -31,7 +31,7 @@ export interface AnalysisResult {
 
 interface SpeechAnalysisReviewProps {
   analysisResults: AnalysisResult[];
-  drillType: "vocabulary" | "roleplay";
+  drillType: "vocabulary" | "roleplay" | "pronunciation";
   onDone: () => void;
   onPracticeAgain: () => void;
 }

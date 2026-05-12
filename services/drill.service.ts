@@ -73,6 +73,7 @@ export async function completeDrill(
     timeSpent: number;
     answers?: any[];
     vocabularyResults?: any;
+    pronunciationResults?: any;
     roleplayResults?: any;
     matchingResults?: any;
     definitionResults?: any;

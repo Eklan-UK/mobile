@@ -20,6 +20,7 @@ import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 
 import { getDrillById, completeDrill } from "@/services/drill.service";
+import { ttsService } from "@/services/tts.service";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import { useActivityStore } from "@/store/activity-store";
 import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
@@ -43,6 +44,7 @@ export default function RoleplayDrill() {
   const startTimeRef = useRef(Date.now());
   const scrollViewRef = useRef<ScrollView>(null);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const autoSpokenAiMessageIdsRef = useRef<Set<string>>(new Set());
 
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,6 +139,38 @@ export default function RoleplayDrill() {
   useEffect(() => {
     loadDrill();
   }, [drillId]);
+
+  // Speak the latest AI line when it appears (entering the drill or after each AI reply)
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (!last || last.type !== "ai" || !last.content.trim()) return;
+    if (autoSpokenAiMessageIdsRef.current.has(last.id)) return;
+
+    let cancelled = false;
+    const messageId = last.id;
+    const textForTts = last.content.replace(/^\[[^\]]+\]:\s*/, "").trim() || last.content;
+
+    (async () => {
+      try {
+        await setAudioModeSafely({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        });
+        await ttsService.stopAudio();
+        const uri = await ttsService.generateTTS({ text: textForTts });
+        if (cancelled || !uri?.trim()) return;
+        autoSpokenAiMessageIdsRef.current.add(messageId);
+        await ttsService.playAudio(uri);
+      } catch (e) {
+        logger.error("Auto-speak AI line failed:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      void ttsService.stopAudio();
+    };
+  }, [messages]);
 
   const loadDrill = async () => {
     try {
