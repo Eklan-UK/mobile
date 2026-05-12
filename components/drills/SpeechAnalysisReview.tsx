@@ -6,13 +6,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
-import { Button } from "@/components/ui";
 import tw from "@/lib/tw";
-import { useAuth } from "@/hooks/useAuth";
 import { AppText } from "../ui/AppText";
-import { DetailedFeedbackLocked } from "@/components/gating/DetailedFeedbackLocked";
-import { FluencyReviewGate } from "@/components/gating/FluencyReviewGate";
-import { router } from "expo-router";
 import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
 import type {
   TextScore,
@@ -306,9 +301,6 @@ function ReviewPerformanceUI({
   onPracticeAgain: () => void;
 }) {
   const [expandedGroupIndex, setExpandedGroupIndex] = useState<number | null>(null);
-  const [showFluencyGate, setShowFluencyGate] = useState(false);
-  const { user } = useAuth();
-  const isFreeUser = !user?.isSubscribed;
 
   const avgScore = useMemo(() => getAverageScore(analysisResults), [analysisResults]);
 
@@ -439,37 +431,36 @@ function ReviewPerformanceUI({
 
         <TouchableOpacity
           onPress={onPracticeAgain}
-          style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center mb-3`}
+          style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`}
           activeOpacity={0.8}
         >
           <AppText style={tw`text-primary-500 text-base font-semibold`}>
             Practice again
           </AppText>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => {
-            if (isFreeUser) {
-              setShowFluencyGate(true);
-            } else {
-              router.push("/book-call");
-            }
-          }}
-          style={tw`w-full border border-neutral-300 rounded-full py-3 items-center`}
-          activeOpacity={0.8}
-        >
-          <AppText style={tw`text-neutral-800 text-sm font-semibold`}>
-            Book a fluency review call
-          </AppText>
-        </TouchableOpacity>
       </View>
 
-      <FluencyReviewGate visible={isFreeUser && showFluencyGate} onClose={() => setShowFluencyGate(false)} />
     </SafeAreaView>
   );
 }
 
-// ─── Roleplay UI (unchanged) ─────────────────────────────────────
+// ─── Back arrow icon for roleplay review ─────────────────────────
+
+function BackArrowIcon() {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M19 12H5M12 19l-7-7 7-7"
+        stroke="#171717"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// ─── Roleplay UI ─────────────────────────────────────────────────
 
 function RoleplayReviewUI({
   analysisResults,
@@ -491,20 +482,14 @@ function RoleplayReviewUI({
     return Math.round(allWords.reduce((a, w) => a + w.quality_score, 0) / allWords.length);
   }, [allWords, avgScore]);
 
-  const { user } = useAuth();
-  const isFreeUser = !user?.isSubscribed;
-  const [showFluencyGate, setShowFluencyGate] = useState(false);
-
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
-      <View style={tw`px-5 pt-3 flex-row items-center justify-between`}>
-        <View>
-          <AppText style={tw`text-2xl font-bold text-neutral-900`}>Lesson Review</AppText>
-          <AppText style={tw`text-sm text-neutral-500 mt-1`}>Here's how your voice grew today.</AppText>
-        </View>
-        <TouchableOpacity onPress={onDone} hitSlop={8}>
-          <CloseIcon />
+      {/* Header: back arrow + "Review Performance" title (Figma 186588) */}
+      <View style={tw`px-5 pt-3 flex-row items-center`}>
+        <TouchableOpacity onPress={onDone} hitSlop={12} style={tw`mr-3`}>
+          <BackArrowIcon />
         </TouchableOpacity>
+        <AppText style={tw`text-xl font-bold text-neutral-900 flex-1`}>Review Performance</AppText>
       </View>
 
       <ScrollView style={tw`flex-1`} contentContainerStyle={tw`px-5 pb-8 pt-4`} showsVerticalScrollIndicator={false}>
@@ -521,7 +506,7 @@ function RoleplayReviewUI({
           <ScoreCategoryCard key={idx} icon={card.icon} label={card.label} subtitle={card.subtitle} score={card.score} />
         ))}
 
-        <CollapsibleSection title="Highlights From Today" subtitle="Here are some feedback based on the above" initiallyOpen={true}>
+        <CollapsibleSection title="Scene-by-Scene Analysis" subtitle="Feedback based on your recorded lines" initiallyOpen={true}>
           <View style={tw`mb-4`}>
             <View style={tw`flex-row items-center mb-2`}>
               <View style={tw`w-5 h-5 rounded-full bg-green-100 items-center justify-center mr-2`}>
@@ -552,70 +537,57 @@ function RoleplayReviewUI({
           </View>
         </CollapsibleSection>
 
-        {isFreeUser ? (
-          <DetailedFeedbackLocked onBookCall={() => setShowFluencyGate(true)} />
-        ) : (
-          <CollapsibleSection title="Detailed breakdown" subtitle="Here is a breakdown of your performance" initiallyOpen={false}>
-            {allSyllables.length > 0 && (
-              <View style={tw`mb-4`}>
-                <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>Syllables</AppText>
-                <View style={tw`flex-row flex-wrap`}>
-                  {allSyllables.map((syl, idx) => (
-                    <View key={idx} style={tw`mr-4 mb-3 min-w-16`}>
-                      <AppText style={tw`text-sm text-neutral-900`}>{syl.letters}</AppText>
-                      <View style={tw`flex-row items-center gap-1`}>
-                        <AppText style={[tw`text-xs font-bold`, { color: syl.quality_score >= 80 ? "#16a34a" : syl.quality_score >= 50 ? "#d97706" : "#dc2626" }]}>
-                          {Math.round(syl.quality_score)}
-                        </AppText>
-                        <AppText style={tw`text-xs text-neutral-400`}>stress: {syl.stress_level ?? 0}</AppText>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-            {allPhonemes.length > 0 && (
-              <View style={tw`mb-4`}>
-                <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>Phonemes</AppText>
-                <View style={tw`flex-row flex-wrap`}>
-                  {allPhonemes.map((ph, idx) => <ScorePill key={idx} label={ph.phone} score={ph.quality_score} />)}
-                </View>
-              </View>
-            )}
-            {allWords.length > 0 && (
-              <View>
-                <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>Letter level Feedback</AppText>
-                {allWords.map((ws, wIdx) => (
-                  <View key={wIdx} style={tw`mb-3`}>
-                    <AppText style={tw`text-sm font-semibold text-neutral-700 mb-1`}>{ws.word}</AppText>
-                    <View style={tw`flex-row flex-wrap`}>
-                      {ws.phone_score_list?.map((ph, pIdx) => <ScorePill key={pIdx} label={ph.phone} score={ph.quality_score} />)}
+        <CollapsibleSection title="Detailed breakdown" subtitle="Here is a breakdown of your performance" initiallyOpen={false}>
+          {allSyllables.length > 0 && (
+            <View style={tw`mb-4`}>
+              <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>Syllables</AppText>
+              <View style={tw`flex-row flex-wrap`}>
+                {allSyllables.map((syl, idx) => (
+                  <View key={idx} style={tw`mr-4 mb-3 min-w-16`}>
+                    <AppText style={tw`text-sm text-neutral-900`}>{syl.letters}</AppText>
+                    <View style={tw`flex-row items-center gap-1`}>
+                      <AppText style={[tw`text-xs font-bold`, { color: syl.quality_score >= 80 ? "#16a34a" : syl.quality_score >= 50 ? "#d97706" : "#dc2626" }]}>
+                        {Math.round(syl.quality_score)}
+                      </AppText>
+                      <AppText style={tw`text-xs text-neutral-400`}>stress: {syl.stress_level ?? 0}</AppText>
                     </View>
                   </View>
                 ))}
               </View>
-            )}
-          </CollapsibleSection>
-        )}
+            </View>
+          )}
+          {allPhonemes.length > 0 && (
+            <View style={tw`mb-4`}>
+              <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>Phonemes</AppText>
+              <View style={tw`flex-row flex-wrap`}>
+                {allPhonemes.map((ph, idx) => <ScorePill key={idx} label={ph.phone} score={ph.quality_score} />)}
+              </View>
+            </View>
+          )}
+          {allWords.length > 0 && (
+            <View>
+              <AppText style={tw`text-xs font-semibold text-neutral-500 mb-2`}>Letter level Feedback</AppText>
+              {allWords.map((ws, wIdx) => (
+                <View key={wIdx} style={tw`mb-3`}>
+                  <AppText style={tw`text-sm font-semibold text-neutral-700 mb-1`}>{ws.word}</AppText>
+                  <View style={tw`flex-row flex-wrap`}>
+                    {ws.phone_score_list?.map((ph, pIdx) => <ScorePill key={pIdx} label={ph.phone} score={ph.quality_score} />)}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </CollapsibleSection>
       </ScrollView>
 
-      <View style={tw`px-5 pb-4`}>
+      <View style={tw`px-5 pb-4 pt-2`}>
         <TouchableOpacity onPress={onDone} style={tw`w-full bg-primary-500 rounded-full py-4 items-center mb-3`} activeOpacity={0.8}>
           <AppText style={tw`text-white text-base font-semibold`}>Done for today</AppText>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onPracticeAgain} style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center mb-3`} activeOpacity={0.8}>
-          <AppText style={tw`text-primary-500 text-base font-semibold`}>practice again</AppText>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => { if (isFreeUser) setShowFluencyGate(true); else router.push("/book-call"); }}
-          style={tw`w-full border border-neutral-300 rounded-full py-3 items-center`}
-          activeOpacity={0.8}
-        >
-          <AppText style={tw`text-neutral-800 text-sm font-semibold`}>Book a fluency review call</AppText>
+        <TouchableOpacity onPress={onPracticeAgain} style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`} activeOpacity={0.8}>
+          <AppText style={tw`text-primary-500 text-base font-semibold`}>Practice again</AppText>
         </TouchableOpacity>
       </View>
-
-      <FluencyReviewGate visible={isFreeUser && showFluencyGate} onClose={() => setShowFluencyGate(false)} />
     </SafeAreaView>
   );
 }

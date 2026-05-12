@@ -1,8 +1,10 @@
 import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
-import { TouchableOpacity, View } from "react-native";
+import { useEffect, useRef } from "react";
+import { Dimensions, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import ConfettiCannon from "react-native-confetti-cannon";
 import Svg, { Circle, Path } from "react-native-svg";
 
 // ─── Close icon (X) ────────────────────────────────────────────
@@ -145,6 +147,8 @@ type DrillCompletedScreenProps =
 
 // ─── Component ──────────────────────────────────────────────────
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
 export default function DrillCompletedScreen(
   props: DrillCompletedScreenProps
 ) {
@@ -156,6 +160,14 @@ export default function DrillCompletedScreen(
     onContinue,
     onClose,
   } = props;
+
+  const confettiRef = useRef<ConfettiCannon>(null);
+
+  useEffect(() => {
+    // Small delay so the screen is fully visible before confetti fires
+    const id = setTimeout(() => confettiRef.current?.start(), 300);
+    return () => clearTimeout(id);
+  }, []);
 
   const handleClose = () => {
     if (onClose) {
@@ -175,6 +187,18 @@ export default function DrillCompletedScreen(
 
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
+      {/* Confetti — fires once on mount, rains from the top center */}
+      <ConfettiCannon
+        ref={confettiRef}
+        count={180}
+        origin={{ x: SCREEN_WIDTH / 2, y: -20 }}
+        autoStart={false}
+        fadeOut
+        fallSpeed={3000}
+        explosionSpeed={350}
+        colors={["#3B883E", "#FBD100", "#3B82F6", "#F472B6", "#F97316", "#A855F7"]}
+      />
+
       {/* Close Button */}
       <View style={tw`px-6 pt-4 flex-row justify-end`}>
         <TouchableOpacity onPress={handleClose} hitSlop={8}>

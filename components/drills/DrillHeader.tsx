@@ -17,6 +17,10 @@ interface DrillHeaderProps {
   isSaved?: boolean;
   onSave?: () => void;
   onUnsave?: () => void;
+  /** Hide the built-in progress bar (e.g. when the screen renders its own progress block) */
+  hideProgress?: boolean;
+  /** Optional step label shown to the right of the title, e.g. "1 of 2" */
+  stepLabel?: string;
 }
 
 function BackArrowIcon() {
@@ -42,6 +46,8 @@ export default function DrillHeader({
   isSaved = false,
   onSave,
   onUnsave,
+  hideProgress = false,
+  stepLabel,
 }: DrillHeaderProps) {
   const handleBack = () => {
     if (onBack) {
@@ -73,22 +79,31 @@ export default function DrillHeader({
         </TouchableOpacity>
 
         <View style={tw`flex-1 mx-3`}>
-          <AppText
-            style={tw`text-base text-[20px] font-bold text-gray-900 mb-2`}
-            numberOfLines={1}
-          >
-            {title}
-          </AppText>
+          <View style={tw`flex-row items-center justify-between mb-2`}>
+            <AppText
+              style={tw`text-base text-[14px] font-bold text-gray-900 flex-1`}
+              numberOfLines={1}
+            >
+              {title}
+            </AppText>
+            {stepLabel != null && (
+              <AppText style={tw`text-[14px] text-[#6a7282] ml-2 shrink-0`}>
+                {stepLabel}
+              </AppText>
+            )}
+          </View>
 
           {/* Progress bar */}
-          <View style={tw`h-2 bg-gray-200 rounded-full overflow-hidden`}>
-            <View
-              style={[
-                tw`h-full bg-green-600 rounded-full`,
-                { width: `${progress}%` },
-              ]}
-            />
-          </View>
+          {!hideProgress && (
+            <View style={tw`h-2 bg-gray-200 rounded-full overflow-hidden`}>
+              <View
+                style={[
+                  tw`h-full bg-green-600 rounded-full`,
+                  { width: `${progress}%` },
+                ]}
+              />
+            </View>
+          )}
         </View>
 
         {(onSave || onUnsave) && (

@@ -7,6 +7,7 @@ import {
 } from '@/hooks/useLearnerClasses';
 import { RescheduleSlot } from '@/types/session.types';
 import { formatSessionDateTime } from '@/utils/sessionFormatters';
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -108,7 +109,7 @@ function ConfirmStep({
       {/* Icon + title */}
       <View style={tw`items-center mb-6`}>
         <View style={tw`bg-[#DBEAFE] rounded-full w-[60px] h-[60px] items-center justify-center mb-4`}>
-          <AppText style={tw`text-2xl`}>📅</AppText>
+          <Ionicons name="calendar-outline" size={32} color="#1D4ED8" />
         </View>
         <BoldText style={tw`text-[#101828] text-xl font-bold text-center`}>
           Confirm Your New Time
@@ -275,7 +276,7 @@ export default function RescheduleModal({
                   </BoldText>
                   <View style={tw`flex-row gap-4`}>
                     <View style={tw`flex-row items-center gap-1`}>
-                      <AppText style={tw`text-sm`}>📅</AppText>
+                      <Ionicons name="calendar-outline" size={16} color="#6B7280" />
                       <AppText style={tw`text-[#4A5565] text-sm`}>{currentDate}</AppText>
                     </View>
                     <View style={tw`flex-row items-center gap-1`}>

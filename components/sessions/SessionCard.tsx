@@ -1,14 +1,14 @@
 import { AppText, BoldText } from '@/components/ui';
+import { useRecordAttendance } from '@/hooks/useLearnerClasses';
 import tw from '@/lib/tw';
 import { LearnerClassListItem, PastSession } from '@/types/session.types';
 import {
-  deriveDisplayStatus,
-  formatRelativeTime,
-  formatSessionDateTime,
+    deriveDisplayStatus,
+    formatRelativeTime,
+    formatSessionDateTime,
 } from '@/utils/sessionFormatters';
-import { Linking } from 'react-native';
-import { TouchableOpacity, View } from 'react-native';
-import { useRecordAttendance } from '@/hooks/useLearnerClasses';
+import { Ionicons } from '@expo/vector-icons';
+import { Linking, TouchableOpacity, View } from 'react-native';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -214,7 +214,7 @@ export function SessionCard(props: SessionCardProps) {
         <View style={tw`flex-1 gap-2`}>
           {/* Date */}
           <View style={tw`flex-row items-center gap-2`}>
-            <AppText style={tw`text-sm`}>📅</AppText>
+            <Ionicons name="calendar-outline" size={18} color="#6B7280" />
             <BoldText style={tw`text-[#101828] text-sm font-medium`}>{dateLabel}</BoldText>
           </View>
           {/* Time */}

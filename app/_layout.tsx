@@ -29,18 +29,22 @@ export default function RootLayout() {
   const { theme } = useThemeStore();
   const systemColorScheme = useColorScheme();
 
-  // Attach twrnc to the React Native device context so `tw` works everywhere
-  useDeviceContext(tw);
+  // Attach twrnc to RN device context. With options, twrnc skips overwriting our color
+  // scheme on every render (otherwise useColorScheme() fights Zustand + causes an infinite loop).
+  useDeviceContext(tw, {
+    observeDeviceColorSchemeChanges: false,
+    initialColorScheme: "device",
+  });
 
   // Control twrnc's color scheme from our theme store (or system when set to "system")
-  const [twColorScheme, , setTwColorScheme] = useAppColorScheme(tw);
+  const [, , setTwColorScheme] = useAppColorScheme(tw);
 
   useEffect(() => {
     const effectiveTheme =
       theme === "system" ? (systemColorScheme || "light") : theme;
 
-    // Only update twrnc if the desired scheme actually changed to avoid render loops
-    if (twColorScheme !== effectiveTheme) {
+    // Compare against tw instance so we don't depend on twColorScheme + unstable setter identity
+    if (tw.getColorScheme() !== effectiveTheme) {
       setTwColorScheme(effectiveTheme as "light" | "dark");
     }
 
@@ -51,7 +55,8 @@ export default function RootLayout() {
     SystemUI.setBackgroundColorAsync(
       effectiveTheme === "dark" ? "#171717" : "#ffffff"
     );
-  }, [theme, systemColorScheme, twColorScheme, setTwColorScheme]);
+    // setTwColorScheme from twrnc is not referentially stable; omit to avoid running this effect every render.
+  }, [theme, systemColorScheme]);
 
   const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";
 

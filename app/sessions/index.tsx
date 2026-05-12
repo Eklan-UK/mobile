@@ -1,14 +1,15 @@
-import { AppText, BoldText } from '@/components/ui';
-import { SessionCard } from '@/components/sessions/SessionCard';
-import RescheduleModal from '@/components/sessions/RescheduleModal';
 import JoiningSessionModal from '@/components/sessions/JoiningSessionModal';
+import RescheduleModal from '@/components/sessions/RescheduleModal';
 import { RescheduleSuccessToast } from '@/components/sessions/RescheduleSuccessToast';
+import { SessionCard } from '@/components/sessions/SessionCard';
+import { AppText, BoldText } from '@/components/ui';
 import {
   useLearnerClassesByBucket,
   useLearnerPastSessions,
 } from '@/hooks/useLearnerClasses';
 import tw from '@/lib/tw';
 import { LearnerClassListItem, PastSession } from '@/types/session.types';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -16,6 +17,7 @@ import {
   RefreshControl,
   ScrollView,
   TouchableOpacity,
+  useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -66,9 +68,11 @@ function TabPill({
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ tab }: { tab: TabKey }) {
-  const messages: Record<TabKey, { emoji: string; title: string; sub: string }> = {
+  const colorScheme = useColorScheme();
+  const calendarIconColor = colorScheme === 'dark' ? '#A3A3A3' : '#9CA3AF';
+
+  const messages: Record<TabKey, { emoji?: string; title: string; sub: string }> = {
     thisWeek: {
-      emoji: '📅',
       title: 'No sessions this week',
       sub: 'You have no scheduled sessions for this week.',
     },
@@ -88,7 +92,16 @@ function EmptyState({ tab }: { tab: TabKey }) {
 
   return (
     <View style={tw`items-center justify-center py-20`}>
-      <AppText style={tw`text-5xl mb-4`}>{emoji}</AppText>
+      {tab === 'thisWeek' ? (
+        <Ionicons
+          name="calendar-outline"
+          size={56}
+          color={calendarIconColor}
+          style={tw`mb-4`}
+        />
+      ) : (
+        <AppText style={tw`text-5xl mb-4`}>{emoji}</AppText>
+      )}
       <BoldText style={tw`text-lg text-gray-900 dark:text-white mb-2 text-center`}>
         {title}
       </BoldText>

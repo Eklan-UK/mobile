@@ -1,168 +1,259 @@
-import AITutorMessage from "@/components/drills/AITutorMessage";
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
+import DrillHeader from "@/components/drills/DrillHeader";
 import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
-import DrillHeader from "@/components/drills/DrillHeader";
-import RecordButton from "@/components/drills/RecordButton";
-import UserMessage from "@/components/drills/UserMessage";
-import AudioButton from "@/components/drills/AudioButton";
-import { AppText, Loader } from "@/components/ui";
+import RoleplayAiBubble, { BotAvatar } from "@/components/drills/roleplay/RoleplayAiBubble";
+import RoleplayUserLineBubble from "@/components/drills/roleplay/RoleplayUserLineBubble";
+import RoleplayYourTurnSection from "@/components/drills/roleplay/RoleplayYourTurnSection";
+import RoleplayMicDock from "@/components/drills/roleplay/RoleplayMicDock";
+import RoleplayPassSheet from "@/components/drills/roleplay/RoleplayPassSheet";
+import RoleplayFailSheet from "@/components/drills/roleplay/RoleplayFailSheet";
+import RoleplayConversationCompleteSheet from "@/components/drills/roleplay/RoleplayConversationCompleteSheet";
+import RoleplaySceneHeader from "@/components/drills/roleplay/RoleplaySceneHeader";
+import RoleplayYourLinesProgress from "@/components/drills/roleplay/RoleplayYourLinesProgress";
+import { AppText, BoldText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
-import { Drill } from "@/types/drill.types";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState, useRef } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View, TouchableOpacity } from "react-native";
-import { Alert } from '@/utils/alert';
-import { setAudioModeSafely } from '@/utils/audio';
-import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
+import { completeDrill, getDrillById } from "@/services/drill.service";
+import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
+import { ttsService } from "@/services/tts.service";
+import { useActivityStore } from "@/store/activity-store";
+import { Drill, DialogueTurn } from "@/types/drill.types";
+import { Alert } from "@/utils/alert";
+import { setAudioModeSafely } from "@/utils/audio";
+import { logger } from "@/utils/logger";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
-
-import { getDrillById, completeDrill } from "@/services/drill.service";
-import { ttsService } from "@/services/tts.service";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  View,
+} from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
-import { useActivityStore } from "@/store/activity-store";
-import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
-import { logger } from "@/utils/logger";
 
-interface Message {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type SessionPhase =
+  | "intro"          // Pre-start: show context/roles + "Let's Get Started"
+  | "ai_speaking"    // AI's current line playing/loading
+  | "your_turn"      // Student must record
+  | "recording"      // Actively recording
+  | "preview"        // Clip recorded, awaiting submit or delete
+  | "analyzing"      // Speechace in-flight
+  | "score_pass"     // Speechace passed — show celebration, await Continue
+  | "score_fail"     // Speechace failed — show retry card
+  | "complete_banner"// Whole drill done — emerald banner
+  | "review";        // SpeechAnalysisReview
+
+interface CompletedMessage {
   id: string;
   type: "ai" | "user";
-  content: string;
-  needsRetry?: boolean;
-  feedback?: string;
-  pronunciationScore?: number;
+  text: string;
+  translation?: string;
+  score?: number;
 }
+
+// ─── Pass threshold ───────────────────────────────────────────────────────────
+// NOTE: vocabulary / pronunciation drills use 65; roleplay keeps 80 for stricter
+// spoken line evaluation. Change centrally if product aligns thresholds.
+const PASS_THRESHOLD = 80;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function totalStudentTurns(drill: Drill): number {
+  return (
+    drill.roleplay_scenes?.reduce(
+      (n, scene) => n + (scene.dialogue?.filter((d) => d.speaker === "student").length ?? 0),
+      0
+    ) ?? 0
+  );
+}
+
+/** Map persisted phase to a safe phase when resuming after the intro gate. */
+function normalizeResumePhase(phase: unknown): SessionPhase {
+  const p = typeof phase === "string" ? phase : "";
+  if (p === "score_pass" || p === "score_fail" || p === "complete_banner" || p === "review") {
+    return p as SessionPhase;
+  }
+  if (p === "your_turn") return "your_turn";
+  if (p === "ai_speaking") return "ai_speaking";
+  if (p === "analyzing" || p === "recording" || p === "preview") return "your_turn";
+  return "ai_speaking";
+}
+
+/** Collapse back-to-back AI bubbles with identical text (Strict Mode / batching / bad saves). */
+function dedupeConsecutiveAiSameText(messages: CompletedMessage[]): CompletedMessage[] {
+  const out: CompletedMessage[] = [];
+  for (const m of messages) {
+    const prev = out[out.length - 1];
+    if (m.type === "ai" && prev?.type === "ai" && prev.text === m.text) continue;
+    out.push(m);
+  }
+  return out;
+}
+
+/** Plain-text greeting for the intro screen (display + TTS). */
+function buildRoleplayIntroGreeting(drill: Drill): string {
+  const aiNames: string[] = drill.ai_character_names?.length
+    ? drill.ai_character_names
+    : drill.ai_character_name
+    ? [drill.ai_character_name]
+    : [];
+  const studentPart = drill.student_character_name
+    ? `You'll be playing ${drill.student_character_name}`
+    : "You'll be the student";
+  const aiPart = aiNames.length
+    ? `and I'll play ${aiNames.join(" and ")}`
+    : "and I'll be your conversation partner";
+  const contextPart = drill.context ? ` ${drill.context}` : "";
+  return `Hi! Ready for a roleplay? ${studentPart} ${aiPart}.${contextPart} Let's practice together — tap Let's Get Started when you're ready!`;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function RoleplayDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const insets = useSafeAreaInsets();
 
-  const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
+    useActivityStore();
+  const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
+
   const startTimeRef = useRef(Date.now());
-  const scrollViewRef = useRef<ScrollView>(null);
+  const transcriptScrollRef = useRef<ScrollView>(null);
+  /** Cancels stale AI-line TTS if `currentAiLine` / phase changes (e.g. Strict Mode). */
+  const aiSpeakingRunIdRef = useRef(0);
+  /** Ensures we only append one transcript bubble per dialogue turn (Strict Mode runs effects twice). */
+  const aiTurnAppendSigRef = useRef<string | null>(null);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const autoSpokenAiMessageIdsRef = useRef<Set<string>>(new Set());
+  /** After intro, resume this phase (set when restoring in-progress drill). */
+  const resumePhaseRef = useRef<SessionPhase | null>(null);
+  /** Cancels stale intro TTS if deps change (e.g. React Strict Mode remount). */
+  const introTtsRunIdRef = useRef(0);
 
+  // ── Drill data ──
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [currentStep, setCurrentStep] = useState(1);
+
+  // ── Session state ──
+  const [phase, setPhase] = useState<SessionPhase>("intro");
+  const [completedMessages, setCompletedMessages] = useState<CompletedMessage[]>([]);
+
+  // ── Scene / dialogue tracking ──
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
   const [currentDialogueIndex, setCurrentDialogueIndex] = useState(0);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [processing, setProcessing] = useState(false);
-  const [showYourTurn, setShowYourTurn] = useState(true);
-  const [currentPrompt, setCurrentPrompt] = useState("");
-  const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
+  const [currentAiLine, setCurrentAiLine] = useState<DialogueTurn | null>(null);
+  const [currentPrompt, setCurrentPrompt] = useState<DialogueTurn | null>(null);
+
+  // ── Student turn count for "Your lines" progress ──
+  const [completedStudentTurns, setCompletedStudentTurns] = useState(0);
+
+  // ── Recording ──
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordedAudioUri, setRecordedAudioUri] = useState<string | null>(null);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [previewSound, setPreviewSound] = useState<Audio.Sound | null>(null);
   const [permissionResponse, requestPermission] = Audio.usePermissions();
-  const [isDrillCompleted, setIsDrillCompleted] = useState(false);
-  const [showReview, setShowReview] = useState(false);
+
+  // ── Speechace result ──
+  const [lastScore, setLastScore] = useState(0);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
 
-  // Restore progress if available
-  useEffect(() => {
-    if (drillId && drillProgress[drillId]) {
+  // ── Recording elapsed timer ──
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Drill complete ──
+  const [isDrillCompleted, setIsDrillCompleted] = useState(false);
+
+  // ─── Computed ───
+  const totalTurns = drill ? totalStudentTurns(drill) : 0;
+  const currentScene = drill?.roleplay_scenes?.[currentSceneIndex] ?? null;
+  const totalScenes = drill?.roleplay_scenes?.length ?? 0;
+
+  // ─── Load drill ──────────────────────────────────────────────────────────
+
+  useEffect(() => { loadDrill(); }, [drillId]);
+
+  const loadDrill = async () => {
+    try {
+      setLoading(true);
+      // Stop any audio left over from a previous screen before rendering intro
+      await ttsService.stopAudio();
+      const drillData = await getDrillById(drillId, assignmentId);
+      setDrill(drillData);
+
+      aiTurnAppendSigRef.current = null;
+      resumePhaseRef.current = null;
       const saved = drillProgress[drillId];
-      if (saved.data?.messages) {
-        setMessages(saved.data.messages);
+      const msgs = saved?.data?.completedMessages ?? [];
+      const turns = saved?.data?.completedStudentTurns ?? 0;
+      const sceneIdx = saved?.data?.currentSceneIndex ?? 0;
+      const diagIdx = saved?.data?.currentDialogueIndex ?? 0;
+
+      const hasProgress =
+        msgs.length > 0 || turns > 0 || sceneIdx > 0 || diagIdx > 0;
+
+      if (saved?.data && hasProgress) {
+        setCompletedMessages(msgs);
+        setCompletedStudentTurns(turns);
+        setCurrentSceneIndex(sceneIdx);
+        setCurrentDialogueIndex(diagIdx);
+        resumePhaseRef.current = normalizeResumePhase(saved.data.phase);
+        const dialogue = drillData.roleplay_scenes?.[sceneIdx]?.dialogue ?? [];
+        seedCurrentLines(dialogue, diagIdx);
+      } else {
+        setCompletedMessages([]);
+        setCompletedStudentTurns(0);
+        setCurrentSceneIndex(0);
+        setCurrentDialogueIndex(0);
+        setCurrentAiLine(null);
+        setCurrentPrompt(null);
       }
-      if (saved.currentStep) {
-        setCurrentStep(saved.currentStep);
-      }
+
+      // Always show the intro / "Let's Get Started" gate until the user continues
+      setPhase("intro");
+    } catch (e) {
+      logger.error("Failed to load roleplay drill:", e);
+    } finally {
+      setLoading(false);
     }
-  }, [drillId]);
+  };
 
-  // Track activity on unmount
-  useEffect(() => {
-    return () => {
-      const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
-      if (drill && durationSeconds >= 5 * 60) {
-        addRecentActivity({
-          id: drill._id,
-          title: drill.title,
-          type: drill.type,
-          durationSeconds,
-          score: 0,
-        });
-      }
-    };
-  }, [drill]);
-
-  // Save progress on change
-  useEffect(() => {
-    if (drill && messages.length > 0) {
-      updateDrillProgress({
-        drillId,
-        title: drill.title,
-        type: drill.type,
-        currentStep,
-        totalSteps: drill.roleplay_scenes?.reduce((total, scene) => {
-          return total + (scene.dialogue?.filter(d => d.speaker === "student").length || 0);
-        }, 0) || 5,
-        answers: [],
-        data: { messages },
-        startTime: startTimeRef.current,
-        lastUpdated: Date.now(),
-      });
+  /** Derive `currentAiLine` and `currentPrompt` from a dialogue array + index. */
+  function seedCurrentLines(dialogue: DialogueTurn[], diagIdx: number) {
+    const aiTurn = dialogue[diagIdx] ?? null;
+    if (aiTurn && aiTurn.speaker !== "student") {
+      setCurrentAiLine(aiTurn);
+      const nextStudent = dialogue.find((d, i) => i > diagIdx && d.speaker === "student") ?? null;
+      setCurrentPrompt(nextStudent);
+    } else if (aiTurn && aiTurn.speaker === "student") {
+      setCurrentPrompt(aiTurn);
     }
-  }, [currentStep, messages, drill]);
+  }
 
-  // Auto-scroll when messages change
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [messages, showYourTurn, isListening, recordedAudioUri]);
-
-  // Cleanup sound on unmount
-  useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
-      if (recording) {
-        stopRecording();
-      }
-    };
-  }, [sound, recording]);
+  // ─── Auto TTS for intro greeting ("Let's Get Started" page) ───────────────
 
   useEffect(() => {
-    loadDrill();
-  }, [drillId]);
+    if (phase !== "intro" || !drill || loading) return;
 
-  // Speak the latest AI line when it appears (entering the drill or after each AI reply)
-  useEffect(() => {
-    const last = messages[messages.length - 1];
-    if (!last || last.type !== "ai" || !last.content.trim()) return;
-    if (autoSpokenAiMessageIdsRef.current.has(last.id)) return;
-
+    const runId = ++introTtsRunIdRef.current;
+    const text = buildRoleplayIntroGreeting(drill);
     let cancelled = false;
-    const messageId = last.id;
-    const textForTts = last.content.replace(/^\[[^\]]+\]:\s*/, "").trim() || last.content;
 
     (async () => {
       try {
-        await setAudioModeSafely({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-        });
+        await setAudioModeSafely({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
         await ttsService.stopAudio();
-        const uri = await ttsService.generateTTS({ text: textForTts });
-        if (cancelled || !uri?.trim()) return;
-        autoSpokenAiMessageIdsRef.current.add(messageId);
+        const uri = await ttsService.generateTTS({ text });
+        if (cancelled || runId !== introTtsRunIdRef.current || !uri?.trim()) return;
         await ttsService.playAudio(uri);
       } catch (e) {
-        logger.error("Auto-speak AI line failed:", e);
+        logger.warn("Intro greeting TTS failed:", e);
       }
     })();
 
@@ -170,498 +261,394 @@ export default function RoleplayDrill() {
       cancelled = true;
       void ttsService.stopAudio();
     };
-  }, [messages]);
+  }, [phase, drill, loading]);
 
-  const loadDrill = async () => {
-    try {
-      setLoading(true);
-      logger.log('🔄 Loading drill:', drillId, assignmentId ? `with assignment ${assignmentId}` : '');
-      const drillData = await getDrillById(drillId, assignmentId);
-      logger.log('✅ Drill loaded:', drillData.title);
+  // ─── Auto-TTS on each AI dialogue line ────────────────────────────────────
+  // Append at most once per dialogue turn (ref + dedupe; Strict Mode runs setup twice).
 
-      setDrill(drillData);
+  useEffect(() => {
+    if (phase !== "ai_speaking" || !currentAiLine) return;
 
-      // Only initialize messages if we didn't restore them
-      if (messages.length === 0) {
-        const scenes = drillData.roleplay_scenes || [];
-        if (scenes.length > 0 && scenes[0]) {
-          const firstScene = scenes[0];
-          const dialogueArray = firstScene?.dialogue || [];
+    const line = currentAiLine;
+    const key = line.text.trim();
+    const turnSig = `${currentSceneIndex}:${currentDialogueIndex}:${key}`;
 
-          // Find first AI dialogue (usually index 0)
-          const firstAIDialogue = dialogueArray.find((d) => d.speaker !== "student");
+    const skipAppend = aiTurnAppendSigRef.current === turnSig;
+    if (!skipAppend) {
+      aiTurnAppendSigRef.current = turnSig;
+      setCompletedMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.type === "ai" && last.text.trim() === key) return prev;
+        return [
+          ...prev,
+          {
+            id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            type: "ai",
+            text: line.text,
+            translation: line.translation,
+          },
+        ];
+      });
+    }
 
-          if (firstAIDialogue) {
-            const initialMessages: Message[] = [{
-              id: `ai-${Date.now()}-0`,
-              type: "ai" as const,
-              content: firstAIDialogue.text,
-            }];
-            setMessages(initialMessages);
+    const runId = ++aiSpeakingRunIdRef.current;
+    let cancelled = false;
 
-            // Find the first student response (the one that comes after the first AI message)
-            const firstAIIndex = dialogueArray.findIndex(d => d.speaker !== "student");
-            const firstStudentResponse = dialogueArray.find((d, i) =>
-              i > firstAIIndex && d.speaker === "student"
-            );
-
-            if (firstStudentResponse) {
-              setCurrentPrompt(firstStudentResponse.text);
-              // Set the dialogue index to the student response
-              setCurrentDialogueIndex(dialogueArray.findIndex(d => d === firstStudentResponse));
-            }
-          }
+    (async () => {
+      try {
+        if (cancelled || runId !== aiSpeakingRunIdRef.current) return;
+        await setAudioModeSafely({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
+        await ttsService.stopAudio();
+        if (cancelled || runId !== aiSpeakingRunIdRef.current) return;
+        const uri = await ttsService.generateTTS({ text: line.text });
+        if (cancelled || runId !== aiSpeakingRunIdRef.current) return;
+        if (!uri?.trim()) {
+          if (runId === aiSpeakingRunIdRef.current) setPhase("your_turn");
+          return;
+        }
+        await ttsService.playAudio(uri);
+        if (!cancelled && runId === aiSpeakingRunIdRef.current) {
+          setPhase("your_turn");
+        }
+      } catch (e) {
+        logger.error("Auto-speak AI line failed:", e);
+        if (!cancelled && runId === aiSpeakingRunIdRef.current) {
+          setPhase("your_turn");
         }
       }
+    })();
 
-    } catch (error) {
-      logger.error('❌ Failed to load drill:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      cancelled = true;
+      void ttsService.stopAudio();
+    };
+  }, [phase, currentSceneIndex, currentDialogueIndex, currentAiLine]);
 
-  async function startRecording() {
-    try {
-      if (permissionResponse?.status !== 'granted') {
-        logger.log('Requesting permission..');
-        await requestPermission();
+  // ─── Auto-scroll transcript ───────────────────────────────────────────────
+
+  useEffect(() => {
+    const id = setTimeout(() => transcriptScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    return () => clearTimeout(id);
+  }, [completedMessages]);
+
+  // ─── Persist progress ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!drill || completedMessages.length === 0) return;
+    updateDrillProgress({
+      drillId,
+      title: drill.title,
+      type: drill.type,
+      currentStep: completedStudentTurns + 1,
+      totalSteps: totalTurns || 5,
+      answers: [],
+      startTime: startTimeRef.current,
+      lastUpdated: Date.now(),
+      data: {
+        completedMessages,
+        completedStudentTurns,
+        currentSceneIndex,
+        currentDialogueIndex,
+        phase,
+      },
+    });
+  }, [completedMessages, completedStudentTurns, phase]);
+
+  // ─── Cleanup ──────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      timeoutRefs.current.forEach(clearTimeout);
+      if (previewSound) previewSound.unloadAsync().catch(() => {});
+      void ttsService.stopAudio();
+    };
+  }, []);
+
+  const transcriptForDisplay = useMemo(
+    () => dedupeConsecutiveAiSameText(completedMessages),
+    [completedMessages]
+  );
+
+  // ─── "Let's Get Started" ──────────────────────────────────────────────────
+
+  const handleStart = () => {
+    const scenes = drill?.roleplay_scenes ?? [];
+    if (scenes.length === 0) return;
+
+    // Stop intro greeting TTS and invalidate any in-flight intro generation
+    introTtsRunIdRef.current += 1;
+    void ttsService.stopAudio();
+
+    // Resume in-progress drill (user already saw intro on cold open)
+    if (resumePhaseRef.current != null) {
+      const next = resumePhaseRef.current;
+      resumePhaseRef.current = null;
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
       }
-
-      await setAudioModeSafely({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      logger.log('Starting recording..');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(recording);
-      setIsRecording(true);
-      setShowYourTurn(false);
-      setRecordedAudioUri(null); // Clear any previous recording
-      logger.log('Recording started');
-    } catch (err) {
-      logger.error('Failed to start recording', err);
-      Alert.alert("Error", "Failed to start recording. Please check microphone permissions.");
-    }
-  }
-
-  async function stopRecording() {
-    logger.log('Stopping recording..');
-    if (!recording) {
-      logger.log('No recording to stop');
-      setIsRecording(false);
+      setRecording(null);
+      setRecordedAudioUri(null);
+      setIsPlayingPreview(false);
+      setRecordingElapsed(0);
+      setPhase(next);
       return;
     }
 
-    // Store reference before clearing state
-    const recordingToStop = recording;
-    setRecording(null);
-    setIsRecording(false);
+    const firstScene = scenes[0];
+    const dialogue = firstScene.dialogue ?? [];
+    const firstAi = dialogue.find((d) => d.speaker !== "student") ?? null;
+    const firstStudent = dialogue.find((d, i) =>
+      i > (firstAi ? dialogue.indexOf(firstAi) : -1) && d.speaker === "student"
+    ) ?? null;
 
+    setCurrentAiLine(firstAi);
+    setCurrentPrompt(firstStudent);
+    setCurrentSceneIndex(0);
+    setCurrentDialogueIndex(firstAi ? dialogue.indexOf(firstAi) : 0);
+    setPhase("ai_speaking");
+  };
+
+  // ─── Recording controls ───────────────────────────────────────────────────
+
+  const startRecording = async () => {
     try {
-      // Check if recording still exists and has the method
-      if (recordingToStop && typeof recordingToStop.stopAndUnloadAsync === 'function') {
-        await recordingToStop.stopAndUnloadAsync();
-        const uri = recordingToStop.getURI();
-        logger.log('Recording stopped and stored at', uri);
+      if (permissionResponse?.status !== "granted") await requestPermission();
+      await setAudioModeSafely({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording: rec } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(rec);
+      setPhase("recording");
+      setRecordedAudioUri(null);
+      setRecordingElapsed(0);
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingElapsed((s) => s + 1);
+      }, 1000);
+    } catch (e) {
+      logger.error("Failed to start recording:", e);
+      Alert.alert("Error", "Could not start recording. Please check microphone permissions.");
+    }
+  };
 
-        if (uri) {
-          setRecordedAudioUri(uri);
-          setShowYourTurn(true); // Show the preview UI
-        }
+  const stopRecording = async () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    if (!recording) { setPhase("your_turn"); return; }
+    const rec = recording;
+    setRecording(null);
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      if (uri) {
+        setRecordedAudioUri(uri);
+        setPhase("preview");
       } else {
-        logger.warn('Recording object is invalid or already stopped');
-        setShowYourTurn(true);
+        setPhase("your_turn");
       }
-    } catch (error: any) {
-      logger.error('Error stopping recording:', error);
-      // Don't show alert for "Recorder does not exist" - it's usually harmless
-      if (error?.message?.includes('Recorder does not exist')) {
-        logger.log('Recording was already stopped or cleaned up');
-        setShowYourTurn(true);
-      } else {
+    } catch (e: any) {
+      logger.error("Error stopping recording:", e);
+      if (!e?.message?.includes("Recorder does not exist")) {
         Alert.alert("Error", "Failed to stop recording. Please try again.");
       }
+      setPhase("your_turn");
     }
-  }
+  };
 
-  async function playRecordingPreview() {
-    if (!recordedAudioUri) return;
-
-    try {
-      // Unload previous sound if any
-      if (sound) {
-        await sound.unloadAsync();
-      }
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: recordedAudioUri },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
-      setIsPlayingPreview(true);
-
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          setIsPlayingPreview(false);
-        }
-      });
-    } catch (error) {
-      logger.error('Error playing preview:', error);
-      Alert.alert("Error", "Failed to play recording preview.");
-    }
-  }
-
-  async function deleteRecording() {
-    if (sound) {
-      await sound.unloadAsync();
-      setSound(null);
-    }
+  const deleteRecording = async () => {
+    if (previewSound) { await previewSound.unloadAsync(); setPreviewSound(null); }
     setRecordedAudioUri(null);
     setIsPlayingPreview(false);
-  }
+    setPhase("your_turn");
+  };
 
-  async function submitRecording() {
+  const playPreview = async () => {
+    if (!recordedAudioUri || isPlayingPreview) return;
+    if (previewSound) { await previewSound.unloadAsync(); setPreviewSound(null); }
+    const { sound } = await Audio.Sound.createAsync({ uri: recordedAudioUri }, { shouldPlay: true });
+    setPreviewSound(sound);
+    setIsPlayingPreview(true);
+    sound.setOnPlaybackStatusUpdate((s) => {
+      if (s.isLoaded && s.didJustFinish) { setIsPlayingPreview(false); }
+    });
+  };
+
+  const submitRecording = async () => {
     if (!recordedAudioUri || !currentPrompt) return;
-
-    setIsListening(true);
-    setProcessing(true);
-    setShowYourTurn(false);
+    setPhase("analyzing");
 
     try {
-      // Convert to base64 using legacy API
       const base64 = await FileSystem.readAsStringAsync(recordedAudioUri, {
-        encoding: (FileSystem as any).EncodingType?.Base64 || 'base64',
+        encoding: (FileSystem as any).EncodingType?.Base64 || "base64",
       });
 
-      logger.log('Analyzing pronunciation for:', currentPrompt);
+      const result = await speechaceService.scorePronunciation(currentPrompt.text, base64);
 
-      // Call SpeechAce
-      const result = await speechaceService.scorePronunciation(currentPrompt, base64);
-      logger.log('SpeechAce Result:', result);
-
-      // Check for "No speech detected" error
-      if (result.status === 'error' && result.short_message === 'error_no_speech') {
-        setIsListening(false);
-        setProcessing(false);
+      if (result.status === "error" && result.short_message === "error_no_speech") {
+        setPhase("your_turn");
         setRecordedAudioUri(null);
         Alert.alert(
           "No Speech Detected",
-          "We couldn't detect any speech in your recording. Please try again and speak clearly.",
-          [{ text: "OK", onPress: () => setShowYourTurn(true) }]
+          "We couldn't detect any speech. Please try again and speak clearly.",
+          [{ text: "OK" }]
         );
         return;
       }
 
-      // Extract full text score for analysis review
       const textScore = extractTextScore(result);
       const qualityScore = extractQualityScore(result);
 
-      logger.log('Final Quality Score:', qualityScore);
-
-      // Save analysis result for the review screen
       setAnalysisResults((prev) => [
         ...prev,
-        { text: currentPrompt, score: qualityScore, textScore },
+        { text: currentPrompt.text, score: qualityScore, textScore },
       ]);
-
-      setIsListening(false);
-      setProcessing(false);
+      setLastScore(qualityScore);
       setRecordedAudioUri(null);
 
-      if (qualityScore >= 80) {
-        handleSuccess(qualityScore);
+      if (qualityScore >= PASS_THRESHOLD) {
+        setPhase("score_pass");
       } else {
-        handleFailure(qualityScore);
+        setPhase("score_fail");
       }
-    } catch (error) {
-      logger.error('Error processing audio:', error);
-      setIsListening(false);
-      setProcessing(false);
+    } catch (e) {
+      logger.error("Error processing audio:", e);
+      setPhase("your_turn");
       setRecordedAudioUri(null);
       Alert.alert("Error", "Failed to process audio. Please try again.");
     }
-  }
-
-  const handleSuccess = (score: number) => {
-    // Add user message
-    const userMessage: Message = {
-      id: `user-${Date.now()}-${currentStep}`,
-      type: "user",
-      content: currentPrompt || "User response from recording",
-      pronunciationScore: score,
-    };
-    setMessages(prev => [...prev, userMessage]);
-    setShowYourTurn(false);
-
-    // Add AI response after delay
-    // Store timeout ID for cleanup if component unmounts
-    const timeoutId = setTimeout(() => {
-      const scenes = drill?.roleplay_scenes || [];
-      if (scenes.length === 0 || !scenes[currentSceneIndex]) {
-        handleDrillComplete();
-        return;
-      }
-
-      // Use a local variable to track scene changes
-      let workingSceneIndex = currentSceneIndex;
-      let currentScene = scenes[workingSceneIndex];
-      if (!currentScene) {
-        handleDrillComplete();
-        return;
-      }
-      let dialogueArray = currentScene?.dialogue || [];
-      let nextDialogueIndex = currentDialogueIndex + 1;
-
-      // Find next AI dialogue in current scene
-      let nextAIDialogue = dialogueArray.find((d, i) =>
-        i > currentDialogueIndex && d.speaker !== "student"
-      );
-
-      // If no more AI dialogues in current scene, move to next scene
-      if (!nextAIDialogue && workingSceneIndex < scenes.length - 1) {
-        const nextSceneIndex = workingSceneIndex + 1;
-        const nextScene = scenes[nextSceneIndex];
-        if (!nextScene) {
-          handleDrillComplete();
-          return;
-        }
-        dialogueArray = nextScene?.dialogue || [];
-        workingSceneIndex = nextSceneIndex;
-
-        // Find first AI dialogue in next scene
-        nextAIDialogue = dialogueArray.find((d) => d.speaker !== "student");
-        nextDialogueIndex = dialogueArray.findIndex(d => d === nextAIDialogue);
-
-        if (nextAIDialogue) {
-          setCurrentSceneIndex(nextSceneIndex);
-          setCurrentDialogueIndex(nextDialogueIndex);
-
-          // Add scene context message if available
-          if (nextScene.context) {
-            const contextMessage: Message = {
-              id: `context-${Date.now()}`,
-              type: "ai",
-              content: `[${nextScene.scene_name || `Scene ${nextSceneIndex + 1}`}]: ${nextScene.context}`,
-            };
-            setMessages(prev => [...prev, contextMessage]);
-          }
-        }
-      } else if (nextAIDialogue) {
-        // Update dialogue index to the AI dialogue
-        nextDialogueIndex = dialogueArray.findIndex(d => d === nextAIDialogue);
-        setCurrentDialogueIndex(nextDialogueIndex);
-      }
-
-      if (nextAIDialogue) {
-        const aiMessage: Message = {
-          id: `ai-${Date.now()}-${currentStep + 1}`,
-          type: "ai",
-          content: nextAIDialogue.text,
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        setCurrentStep(prev => prev + 1);
-
-        // Find next student response after this AI dialogue
-        const nextStudentResponse = dialogueArray.find((d, i) =>
-          i > nextDialogueIndex && d.speaker === "student"
-        );
-
-        if (nextStudentResponse) {
-          setCurrentPrompt(nextStudentResponse.text);
-          setCurrentDialogueIndex(dialogueArray.findIndex(d => d === nextStudentResponse));
-          setShowYourTurn(true);
-        } else {
-          // Check if there's a student response in the next scene
-          // Use workingSceneIndex which reflects any scene changes we just made
-          if (workingSceneIndex < scenes.length - 1) {
-            const nextScene = scenes[workingSceneIndex + 1];
-            const nextSceneDialogue = nextScene?.dialogue || [];
-            const firstStudentInNextScene = nextSceneDialogue.find((d) => d.speaker === "student");
-
-            if (firstStudentInNextScene) {
-              // We'll get this in the next iteration after moving to the scene
-              setCurrentPrompt("");
-              setShowYourTurn(false);
-            } else {
-              // No more student turns - drill complete
-              setShowYourTurn(false);
-              handleDrillComplete();
-            }
-          } else {
-            // No more scenes - drill complete
-            setShowYourTurn(false);
-            handleDrillComplete();
-          }
-        }
-      } else {
-        // No more dialogues - drill complete
-        setShowYourTurn(false);
-        handleDrillComplete();
-      }
-    }, 1500);
   };
 
-  const handleFailure = (score: number) => {
-    // Add user message with retry flag
-    const userMessage: Message = {
-      id: `user-${Date.now()}-${currentStep}`,
+  // ─── Advance after pass ───────────────────────────────────────────────────
+
+  const handleContinue = () => {
+    if (!currentPrompt || !drill) return;
+
+    // Commit the student's line to history
+    const userEntry: CompletedMessage = {
+      id: `user-${Date.now()}`,
       type: "user",
-      content: currentPrompt || "User's attempt (needs improvement)",
-      needsRetry: true,
-      feedback: `Score: ${score}. You need 80+ to proceed. Keep practicing!`,
+      text: currentPrompt.text,
+      translation: currentPrompt.translation,
+      score: lastScore,
     };
-    setMessages(prev => [...prev, userMessage]);
 
-    // Add AI feedback message
-    const feedbackTimeoutId = setTimeout(() => {
-      const feedbackMessage: Message = {
-        id: `ai-feedback-${Date.now()}`,
-        type: "ai",
-        content: `Score: ${score}. You need 80+ to proceed. Keep practicing!`,
-      };
-      setMessages(prev => [...prev, feedbackMessage]);
-      setShowYourTurn(true);
-    }, 1000);
+    const scenes = drill.roleplay_scenes ?? [];
+    const scene = scenes[currentSceneIndex];
+    const dialogue = scene?.dialogue ?? [];
 
-    timeoutRefs.current.push(feedbackTimeoutId);
-  };
+    // Find the next AI line after the current student line
+    const studentIdx = dialogue.findIndex((d) => d === currentPrompt);
 
-  const handleDrillComplete = async () => {
-    logger.log("Drill completed!");
+    let nextAi: DialogueTurn | null =
+      dialogue.find((d, i) => i > studentIdx && d.speaker !== "student") ?? null;
+    let newSceneIdx = currentSceneIndex;
+    let newDialogueArr = dialogue;
 
-    if (drill) {
-      const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
-
-      try {
-        // Calculate average pronunciation score from all successful user messages
-        const userMessages = messages.filter(m => m.type === "user" && m.pronunciationScore !== undefined);
-        const avgPronunciationScore = userMessages.length > 0
-          ? Math.round(userMessages.reduce((sum, m) => sum + (m.pronunciationScore || 0), 0) / userMessages.length)
-          : 0;
-
-        // Calculate score based on successful turns across all scenes
-        const totalStudentTurns = drill.roleplay_scenes?.reduce((total, scene) => {
-          return total + (scene.dialogue?.filter(d => d.speaker === "student").length || 0);
-        }, 0) || 1;
-        const completionScore = Math.round((currentStep / totalStudentTurns) * 100);
-
-        // Calculate scene scores for all completed scenes
-        const sceneScores = drill.roleplay_scenes?.map((scene, index) => {
-          const sceneStudentTurns = scene.dialogue?.filter(d => d.speaker === "student").length || 0;
-          // Calculate how many turns were completed in this scene
-          // This is a simplified calculation - you might want to track per-scene progress
-          const sceneProgress = Math.min(currentStep, sceneStudentTurns);
-          const sceneScore = sceneStudentTurns > 0
-            ? Math.round((sceneProgress / sceneStudentTurns) * 100)
-            : 0;
-
-          return {
-            sceneName: scene.scene_name || `Scene ${index + 1}`,
-            score: sceneScore,
-            pronunciationScore: avgPronunciationScore,
-            fluencyScore: avgPronunciationScore,
-          };
-        }) || [];
-
-        // Submit completion
-        await completeDrill(drillId, {
-          drillAssignmentId: assignmentId,
-          score: completionScore,
-          timeSpent: durationSeconds,
-          answers: [],
-          roleplayResults: {
-            sceneScores,
-          },
-        });
-
-        clearDrillProgress(drillId);
-        addRecentActivity({
-          id: drill._id,
-          title: drill.title,
-          type: drill.type,
-          durationSeconds,
-          score: completionScore,
-        });
-
-        setShowReview(true);
-      } catch (error) {
-        logger.error('Failed to submit drill:', error);
-        Alert.alert("Error", "Drill completed but failed to submit. Please try again.");
-      }
+    if (!nextAi && currentSceneIndex < scenes.length - 1) {
+      newSceneIdx = currentSceneIndex + 1;
+      newDialogueArr = scenes[newSceneIdx]?.dialogue ?? [];
+      nextAi = newDialogueArr.find((d) => d.speaker !== "student") ?? null;
+      if (nextAi) setCurrentSceneIndex(newSceneIdx);
     }
-  };
 
-  const handleRecord = () => {
-    if (isRecording) {
-      stopRecording();
-    } else if (recordedAudioUri) {
-      submitRecording();
+    const nextStudent: DialogueTurn | null = nextAi
+      ? newDialogueArr.find((d, i) => i > newDialogueArr.indexOf(nextAi!) && d.speaker === "student") ?? null
+      : null;
+
+    // AI line was already added to the transcript when this AI turn started; only append the student line.
+    setCompletedMessages((prev) => [...prev, userEntry]);
+    setCompletedStudentTurns((n) => n + 1);
+
+    if (nextAi) {
+      setCurrentAiLine(nextAi);
+      setCurrentPrompt(nextStudent);
+      setCurrentDialogueIndex(newDialogueArr.indexOf(nextAi));
+      setPhase("ai_speaking");
     } else {
-      startRecording();
+      // No more AI lines — drill complete
+      completeDrillAsync();
     }
   };
 
-  const handleRetry = (messageId: string) => {
-    // Remove the failed message and feedback
-    setMessages(prev => prev.filter(m =>
-      m.id !== messageId && !m.id.startsWith('ai-feedback')
-    ));
-    setShowYourTurn(true);
+  const handleRetry = () => {
+    setPhase("your_turn");
+    setRecordedAudioUri(null);
   };
 
-  const totalSteps = drill?.roleplay_scenes?.reduce((total, scene) => {
-    return total + (scene.dialogue?.filter(d => d.speaker === "student").length || 0);
-  }, 0) || 5;
+  // Retry scene from pass sheet: discard pass, re-attempt current student turn
+  const handleRetryScene = () => {
+    setPhase("your_turn");
+    setRecordedAudioUri(null);
+    setLastScore(0);
+  };
 
-  // ── Speech Analysis Review Screen ──
-  if (showReview && !isDrillCompleted && drill) {
-    return (
-      <SpeechAnalysisReview
-        analysisResults={analysisResults}
-        drillType="roleplay"
-        onDone={() => setIsDrillCompleted(true)}
-        onPracticeAgain={() => {
-          // Reset drill to start over
-          setShowReview(false);
-          setMessages([]);
-          setCurrentStep(1);
-          setCurrentSceneIndex(0);
-          setCurrentDialogueIndex(0);
-          setCurrentPrompt("");
-          setShowYourTurn(true);
-          setRecordedAudioUri(null);
-          setAnalysisResults([]);
-          startTimeRef.current = Date.now();
-          // Re-initialise first scene messages
-          loadDrill();
-        }}
-      />
-    );
-  }
+  // ─── Drill complete ───────────────────────────────────────────────────────
 
-  // ── Completion Screen ──
-  if (isDrillCompleted && drill) {
-    return (
-      <DrillCompletedScreen
-        variant="progress"
-        completed={totalSteps}
-        total={totalSteps}
-        title="Lesson completed"
-        message={`Great job! You communicated clearly and stayed professional throughout the conversation.`}
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
-      />
-    );
-  }
+  const completeDrillAsync = async () => {
+    if (!drill) return;
+    const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
+    const score = totalTurns > 0 ? Math.round((completedStudentTurns / totalTurns) * 100) : 0;
+
+    try {
+      await completeDrill(drillId, {
+        drillAssignmentId: assignmentId,
+        score,
+        timeSpent: durationSeconds,
+        answers: [],
+        roleplayResults: {
+          sceneScores: drill.roleplay_scenes?.map((s, i) => ({
+            sceneName: s.scene_name ?? `Scene ${i + 1}`,
+            score,
+            pronunciationScore: score,
+            fluencyScore: score,
+          })) ?? [],
+        },
+      });
+      clearDrillProgress(drillId);
+      addRecentActivity({ id: drill._id, title: drill.title, type: drill.type, durationSeconds, score });
+    } catch (e) {
+      logger.error("Failed to submit drill:", e);
+    }
+
+    setPhase("complete_banner");
+  };
+
+  const handleRestart = () => {
+    clearDrillProgress(drillId);
+    resumePhaseRef.current = null;
+    aiSpeakingRunIdRef.current += 1;
+    aiTurnAppendSigRef.current = null;
+    timeoutRefs.current.forEach(clearTimeout);
+    setCompletedMessages([]);
+    setCompletedStudentTurns(0);
+    setCurrentSceneIndex(0);
+    setCurrentDialogueIndex(0);
+    setCurrentAiLine(null);
+    setCurrentPrompt(null);
+    setRecordedAudioUri(null);
+    setLastScore(0);
+    setAnalysisResults([]);
+    setIsDrillCompleted(false);
+    startTimeRef.current = Date.now();
+    setPhase("intro");
+    loadDrill();
+  };
+
+  // ─── Mic dock handler ─────────────────────────────────────────────────────
+
+  const handleMicPress = () => {
+    if (phase === "recording") { stopRecording(); }
+    else if (phase === "preview") { submitRecording(); }
+    else if (phase === "your_turn") { startRecording(); }
+  };
+
+  // ─── Full-screen branches ─────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
+      <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900 items-center justify-center`}>
         <Loader />
       </SafeAreaView>
     );
@@ -669,191 +656,298 @@ export default function RoleplayDrill() {
 
   if (!drill) {
     return (
-      <SafeAreaView style={tw`flex-1 bg-white items-center justify-center px-5`}>
-        <AppText style={tw`text-gray-600 text-center`}>Drill not found</AppText>
+      <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900 items-center justify-center px-6`}>
+        <AppText style={tw`text-gray-600 dark:text-gray-400 text-center`}>Drill not found.</AppText>
       </SafeAreaView>
     );
   }
 
+  if (phase === "review") {
+    return (
+      <SpeechAnalysisReview
+        analysisResults={analysisResults}
+        drillType="roleplay"
+        onDone={() => setIsDrillCompleted(true)}
+        onPracticeAgain={handleRestart}
+      />
+    );
+  }
+
+  if (isDrillCompleted) {
+    return (
+      <DrillCompletedScreen
+        variant="progress"
+        completed={totalTurns}
+        total={totalTurns}
+        title="Lesson completed"
+        message="Great job! You communicated clearly throughout the conversation."
+        onContinue={() => router.back()}
+        onClose={() => router.back()}
+      />
+    );
+  }
+
+  // ─── Dock height for padding ──────────────────────────────────────────────
+  const dockHeight = phase === "preview" ? 200 : phase === "recording" ? 176 : 148;
+  const dockBottom = insets.bottom;
+
+  // Show complete sheet as modal overlay (phase === complete_banner)
+  const showCompleteSheet = phase === "complete_banner";
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
     <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={tw`flex-1`}
-      >
-        <DrillHeader
-          title={drill.title}
-          currentStep={currentStep}
-          totalSteps={totalSteps}
-          drillId={drillId}
-          isSaved={isSaved}
-          onSave={handleSave}
-          onUnsave={handleUnsave}
-        />
+      {/* ── Header ── */}
+      <DrillHeader
+        title={drill.title}
+        currentStep={completedStudentTurns + 1}
+        totalSteps={totalTurns || 5}
+        drillId={drillId}
+        isSaved={isSaved}
+        onSave={handleSave}
+        onUnsave={handleUnsave}
+        stepLabel={totalScenes > 1 ? `${currentSceneIndex + 1} of ${totalScenes}` : undefined}
+      />
 
-        <ScrollView
-          ref={scrollViewRef}
-          style={tw`flex-1 px-5`}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={tw`pb-6`}
-        >
-          {messages.map((message) =>
-            message.type === "ai" ? (
-              <AITutorMessage
-                key={message.id}
-                message={message.content}
-                showAudio={true}
-              />
-            ) : (
-              <View key={message.id}>
-                <UserMessage
-                  message={message.content}
-                  showAudio={true}
-                  isError={message.needsRetry}
-                />
-                {message.needsRetry && (
-                  <TouchableOpacity
-                    onPress={() => handleRetry(message.id)}
-                    style={tw`ml-auto mr-4 mb-4`}
+      {/* ── PRE-START SCREEN ── */}
+      {phase === "intro" && (
+        <View style={tw`flex-1`}>
+          <ScrollView
+            style={tw`flex-1`}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: dockBottom + 100 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* AI greeting bubble — explains scenario + roles */}
+            {(() => {
+              const aiNames: string[] = drill.ai_character_names?.length
+                ? drill.ai_character_names
+                : drill.ai_character_name
+                ? [drill.ai_character_name]
+                : [];
+
+              const greeting = buildRoleplayIntroGreeting(drill);
+
+              return (
+                <View style={{ marginBottom: 20 }}>
+                  <BotAvatar size={44} />
+                  <View
+                    style={{
+                      marginTop: 10,
+                      backgroundColor: "rgba(252,252,252,0.9)",
+                      borderWidth: 0.5,
+                      borderColor: "rgba(231,234,237,0.6)",
+                      borderRadius: 24,
+                      borderTopLeftRadius: 2,
+                      padding: 16,
+                    }}
                   >
-                    <View style={tw`flex-row items-center gap-1`}>
-                      <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-                        <Path
-                          d="M4 12a8 8 0 018-8V0l4 4-4 4V4a6 6 0 100 12 6 6 0 006-6h2a8 8 0 01-8 8 8 8 0 01-8-8z"
-                          fill="#EF4444"
-                        />
-                      </Svg>
-                      <AppText style={tw`text-red-500 text-sm font-medium`}>Retry</AppText>
+                    {/* Role pills */}
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                      {drill.student_character_name ? (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                            backgroundColor: "#f0fdf4",
+                            borderRadius: 20,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderWidth: 0.5,
+                            borderColor: "rgba(59,136,62,0.2)",
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 20, height: 20, borderRadius: 10,
+                              backgroundColor: "#dcfce7",
+                              alignItems: "center", justifyContent: "center",
+                            }}
+                          >
+                            <AppText style={{ fontSize: 9, fontWeight: "700", color: "#3b883e" }}>You</AppText>
+                          </View>
+                          <AppText style={{ fontSize: 13, color: "#171717", fontWeight: "600" }}>
+                            {drill.student_character_name}
+                          </AppText>
+                        </View>
+                      ) : null}
+                      {aiNames.map((name) => (
+                        <View
+                          key={name}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                            backgroundColor: "#f0fdf4",
+                            borderRadius: 20,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderWidth: 0.5,
+                            borderColor: "rgba(59,136,62,0.2)",
+                          }}
+                        >
+                          <BotAvatar size={20} />
+                          <AppText style={{ fontSize: 13, color: "#171717", fontWeight: "600" }}>{name}</AppText>
+                        </View>
+                      ))}
                     </View>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )
-          )}
 
-          {showYourTurn && !isRecording && !isListening && !recordedAudioUri && (
-            <View style={tw`items-center my-8`}>
-              <AppText style={tw`text-2xl font-bold text-green-700 mb-4`}>
-                Your Turn !
-              </AppText>
-              <View style={tw`bg-gray-50 rounded-2xl px-6 py-4 mb-2`}>
-                <AppText style={tw`text-base text-gray-600 text-center leading-6`}>
-                  {currentPrompt}
-                </AppText>
-              </View>
-              <View style={tw`flex-row items-center gap-2 mt-2`}>
-                <AudioButton
-                  text={currentPrompt || ""}
-                  size={20}
-                />
-              </View>
-            </View>
-          )}
-
-          {(isListening || processing) && (
-            <View style={tw`items-center my-8`}>
-              <View style={tw`w-20 h-20 rounded-full bg-green-600 items-center justify-center mb-3`}>
-                <ActivityIndicator size="large" color="white" />
-              </View>
-              <AppText style={tw`text-base text-gray-600`}>
-                {processing ? "Analyzing pronunciation..." : "Listening..."}
-              </AppText>
-            </View>
-          )}
-
-          {isRecording && (
-            <View style={tw`items-center my-8`}>
-              <AppText style={tw`text-base text-gray-500 text-center mb-4`}>
-                Tap to say this aloud
-              </AppText>
-              <View style={tw`bg-gray-50 rounded-2xl px-6 py-4 mb-2`}>
-                <AppText style={tw`text-base text-gray-600 text-center leading-6`}>
-                  {currentPrompt}
-                </AppText>
-              </View>
-              <View style={tw`flex-row items-center gap-2 mt-2`}>
-                <AudioButton
-                  text={currentPrompt || ""}
-                  size={20}
-                />
-              </View>
-            </View>
-          )}
-
-          {recordedAudioUri && !isListening && !processing && (
-            <View style={tw`items-center my-8`}>
-              <View style={tw`bg-gray-50 rounded-2xl px-6 py-4 mb-2`}>
-                <AppText style={tw`text-base text-gray-600 text-center leading-6`}>
-                  {currentPrompt}
-                </AppText>
-              </View>
-
-              <AppText style={tw`text-sm text-gray-500 mt-4 mb-3`}>
-                preview your recording using the play button
-              </AppText>
-
-              {/* Audio Preview Player */}
-              <View style={tw`w-full px-4`}>
-                <View style={tw`flex-row items-center gap-3 bg-white rounded-lg px-4 py-3 shadow-sm`}>
-                  <TouchableOpacity
-                    onPress={playRecordingPreview}
-                    disabled={isPlayingPreview}
-                    style={tw`w-10 h-10 items-center justify-center`}
-                  >
-                    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-                      <Path
-                        d="M8 5v14l11-7L8 5z"
-                        fill={isPlayingPreview ? "#9CA3AF" : "#15803D"}
-                      />
-                    </Svg>
-                  </TouchableOpacity>
-
-                  {/* Waveform visualization */}
-                  <View style={tw`flex-1 h-12 flex-row items-center gap-0.5`}>
-                    {Array.from({ length: 50 }).map((_, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          tw`flex-1 bg-green-600 rounded-full`,
-                          { height: Math.random() * 32 + 8 }
-                        ]}
-                      />
-                    ))}
+                    {/* Greeting text */}
+                    <AppText style={{ fontSize: 14, color: "#3b883e", lineHeight: 20, fontWeight: "700" }}>
+                      {greeting}
+                    </AppText>
                   </View>
-
-                  <AppText style={tw`text-sm text-gray-600 w-12 text-right`}>
-                    0:16
-                  </AppText>
-
-                  <TouchableOpacity
-                    onPress={deleteRecording}
-                    style={tw`w-10 h-10 items-center justify-center`}
-                  >
-                    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-                      <Path
-                        d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"
-                        stroke="#9CA3AF"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </Svg>
-                  </TouchableOpacity>
                 </View>
-              </View>
-            </View>
-          )}
-        </ScrollView>
+              );
+            })()}
+          </ScrollView>
 
-        <View style={tw`px-5 pb-6 items-center`}>
-          <RecordButton
-            onPress={handleRecord}
-            isRecording={isRecording}
-            isListening={isListening || processing}
-            hasRecording={!!recordedAudioUri}
-          />
+          {/* Fixed CTA */}
+          <View
+            style={{
+              position: "absolute",
+              left: 0, right: 0,
+              bottom: dockBottom,
+              paddingHorizontal: 24,
+              paddingBottom: 4,
+              backgroundColor: "rgba(255,255,255,0.92)",
+            }}
+          >
+            <AppText
+              onPress={handleStart}
+              style={{
+                backgroundColor: "#3b883e",
+                borderRadius: 35,
+                paddingVertical: 16,
+                textAlign: "center",
+                color: "#fafafa",
+                fontSize: 16,
+                fontWeight: "700",
+                overflow: "hidden",
+              }}
+            >
+              Let's Get Started
+            </AppText>
+          </View>
         </View>
-      </KeyboardAvoidingView>
+      )}
+
+      {/* ── ACTIVE SESSION ── */}
+      {phase !== "intro" && (phase as string) !== "review" && !isDrillCompleted && (
+        <View style={tw`flex-1`}>
+          <ScrollView
+            ref={transcriptScrollRef}
+            style={tw`flex-1`}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 8,
+              paddingBottom: dockHeight + dockBottom + 24,
+            }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Progress + scene info */}
+            <RoleplayYourLinesProgress completed={completedStudentTurns} total={totalTurns} />
+
+            {currentScene && (
+              <RoleplaySceneHeader
+                sceneName={currentScene.scene_name}
+                sceneIndex={currentSceneIndex}
+                totalScenes={totalScenes}
+              />
+            )}
+
+            {/* Transcript — AI bubbles left, user bubbles right */}
+            {transcriptForDisplay.length === 0 && phase !== "ai_speaking" ? (
+              <AppText style={{ fontSize: 12, color: "#d1d5db", textAlign: "center", marginBottom: 16 }}>
+                Conversation will appear here.
+              </AppText>
+            ) : (
+              transcriptForDisplay.map((msg) =>
+                msg.type === "ai" ? (
+                  <RoleplayAiBubble
+                    key={msg.id}
+                    text={msg.text}
+                    translation={msg.translation}
+                  />
+                ) : (
+                  <RoleplayUserLineBubble
+                    key={msg.id}
+                    text={msg.text}
+                    translation={msg.translation}
+                    score={msg.score}
+                  />
+                )
+              )
+            )}
+
+            {/* Your turn prompt */}
+            {(phase === "your_turn" || phase === "recording" || phase === "preview") && currentPrompt && (
+              <RoleplayYourTurnSection
+                promptText={currentPrompt.text}
+                promptTranslation={currentPrompt.translation}
+              />
+            )}
+
+            {/* Analyzing spinner */}
+            {phase === "analyzing" && (
+              <View style={{ alignItems: "center", paddingVertical: 32 }}>
+                <ActivityIndicator size="large" color="#3b883e" />
+                <AppText style={{ fontSize: 13, color: "#6a7282", marginTop: 12 }}>
+                  Analyzing pronunciation…
+                </AppText>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* ── BOTTOM DOCK ── */}
+          {(phase === "your_turn" || phase === "recording" || phase === "preview") && (
+            <RoleplayMicDock
+              phase={phase}
+              promptText={currentPrompt?.text}
+              recordedAudioUri={recordedAudioUri}
+              isPlayingPreview={isPlayingPreview}
+              elapsedSeconds={recordingElapsed}
+              bottomInset={dockBottom}
+              onMicPress={startRecording}
+              onStopPress={stopRecording}
+              onPlayPreview={playPreview}
+              onDeleteRecording={deleteRecording}
+              onSubmit={submitRecording}
+            />
+          )}
+
+          {/* ── PASS SHEET ── */}
+          {phase === "score_pass" && (
+            <RoleplayPassSheet
+              score={lastScore}
+              passThreshold={PASS_THRESHOLD}
+              bottomInset={dockBottom}
+              onContinue={handleContinue}
+              onRetryScene={handleRetryScene}
+            />
+          )}
+
+          {/* ── FAIL SHEET ── */}
+          {phase === "score_fail" && (
+            <RoleplayFailSheet
+              score={lastScore}
+              passThreshold={PASS_THRESHOLD}
+              bottomInset={dockBottom}
+              onTryAgain={handleRetry}
+            />
+          )}
+        </View>
+      )}
+
+      {/* ── CONVERSATION COMPLETE SHEET (modal overlay) ── */}
+      <RoleplayConversationCompleteSheet
+        visible={showCompleteSheet}
+        studentCharacterName={drill.student_character_name}
+        bottomInset={dockBottom}
+        onReviewPerformance={() => setPhase("review")}
+      />
     </SafeAreaView>
   );
 }
