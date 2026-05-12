@@ -1,6 +1,7 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
 import AudioButton from "@/components/drills/AudioButton";
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
+import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
 import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import DrillHeader from "@/components/drills/DrillHeader";
@@ -267,7 +268,7 @@ export default function PronunciationDrill() {
 
       setAnalysisResults((prev) => [
         ...prev,
-        { text: referenceText, score: qualityScore, textScore },
+        { text: referenceText, score: qualityScore, textScore, itemIndex: currentItemIndex, step: currentStep },
       ]);
 
       const passed = qualityScore >= PASS_THRESHOLD;
@@ -393,6 +394,40 @@ export default function PronunciationDrill() {
     setCurrentStep("sentence");
   };
 
+  const handleTryAgainWord = () => {
+    setItemProgress((prev) => {
+      const updated = [...prev];
+      updated[currentItemIndex] = {
+        ...updated[currentItemIndex],
+        wordPassed: false,
+        wordScore: 0,
+      };
+      return updated;
+    });
+    setShowSuccess(false);
+    setShowConfetti(false);
+    setAnalysisResults((prev) =>
+      prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "word"))
+    );
+  };
+
+  const handleTryAgainSentence = () => {
+    setItemProgress((prev) => {
+      const updated = [...prev];
+      updated[currentItemIndex] = {
+        ...updated[currentItemIndex],
+        sentencePassed: false,
+        sentenceScore: 0,
+      };
+      return updated;
+    });
+    setShowSuccess(false);
+    setShowConfetti(false);
+    setAnalysisResults((prev) =>
+      prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "sentence"))
+    );
+  };
+
   const handlePreviousItem = () => {
     if (currentItemIndex > 0 && currentStep === "word") {
       setCurrentItemIndex((prev) => prev - 1);
@@ -461,6 +496,22 @@ export default function PronunciationDrill() {
     sentenceScore: 0,
   };
 
+  // Accordion: latest Speechace result for the current item + step
+  const currentWordResult =
+    analysisResults
+      .filter((r) => r.itemIndex === currentItemIndex && r.step === "word")
+      .at(-1) ?? null;
+  const currentSentenceResult =
+    analysisResults
+      .filter((r) => r.itemIndex === currentItemIndex && r.step === "sentence")
+      .at(-1) ?? null;
+  const wordAttempts = analysisResults.filter(
+    (r) => r.itemIndex === currentItemIndex && r.step === "word"
+  ).length;
+  const sentenceAttempts = analysisResults.filter(
+    (r) => r.itemIndex === currentItemIndex && r.step === "sentence"
+  ).length;
+
   // ── Screens ──────────────────────────────────────────────────────────────
 
   if (showReview && !isDrillCompleted && drill) {
@@ -468,6 +519,9 @@ export default function PronunciationDrill() {
       <SpeechAnalysisReview
         analysisResults={analysisResults}
         drillType="pronunciation"
+        totalItems={drill.pronunciation_items?.length ?? 0}
+        passedItems={itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length}
+        itemTitles={drill.pronunciation_items?.map((i) => i.word) ?? []}
         onDone={handleSubmitAfterReview}
         onPracticeAgain={() => {
           setShowReview(false);
@@ -557,7 +611,7 @@ export default function PronunciationDrill() {
           <ScrollView
             style={tw`flex-1 px-5`}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={tw`pb-6`}
+            contentContainerStyle={tw`pb-28`}
           >
             <AppText style={tw`text-xs font-semibold text-green-600 uppercase tracking-wide mb-3 mt-2`}>
               Step 1 of 2 — Pronounce the Word
@@ -636,22 +690,46 @@ export default function PronunciationDrill() {
                 </AppText>
               </View>
             )}
-          </ScrollView>
 
-          {/* Bottom bar */}
-          <View style={tw`px-5 pb-6`}>
-            {currentProgress.wordPassed ? (
+            {/* Inline performance accordion */}
+            {currentWordResult && !processing && (
+              <DrillLineReviewAccordion
+                key={`${currentItemIndex}-word-${wordAttempts}`}
+                step="word"
+                text={currentWordResult.text}
+                score={currentWordResult.score}
+                textScore={currentWordResult.textScore}
+                passThreshold={PASS_THRESHOLD}
+                attempts={wordAttempts}
+              />
+            )}
+
+            {/* Continue + Try Again in scroll (below feedback) */}
+            {currentProgress.wordPassed && (
               <TouchableOpacity
                 onPress={handleMoveToSentence}
-                style={tw`w-full bg-green-700 rounded-full py-4 items-center mb-4`}
+                style={tw`w-full bg-green-700 rounded-full py-4 items-center mb-3`}
                 activeOpacity={0.8}
               >
                 <AppText style={tw`text-white text-base font-semibold`}>
                   Continue to Sentence
                 </AppText>
               </TouchableOpacity>
-            ) : null}
+            )}
 
+            {(currentProgress.wordScore > 0 || currentProgress.wordPassed) && (
+              <TouchableOpacity
+                onPress={handleTryAgainWord}
+                style={tw`w-full border border-gray-300 rounded-full py-3 items-center`}
+                activeOpacity={0.7}
+              >
+                <AppText style={tw`text-gray-600 text-sm font-semibold`}>Try Again</AppText>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+
+          {/* Bottom bar — mic only */}
+          <View style={tw`px-5 pb-6`}>
             <View style={tw`flex-row items-center justify-center gap-4`}>
               <TouchableOpacity
                 style={tw`w-12 h-12 items-center justify-center bg-gray-100 rounded-full ${
@@ -669,23 +747,7 @@ export default function PronunciationDrill() {
                 isListening={processing}
               />
 
-              <TouchableOpacity
-                onPress={handleMoveToSentence}
-                disabled={!currentProgress.wordPassed}
-                style={tw`w-12 h-12 items-center justify-center ${
-                  currentProgress.wordPassed ? "" : "opacity-30"
-                }`}
-              >
-                <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M9 18l6-6-6-6"
-                    stroke="#6B7280"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              </TouchableOpacity>
+              <View style={tw`w-12 h-12`} />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -718,7 +780,7 @@ export default function PronunciationDrill() {
         <ScrollView
           style={tw`flex-1 px-5`}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={tw`pb-6`}
+          contentContainerStyle={tw`pb-28`}
         >
           <AppText style={tw`text-xs font-semibold text-green-600 uppercase tracking-wide mb-3 mt-2`}>
             Step 2 of 2 — Pronounce the Sentence
@@ -780,9 +842,33 @@ export default function PronunciationDrill() {
               </AppText>
             </View>
           )}
+
+          {/* Inline performance accordion */}
+          {currentSentenceResult && !processing && (
+            <DrillLineReviewAccordion
+              key={`${currentItemIndex}-sentence-${sentenceAttempts}`}
+              step="sentence"
+              text={currentSentenceResult.text}
+              score={currentSentenceResult.score}
+              textScore={currentSentenceResult.textScore}
+              passThreshold={PASS_THRESHOLD}
+              attempts={sentenceAttempts}
+            />
+          )}
+
+          {/* Try Again in scroll (below feedback) */}
+          {(currentProgress.sentenceScore > 0 || currentProgress.sentencePassed) && (
+            <TouchableOpacity
+              onPress={handleTryAgainSentence}
+              style={tw`w-full border border-gray-300 rounded-full py-3 items-center`}
+              activeOpacity={0.7}
+            >
+              <AppText style={tw`text-gray-600 text-sm font-semibold`}>Try Again</AppText>
+            </TouchableOpacity>
+          )}
         </ScrollView>
 
-        {/* Bottom bar */}
+        {/* Bottom bar — mic only */}
         <View style={tw`px-5 pb-6`}>
           <View style={tw`flex-row items-center justify-center gap-4`}>
             <View style={tw`w-12 h-12`} />
