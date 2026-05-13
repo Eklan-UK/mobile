@@ -289,16 +289,16 @@ export default function SettingsScreen() {
           onPress={() => router.push("/help")}
         />
         <SettingsItem
-          label="Subscriptions"
+          label="Subscription"
           value={user?.subscriptionPlan === 'premium' ? 'Pro' : 'Free'}
           onPress={() => router.push("/premium")}
         />
         <SettingsItem
-          label="Privacy policy"
+          label="Privacy Policy"
           onPress={() => router.push("/privacy-policy")}
         />
         <SettingsItem
-          label="Terms of use"
+          label="Terms of Use"
           onPress={() => router.push("/terms-of-use")}
           showDivider={false}
         />

@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Image, ScrollView, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { router } from "expo-router";
@@ -7,6 +7,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AppText, Button, Loader, ProgressCircle } from "@/components/ui";
 import tw from "@/lib/tw";
+import { useSemanticTheme } from "@/hooks/useSemanticTheme";
+import { brandColors } from "@/constants/theme-tokens";
 import { useUserCurrent } from "@/hooks/useSettings";
 import { usePronunciation } from "@/hooks/usePronunciation";
 import { useConfidence } from "@/hooks/useConfidence";
@@ -156,16 +158,17 @@ function InlineBar({
   color?: string;
   decimalPlaces?: number;
 }) {
+  const { colors: c } = useSemanticTheme();
   const pct = Math.min(Math.max(value, 0), 100);
   const pctLabel =
     decimalPlaces !== undefined ? `${pct.toFixed(decimalPlaces)}%` : `${Math.round(pct)}%`;
   return (
     <View style={tw`mb-3`}>
       <View style={tw`flex-row justify-between mb-1`}>
-        <AppText style={tw`text-xs text-neutral-500`}>{label}</AppText>
+        <AppText style={[tw`text-xs`, { color: c.textSecondary }]}>{label}</AppText>
         <AppText style={[tw`text-xs font-semibold`, { color }]}>{pctLabel}</AppText>
       </View>
-      <View style={tw`h-1.5 bg-neutral-100 rounded-full`}>
+      <View style={[tw`h-1.5 rounded-full`, { backgroundColor: c.progressBg }]}>
         <View
           style={[
             tw`h-1.5 rounded-full`,
@@ -190,6 +193,7 @@ function ConfidenceIcon() {
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
+  const { isDark, colors: c } = useSemanticTheme();
   const { data: currentData, isLoading: userLoading } = useUserCurrent();
   const { data: pronData } = usePronunciation();
   const { data: confData } = useConfidence();
@@ -255,10 +259,19 @@ export default function ProfileScreen() {
     (active, idx) => active && DISPLAY_TO_ISO[idx] <= todayIso
   );
 
+  const cardSurface = useMemo(
+    () => ({
+      backgroundColor: c.card,
+      borderColor: c.border,
+      borderWidth: StyleSheet.hairlineWidth,
+    }),
+    [c.card, c.border]
+  );
+
   if (userLoading) {
     return (
       <SafeAreaView
-        style={tw`flex-1 bg-[#F5F5F5] items-center justify-center`}
+        style={[tw`flex-1 items-center justify-center`, { backgroundColor: c.background }]}
         edges={["top"]}
       >
         <Loader />
@@ -285,8 +298,12 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-[#F5F5F5]`} edges={["top"]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={[tw`flex-1`, { backgroundColor: c.background }]} edges={["top"]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ backgroundColor: c.background }}
+        contentContainerStyle={{ backgroundColor: c.background }}
+      >
         {/* ── GREEN HEADER (no rounded bottom) ─────────────────────── */}
         <View style={tw`bg-primary-500 px-6 pt-4 pb-8`}>
           {/* Title row */}
@@ -355,74 +372,74 @@ export default function ProfileScreen() {
           {/* ── STATS ROW (three separate cards — design reference) ───────── */}
           <View style={tw`flex-row gap-3`}>
             <TouchableOpacity
-              style={tw`flex-1 bg-white dark:bg-neutral-800 rounded-2xl py-4 px-2 items-center border border-neutral-100 dark:border-neutral-700 shadow-sm`}
+              style={[tw`flex-1 rounded-2xl py-4 px-2 items-center shadow-sm`, cardSurface]}
               onPress={() => router.push("/bookmarks" as any)}
               activeOpacity={0.75}
             >
               <View style={tw`mb-3`}>
                 <BookmarkIcon />
               </View>
-              <AppText
-                style={tw`text-sm font-bold text-neutral-900 dark:text-white mb-1`}
-              >
+              <AppText style={[tw`text-sm font-bold mb-1`, { color: c.textPrimary }]}>
                 Bookmarks
               </AppText>
-              <AppText style={tw`text-xs text-neutral-400 dark:text-neutral-500`}>
-                View saved
+              <AppText style={[tw`text-xs`, { color: c.textSecondary }]}>
+                View Saved
               </AppText>
             </TouchableOpacity>
 
-            <View
-              style={tw`flex-1 bg-white dark:bg-neutral-800 rounded-2xl py-4 px-2 items-center border border-neutral-100 dark:border-neutral-700 shadow-sm`}
-            >
+            <View style={[tw`flex-1 rounded-2xl py-4 px-2 items-center shadow-sm`, cardSurface]}>
               <View style={tw`mb-3`}>
                 <MicIcon />
               </View>
               {pronData ? (
-                <AppText
-                  style={tw`text-2xl font-bold text-neutral-900 dark:text-white mb-1`}
-                >
+                <AppText style={[tw`text-2xl font-bold mb-1`, { color: c.textPrimary }]}>
                   {pronScore}
                 </AppText>
               ) : (
                 <AppText
-                  style={tw`text-2xl font-bold text-neutral-300 dark:text-neutral-600 mb-1`}
+                  style={[
+                    tw`text-2xl font-bold mb-1`,
+                    { color: c.textLight },
+                  ]}
                 >
                   —
                 </AppText>
               )}
-              <AppText style={tw`text-xs text-neutral-400 dark:text-neutral-500`}>
+              <AppText style={[tw`text-xs`, { color: c.textSecondary }]}>
                 Pronunciation
               </AppText>
             </View>
 
-            <View
-              style={tw`flex-1 bg-white dark:bg-neutral-800 rounded-2xl py-4 px-2 items-center border border-neutral-100 dark:border-neutral-700 shadow-sm`}
-            >
+            <View style={[tw`flex-1 rounded-2xl py-4 px-2 items-center shadow-sm`, cardSurface]}>
               <View style={tw`mb-3`}>
                 <ClockIcon />
               </View>
               <AppText
-                style={tw`text-xl font-bold text-neutral-900 dark:text-white mb-1`}
+                style={[tw`text-xl font-bold mb-1`, { color: c.textPrimary }]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.75}
               >
                 {studyTimeLabel}
               </AppText>
-              <AppText style={tw`text-xs text-neutral-400 dark:text-neutral-500`}>
-                Time studied
+              <AppText style={[tw`text-xs`, { color: c.textSecondary }]}>
+                Time Studied
               </AppText>
             </View>
           </View>
 
           {/* ── CONFIDENCE SCORE CARD ────────────────────────────────── */}
           {confData && (
-            <View style={tw`bg-white dark:bg-neutral-800 rounded-2xl p-5 shadow-sm border border-neutral-200 dark:border-neutral-700`}>
+            <View style={[tw`rounded-2xl p-5 shadow-sm`, cardSurface]}>
               {/* Header */}
               <View style={tw`flex-row items-center gap-2 mb-4`}>
                 <ConfidenceIcon />
-                <AppText style={tw`text-xs font-bold text-neutral-900 dark:text-white tracking-widest uppercase`}>
+                <AppText
+                  style={[
+                    tw`text-xs font-bold tracking-widest uppercase`,
+                    { color: c.textPrimary },
+                  ]}
+                >
                   Confidence Score
                 </AppText>
               </View>
@@ -434,13 +451,13 @@ export default function ProfileScreen() {
                   size={90}
                   strokeWidth={9}
                   color="#f59e0b"
-                  backgroundColor="#fef3c7"
+                  backgroundColor={isDark ? "#422006" : "#fef3c7"}
                 >
                   <View style={tw`items-center`}>
-                    <AppText style={tw`text-xl font-bold text-neutral-900`}>
+                    <AppText style={[tw`text-xl font-bold`, { color: c.textPrimary }]}>
                       {confScore}
                     </AppText>
-                    <AppText style={tw`text-[10px] text-neutral-400`}>
+                    <AppText style={[tw`text-[10px]`, { color: c.textSecondary }]}>
                       /100
                     </AppText>
                   </View>
@@ -452,15 +469,22 @@ export default function ProfileScreen() {
                     <AppText style={[tw`text-base font-semibold`, { color: "#ea580c" }]}>
                       {confLabel}
                     </AppText>
-                    <View style={tw`bg-neutral-100 dark:bg-neutral-700 px-2 py-0.5 rounded-full`}>
-                      <AppText style={tw`text-[10px] font-semibold text-neutral-500 dark:text-neutral-300`}>
+                    <View
+                      style={[
+                        tw`px-2 py-0.5 rounded-full`,
+                        { backgroundColor: c.muted },
+                      ]}
+                    >
+                      <AppText
+                        style={[tw`text-[10px] font-semibold`, { color: c.textSecondary }]}
+                      >
                         — {trendLabel}
                       </AppText>
                     </View>
                   </View>
 
-                  <AppText style={tw`text-xs text-neutral-500 mb-3`}>
-                    {confData.drillsCompleted ?? 0} of {confData.drillsAssigned ?? 0} drills completed
+                  <AppText style={[tw`text-xs mb-3`, { color: c.textSecondary }]}>
+                    {confData.drillsCompleted ?? 0} of {confData.drillsAssigned ?? 0} Drills Completed
                   </AppText>
 
                   <InlineBar
@@ -477,12 +501,17 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
-              <View style={tw`border-t border-neutral-100 dark:border-neutral-700 pt-3 flex-row justify-between items-center`}>
-                <AppText style={tw`text-[11px] text-neutral-400`}>
+              <View
+                style={[
+                  tw`pt-3 flex-row justify-between items-center border-t`,
+                  { borderTopColor: c.border },
+                ]}
+              >
+                <AppText style={[tw`text-[11px]`, { color: c.textSecondary }]}>
                   Completion 40% + Quality 60%
                 </AppText>
-                <AppText style={tw`text-[11px] text-neutral-400`}>
-                  Based on Speechace scores
+                <AppText style={[tw`text-[11px]`, { color: c.textSecondary }]}>
+                  Based on Speechace Scores
                 </AppText>
               </View>
             </View>
@@ -490,8 +519,8 @@ export default function ProfileScreen() {
 
           {/* ── PRONUNCIATION PERFORMANCE CARD ──────────────────────── */}
           {pronData && (
-            <View style={tw`bg-white rounded-2xl p-5 shadow-sm`}>
-              <AppText style={tw`text-base font-bold text-neutral-900 mb-4`}>
+            <View style={[tw`rounded-2xl p-5 shadow-sm`, cardSurface]}>
+              <AppText style={[tw`text-base font-bold mb-4`, { color: c.textPrimary }]}>
                 Pronunciation Performance
               </AppText>
 
@@ -501,15 +530,13 @@ export default function ProfileScreen() {
                   size={90}
                   strokeWidth={9}
                   color="#16a34a"
-                  backgroundColor="#dcfce7"
+                  backgroundColor={isDark ? "#142318" : "#dcfce7"}
                 >
                   <View style={tw`items-center`}>
-                    <AppText
-                      style={tw`text-xl font-bold text-neutral-900`}
-                    >
+                    <AppText style={[tw`text-xl font-bold`, { color: c.textPrimary }]}>
                       {pronScore}
                     </AppText>
-                    <AppText style={tw`text-[10px] text-neutral-400`}>
+                    <AppText style={[tw`text-[10px]`, { color: c.textSecondary }]}>
                       /100
                     </AppText>
                   </View>
@@ -517,17 +544,18 @@ export default function ProfileScreen() {
 
                 <View style={tw`flex-1`}>
                   <AppText
-                    style={tw`text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1`}
+                    style={[
+                      tw`text-[10px] font-bold uppercase tracking-widest mb-1`,
+                      { color: c.textSecondary },
+                    ]}
                   >
                     Total Words Analyzed
                   </AppText>
-                  <AppText
-                    style={tw`text-3xl font-bold text-neutral-900 mb-1`}
-                  >
+                  <AppText style={[tw`text-3xl font-bold mb-1`, { color: c.textPrimary }]}>
                     {(pronData.totalWordsPronounced ?? 0).toLocaleString()}
                   </AppText>
-                  <AppText style={tw`text-xs text-neutral-500`}>
-                    Across all practice sessions
+                  <AppText style={[tw`text-xs`, { color: c.textSecondary }]}>
+                    Across All Practice Sessions
                   </AppText>
                 </View>
               </View>
@@ -536,41 +564,39 @@ export default function ProfileScreen() {
 
           {/* ── CURRENT PLAN CARD ────────────────────────────────────── */}
           <TouchableOpacity
-            style={tw`bg-white rounded-2xl p-5 shadow-sm`}
+            style={[tw`rounded-2xl p-5 shadow-sm`, cardSurface]}
             onPress={() => router.push("/premium")}
             activeOpacity={0.7}
           >
             <View style={tw`flex-row items-center justify-between`}>
               <View style={tw`flex-1`}>
                 <View
-                  style={tw`bg-primary-100 self-start px-3 py-1 rounded-full mb-2`}
+                  style={tw`bg-primary-100 dark:bg-primary-900/40 self-start px-3 py-1 rounded-full mb-2`}
                 >
                   <AppText
-                    style={tw`text-primary-700 text-[11px] font-semibold`}
+                    style={tw`text-primary-700 dark:text-primary-300 text-[11px] font-semibold`}
                   >
-                    Current plan
+                    Current Plan
                   </AppText>
                 </View>
-                <AppText
-                  style={tw`text-base font-bold text-neutral-900 mb-1`}
-                >
+                <AppText style={[tw`text-base font-bold mb-1`, { color: c.textPrimary }]}>
                   {planLabel} Plan
                 </AppText>
-                <AppText style={tw`text-xs text-neutral-500 leading-5`}>
+                <AppText style={[tw`text-xs leading-5`, { color: c.textSecondary }]}>
                   {planTagline}
                 </AppText>
               </View>
               <View style={tw`ml-4`}>
-                <ChevronRightIcon />
+                <ChevronRightIcon color={isDark ? brandColors.primaryLight : "#16a34a"} />
               </View>
             </View>
           </TouchableOpacity>
 
           {/* ── STREAK SECTION ───────────────────────────────────────── */}
-          <View style={tw`bg-white rounded-2xl p-5 shadow-sm mb-4`}>
-            {/* Header: "Streak" + calendar icon + "View streak >" */}
+          <View style={[tw`rounded-2xl p-5 shadow-sm mb-4`, cardSurface]}>
+            {/* Header: "Streak" + calendar icon + "View Streak >" */}
             <View style={tw`flex-row justify-between items-center mb-3`}>
-              <AppText style={tw`text-base font-bold text-neutral-900`}>
+              <AppText style={[tw`text-base font-bold`, { color: c.textPrimary }]}>
                 Streak
               </AppText>
               <TouchableOpacity
@@ -578,20 +604,22 @@ export default function ProfileScreen() {
                 style={tw`flex-row items-center gap-1`}
               >
                 <CalendarStreakIcon />
-                <AppText style={tw`text-primary-600 text-xs font-medium`}>
-                  View streak
+                <AppText
+                  style={[tw`text-xs font-medium`, { color: brandColors.primaryLight }]}
+                >
+                  View Streak
                 </AppText>
-                <ChevronRightIcon />
+                <ChevronRightIcon color={isDark ? brandColors.primaryLight : "#16a34a"} />
               </TouchableOpacity>
             </View>
 
             {/* Streak count + best on same row */}
             <View style={tw`flex-row justify-between items-baseline mb-4`}>
-              <AppText style={tw`text-sm font-semibold text-neutral-900`}>
-                {currentStreak > 0 ? `${currentStreak}-day streak` : "No streak yet"}
+              <AppText style={[tw`text-sm font-semibold`, { color: c.textPrimary }]}>
+                {currentStreak > 0 ? `${currentStreak}-Day Streak` : "No Streak Yet"}
               </AppText>
-              <AppText style={tw`text-xs text-neutral-500`}>
-                Best: {longestStreak} days
+              <AppText style={[tw`text-xs`, { color: c.textSecondary }]}>
+                Best: {longestStreak} Days
               </AppText>
             </View>
 
@@ -604,13 +632,15 @@ export default function ProfileScreen() {
                     <View
                       style={[
                         tw`w-9 h-9 rounded-full items-center justify-center`,
-                        active ? { backgroundColor: "#16a34a" } : tw`bg-neutral-200`,
+                        active
+                          ? { backgroundColor: "#16a34a" }
+                          : { backgroundColor: c.progressBg },
                       ]}
                     >
                       <AppText
                         style={[
                           tw`text-sm font-semibold`,
-                          active ? tw`text-white` : tw`text-neutral-500`,
+                          active ? tw`text-white` : { color: c.textSecondary },
                         ]}
                       >
                         {label}
@@ -623,14 +653,19 @@ export default function ProfileScreen() {
 
             {/* Motivational amber box — matches web copy */}
             <View
-              style={tw`bg-amber-50 border border-amber-100 rounded-xl p-4 mb-4 flex-row gap-3`}
+              style={[
+                tw`rounded-xl p-4 mb-4 flex-row gap-3 border`,
+                isDark
+                  ? { backgroundColor: "rgba(251, 191, 36, 0.08)", borderColor: "rgba(251, 191, 36, 0.25)" }
+                  : tw`bg-amber-50 border-amber-100`,
+              ]}
             >
               <AppText style={tw`text-base`}>🔥</AppText>
               <View style={tw`flex-1`}>
-                <AppText style={tw`text-sm font-bold text-neutral-900 mb-1`}>
-                  {currentStreak > 0 ? "Keep it going" : "Start a streak"}
+                <AppText style={[tw`text-sm font-bold mb-1`, { color: c.textPrimary }]}>
+                  {currentStreak > 0 ? "Keep It Going" : "Start a Streak"}
                 </AppText>
-                <AppText style={tw`text-xs text-neutral-500 leading-5`}>
+                <AppText style={[tw`text-xs leading-5`, { color: c.textSecondary }]}>
                   Complete daily focus and lessons on consecutive days to grow
                   your streak. Open the streak page for a full view.
                 </AppText>
@@ -639,7 +674,7 @@ export default function ProfileScreen() {
 
             {/* CTA */}
             <Button onPress={() => router.push("/practice" as any)}>
-              Continue practice
+              Continue Practice
             </Button>
           </View>
         </View>

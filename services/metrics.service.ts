@@ -50,6 +50,20 @@ export async function getConfidenceMetrics(): Promise<ConfidenceMetrics> {
   return response.data?.data?.confidence;
 }
 
+// ── Home Progress ─────────────────────────────────────────────
+
+export interface HomeProgressMetrics {
+  accurateSentenceUsage: number;  // 0–100
+  responseSpeed: number;          // 0–100
+  sentenceWeeklyChange: number;   // delta vs last week
+  speedWeeklyChange: number;
+}
+
+export async function getHomeProgressMetrics(): Promise<HomeProgressMetrics> {
+  const response = await apiClient.get('/api/v1/progress/home');
+  return response.data?.data?.homeProgress;
+}
+
 // ── Streak ─────────────────────────────────────────────────────
 
 /** React Query key — shared by `useStreak` (profile / streak screen) and `useUserStreakCount` (home / My Plan pill). */

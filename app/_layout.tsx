@@ -14,12 +14,14 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { AlertProvider } from "@/contexts/AlertContext";
 import { NotificationToastProvider } from "@/contexts/NotificationToastContext";
 import { BackgroundPrefetcher } from "@/components/BackgroundPrefetcher";
+import { ProfileThemeSync } from "@/components/ProfileThemeSync";
 import * as Updates from "expo-updates";
 import * as SystemUI from "expo-system-ui";
 import tw from "@/lib/tw";
 import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
 import { LanguageProvider } from "@/contexts/LanguageContext";
+import { getSemanticColors } from "@/constants/theme-tokens";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -51,14 +53,14 @@ export default function RootLayout() {
     // Sync React Native's native Appearance module with our Zustand store
     Appearance.setColorScheme(theme === "system" ? null : theme);
 
-    // Set the system UI background color to match
-    SystemUI.setBackgroundColorAsync(
-      effectiveTheme === "dark" ? "#171717" : "#ffffff"
-    );
+    // Set the system UI background color to match web `--background`
+    const surface = getSemanticColors(effectiveTheme === "dark" ? "dark" : "light").background;
+    SystemUI.setBackgroundColorAsync(surface);
     // setTwColorScheme from twrnc is not referentially stable; omit to avoid running this effect every render.
   }, [theme, systemColorScheme]);
 
   const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";
+  const stackSurface = getSemanticColors(isDark ? "dark" : "light").background;
 
   const [fontsLoaded, fontError] = useFonts({
     // Nunito - for headers
@@ -132,9 +134,10 @@ export default function RootLayout() {
             <SafeAreaProvider>
               <NotificationToastProvider>
               <BackgroundPrefetcher />
+              <ProfileThemeSync />
               <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-                <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0d1f0e' : '#2E7D32'} />
-                <Stack screenOptions={{ headerShown: false, contentStyle: tw`bg-white dark:bg-neutral-900` }}>
+                <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0c0e0d' : '#2E7D32'} />
+                <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: stackSurface } }}>
                   <Stack.Screen name="index" options={{ headerShown: false }} />
                   {/* First-install onboarding / splash */}
                   <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />

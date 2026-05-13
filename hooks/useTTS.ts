@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ttsService } from '@/services/tts.service';
 import { logger } from "@/utils/logger";
 
@@ -15,13 +15,6 @@ export function useTTS(options: UseTTSOptions = {}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentAudioUri, setCurrentAudioUri] = useState<string | null>(null);
   const audioUriCache = useRef<Map<string, string>>(new Map());
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      ttsService.cleanup();
-    };
-  }, []);
 
   const playAudio = useCallback(
     async (text: string, voiceId?: string) => {

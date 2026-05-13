@@ -1,12 +1,13 @@
-import tw from "@/lib/tw";
 import { Stack } from "expo-router";
+import { useSemanticTheme } from "@/hooks/useSemanticTheme";
 
 export default function DrillsLayout() {
+  const { colors: c } = useSemanticTheme();
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: tw`bg-white`,
+        contentStyle: { backgroundColor: c.background },
         animation: "slide_from_right",
       }}
     />

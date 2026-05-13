@@ -374,17 +374,30 @@ class TTSService {
       // preventing the effect cleanup from killing audio the moment setPhase fires.
       await new Promise<void>((resolve) => {
         this.playbackFinishResolve = resolve;
+        const finishAndRelease = () => {
+          void sound
+            .unloadAsync()
+            .catch(() => {})
+            .finally(() => {
+              if (this.sound === sound) {
+                this.sound = null;
+                this.currentAudioUri = null;
+              }
+              resolve();
+            });
+        };
         sound.setOnPlaybackStatusUpdate((status) => {
           if ((status as any).isLoaded && (status as any).didJustFinish) {
             sound.setOnPlaybackStatusUpdate(null);
             this.playbackFinishResolve = null;
             if (onFinish) onFinish();
-            resolve();
+            finishAndRelease();
           }
         });
         sound.playAsync().catch(() => {
           this.playbackFinishResolve = null;
-          resolve();
+          sound.setOnPlaybackStatusUpdate(null);
+          finishAndRelease();
         });
       });
     } catch (error) {

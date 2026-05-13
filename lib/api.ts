@@ -35,6 +35,31 @@ export async function getCachedToken(): Promise<string | null> {
 }
 
 /**
+ * Exchange the stored refresh token for a new access token.
+ * Mirrors the Axios 401-interceptor logic. Use for requests that bypass Axios
+ * (e.g. SSE over XMLHttpRequest) so expired sessions can still recover.
+ */
+export async function refreshAccessTokenSilently(): Promise<string> {
+  const refreshToken = await secureStorage.getRefreshToken();
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+    refreshToken,
+  });
+
+  const token = response.data?.token;
+  if (!token || typeof token !== 'string') {
+    throw new Error('Refresh response missing token');
+  }
+
+  await secureStorage.setToken(token);
+  invalidateTokenCache();
+  return token;
+}
+
+/**
  * Safely serialize data for logging (handles FormData, circular refs, etc.)
  */
 function safeStringify(data: any): string {
@@ -190,26 +215,18 @@ apiClient.interceptors.response.use(
 
       try {
         const refreshToken = await secureStorage.getRefreshToken();
-        
-        if (refreshToken) {
-          // Attempt to refresh the token
-          const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
-            refreshToken,
-          });
-
-          const { token } = response.data;
-          
-          // Store new token and invalidate cache so it picks up the new one
-          await secureStorage.setToken(token);
-          invalidateTokenCache();
-          
-          // Retry original request with new token
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-          }
-          
-          return apiClient(originalRequest);
+        if (!refreshToken) {
+          return Promise.reject(error);
         }
+
+        const token = await refreshAccessTokenSilently();
+
+        // Retry original request with new token
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+        }
+
+        return apiClient(originalRequest);
       } catch (refreshError) {
         logger.error('❌ Token refresh failed:', refreshError);
         // Refresh failed, clear auth data

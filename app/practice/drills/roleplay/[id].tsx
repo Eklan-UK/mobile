@@ -21,7 +21,7 @@ import { Drill, DialogueTurn } from "@/types/drill.types";
 import { Alert } from "@/utils/alert";
 import { setAudioModeSafely } from "@/utils/audio";
 import { logger } from "@/utils/logger";
-import { Audio } from "expo-av";
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -71,18 +71,6 @@ function totalStudentTurns(drill: Drill): number {
   );
 }
 
-/** Map persisted phase to a safe phase when resuming after the intro gate. */
-function normalizeResumePhase(phase: unknown): SessionPhase {
-  const p = typeof phase === "string" ? phase : "";
-  if (p === "score_pass" || p === "score_fail" || p === "complete_banner" || p === "review") {
-    return p as SessionPhase;
-  }
-  if (p === "your_turn") return "your_turn";
-  if (p === "ai_speaking") return "ai_speaking";
-  if (p === "analyzing" || p === "recording" || p === "preview") return "your_turn";
-  return "ai_speaking";
-}
-
 /** Collapse back-to-back AI bubbles with identical text (Strict Mode / batching / bad saves). */
 function dedupeConsecutiveAiSameText(messages: CompletedMessage[]): CompletedMessage[] {
   const out: CompletedMessage[] = [];
@@ -119,8 +107,7 @@ export default function RoleplayDrill() {
   const assignmentId = params.assignmentId as string | undefined;
   const insets = useSafeAreaInsets();
 
-  const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
-    useActivityStore();
+  const { addRecentActivity, clearDrillProgress } = useActivityStore();
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
 
   const startTimeRef = useRef(Date.now());
@@ -130,8 +117,6 @@ export default function RoleplayDrill() {
   /** Ensures we only append one transcript bubble per dialogue turn (Strict Mode runs effects twice). */
   const aiTurnAppendSigRef = useRef<string | null>(null);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
-  /** After intro, resume this phase (set when restoring in-progress drill). */
-  const resumePhaseRef = useRef<SessionPhase | null>(null);
   /** Cancels stale intro TTS if deps change (e.g. React Strict Mode remount). */
   const introTtsRunIdRef = useRef(0);
 
@@ -187,33 +172,15 @@ export default function RoleplayDrill() {
       const drillData = await getDrillById(drillId, assignmentId);
       setDrill(drillData);
 
+      // Roleplay always starts fresh: do not resume mid-conversation after leaving the screen.
+      clearDrillProgress(drillId);
       aiTurnAppendSigRef.current = null;
-      resumePhaseRef.current = null;
-      const saved = drillProgress[drillId];
-      const msgs = saved?.data?.completedMessages ?? [];
-      const turns = saved?.data?.completedStudentTurns ?? 0;
-      const sceneIdx = saved?.data?.currentSceneIndex ?? 0;
-      const diagIdx = saved?.data?.currentDialogueIndex ?? 0;
-
-      const hasProgress =
-        msgs.length > 0 || turns > 0 || sceneIdx > 0 || diagIdx > 0;
-
-      if (saved?.data && hasProgress) {
-        setCompletedMessages(msgs);
-        setCompletedStudentTurns(turns);
-        setCurrentSceneIndex(sceneIdx);
-        setCurrentDialogueIndex(diagIdx);
-        resumePhaseRef.current = normalizeResumePhase(saved.data.phase);
-        const dialogue = drillData.roleplay_scenes?.[sceneIdx]?.dialogue ?? [];
-        seedCurrentLines(dialogue, diagIdx);
-      } else {
-        setCompletedMessages([]);
-        setCompletedStudentTurns(0);
-        setCurrentSceneIndex(0);
-        setCurrentDialogueIndex(0);
-        setCurrentAiLine(null);
-        setCurrentPrompt(null);
-      }
+      setCompletedMessages([]);
+      setCompletedStudentTurns(0);
+      setCurrentSceneIndex(0);
+      setCurrentDialogueIndex(0);
+      setCurrentAiLine(null);
+      setCurrentPrompt(null);
 
       // Always show the intro / "Let's Get Started" gate until the user continues
       setPhase("intro");
@@ -223,18 +190,6 @@ export default function RoleplayDrill() {
       setLoading(false);
     }
   };
-
-  /** Derive `currentAiLine` and `currentPrompt` from a dialogue array + index. */
-  function seedCurrentLines(dialogue: DialogueTurn[], diagIdx: number) {
-    const aiTurn = dialogue[diagIdx] ?? null;
-    if (aiTurn && aiTurn.speaker !== "student") {
-      setCurrentAiLine(aiTurn);
-      const nextStudent = dialogue.find((d, i) => i > diagIdx && d.speaker === "student") ?? null;
-      setCurrentPrompt(nextStudent);
-    } else if (aiTurn && aiTurn.speaker === "student") {
-      setCurrentPrompt(aiTurn);
-    }
-  }
 
   // ─── Auto TTS for intro greeting ("Let's Get Started" page) ───────────────
 
@@ -325,34 +280,14 @@ export default function RoleplayDrill() {
   }, [phase, currentSceneIndex, currentDialogueIndex, currentAiLine]);
 
   // ─── Auto-scroll transcript ───────────────────────────────────────────────
+  // Fires on new messages AND on phase transitions so "Your Turn" prompt is
+  // always fully visible above the mic dock.
 
   useEffect(() => {
-    const id = setTimeout(() => transcriptScrollRef.current?.scrollToEnd({ animated: true }), 80);
+    const delay = phase === "your_turn" ? 120 : 80;
+    const id = setTimeout(() => transcriptScrollRef.current?.scrollToEnd({ animated: true }), delay);
     return () => clearTimeout(id);
-  }, [completedMessages]);
-
-  // ─── Persist progress ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!drill || completedMessages.length === 0) return;
-    updateDrillProgress({
-      drillId,
-      title: drill.title,
-      type: drill.type,
-      currentStep: completedStudentTurns + 1,
-      totalSteps: totalTurns || 5,
-      answers: [],
-      startTime: startTimeRef.current,
-      lastUpdated: Date.now(),
-      data: {
-        completedMessages,
-        completedStudentTurns,
-        currentSceneIndex,
-        currentDialogueIndex,
-        phase,
-      },
-    });
-  }, [completedMessages, completedStudentTurns, phase]);
+  }, [completedMessages, phase]);
 
   // ─── Cleanup ──────────────────────────────────────────────────────────────
 
@@ -379,22 +314,6 @@ export default function RoleplayDrill() {
     introTtsRunIdRef.current += 1;
     void ttsService.stopAudio();
 
-    // Resume in-progress drill (user already saw intro on cold open)
-    if (resumePhaseRef.current != null) {
-      const next = resumePhaseRef.current;
-      resumePhaseRef.current = null;
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
-      setRecording(null);
-      setRecordedAudioUri(null);
-      setIsPlayingPreview(false);
-      setRecordingElapsed(0);
-      setPhase(next);
-      return;
-    }
-
     const firstScene = scenes[0];
     const dialogue = firstScene.dialogue ?? [];
     const firstAi = dialogue.find((d) => d.speaker !== "student") ?? null;
@@ -413,8 +332,50 @@ export default function RoleplayDrill() {
 
   const startRecording = async () => {
     try {
-      if (permissionResponse?.status !== "granted") await requestPermission();
-      await setAudioModeSafely({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      let micStatus = permissionResponse?.status;
+      if (micStatus !== "granted") {
+        const req = await requestPermission();
+        micStatus = req.status;
+      }
+      if (micStatus !== "granted") {
+        Alert.alert(
+          "Microphone needed",
+          "Please allow microphone access in Settings to record your line."
+        );
+        return;
+      }
+
+      // Release playback (TTS) and any preview player — a loaded Sound blocks recording on iOS.
+      await ttsService.stopAudio();
+      if (previewSound) {
+        try {
+          await previewSound.unloadAsync();
+        } catch {
+          /* ignore */
+        }
+        setPreviewSound(null);
+      }
+      setIsPlayingPreview(false);
+
+      if (recording) {
+        try {
+          await recording.stopAndUnloadAsync();
+        } catch {
+          /* ignore */
+        }
+        setRecording(null);
+      }
+
+      await setAudioModeSafely({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
       const { recording: rec } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
@@ -426,7 +387,7 @@ export default function RoleplayDrill() {
         setRecordingElapsed((s) => s + 1);
       }, 1000);
     } catch (e) {
-      logger.error("Failed to start recording:", e);
+      logger.error("Failed to start recording:", e ?? "(unknown error)");
       Alert.alert("Error", "Could not start recording. Please check microphone permissions.");
     }
   };
@@ -617,7 +578,6 @@ export default function RoleplayDrill() {
 
   const handleRestart = () => {
     clearDrillProgress(drillId);
-    resumePhaseRef.current = null;
     aiSpeakingRunIdRef.current += 1;
     aiTurnAppendSigRef.current = null;
     timeoutRefs.current.forEach(clearTimeout);
@@ -687,9 +647,23 @@ export default function RoleplayDrill() {
     );
   }
 
-  // ─── Dock height for padding ──────────────────────────────────────────────
-  const dockHeight = phase === "preview" ? 200 : phase === "recording" ? 176 : 148;
+  // ─── Bottom inset: keep transcript / “Your turn” scrollable above dock & sheets ─
   const dockBottom = insets.bottom;
+  const micDockVisible =
+    phase === "your_turn" || phase === "recording" || phase === "preview";
+  const micDockSheetHeight =
+    phase === "preview" ? 200 : phase === "recording" ? 176 : 148;
+  // Pass/fail sheets are taller than the mic dock; add scroll padding so chat isn’t trapped under them.
+  const scoreSheetScrollPad = phase === "score_pass" ? 420 : phase === "score_fail" ? 320 : 0;
+  // Extra padding when the prompt card is shown so it clears the mic dock with
+  // space to spare (the card is ~100px; add 40px breathing room on top of dock).
+  const yourTurnExtraPad = phase === "your_turn" ? 140 : 0;
+  const transcriptScrollPaddingBottom =
+    dockBottom +
+    24 +
+    (micDockVisible ? micDockSheetHeight + 16 : 0) +
+    yourTurnExtraPad +
+    scoreSheetScrollPad;
 
   // Show complete sheet as modal overlay (phase === complete_banner)
   const showCompleteSheet = phase === "complete_banner";
@@ -842,7 +816,7 @@ export default function RoleplayDrill() {
             contentContainerStyle={{
               paddingHorizontal: 16,
               paddingTop: 8,
-              paddingBottom: dockHeight + dockBottom + 24,
+              paddingBottom: transcriptScrollPaddingBottom,
             }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -910,7 +884,7 @@ export default function RoleplayDrill() {
               isPlayingPreview={isPlayingPreview}
               elapsedSeconds={recordingElapsed}
               bottomInset={dockBottom}
-              onMicPress={startRecording}
+              onMicPress={handleMicPress}
               onStopPress={stopRecording}
               onPlayPreview={playPreview}
               onDeleteRecording={deleteRecording}

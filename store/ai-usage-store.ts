@@ -16,7 +16,7 @@ export const useAiUsageStore = create<AiUsageState>()(
   persist(
     (set, get) => ({
       freeTurnsUsed: 0,
-      freeTurnLimit: 3, // 10 turns per free account
+      freeTurnLimit: 100, // effectively unlimited — user leaves via the Leave button
 
       incrementTurn: () => {
         const { freeTurnsUsed, freeTurnLimit } = get();

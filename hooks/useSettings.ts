@@ -16,11 +16,12 @@ export const USER_CURRENT_KEY = ['user-current'] as const;
  * Fetch the authenticated user together with their learner profile.
  * All Settings screens share this single cache entry.
  */
-export function useUserCurrent() {
+export function useUserCurrent(options?: { enabled?: boolean }) {
   return useQuery<UserCurrentResponse, SettingsApiError>({
     queryKey: USER_CURRENT_KEY,
     queryFn: () => settingsService.getCurrentUser(),
     staleTime: 1000 * 60 * 5, // 5 minutes
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -49,6 +50,7 @@ export function useUpdatePreferences() {
           ...(newData.language !== undefined && { language: newData.language }),
           ...(newData.learningGoal !== undefined && { learningGoal: newData.learningGoal }),
           ...(newData.learningGoals !== undefined && { learningGoals: newData.learningGoals }),
+          ...(newData.theme !== undefined && { theme: newData.theme }),
           ...(newData.notificationPreferences !== undefined && {
             notificationPreferences: newData.notificationPreferences,
           }),

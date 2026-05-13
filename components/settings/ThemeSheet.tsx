@@ -6,7 +6,7 @@ import { AppText, Button } from "@/components/ui";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useThemeStore } from "@/store/theme-store";
 import { useUpdatePreferences } from "@/hooks/useSettings";
-import * as Updates from "expo-updates";
+import { brandColors } from "@/constants/theme-tokens";
 
 function useEffectiveTheme() {
   const { theme } = useThemeStore();
@@ -77,7 +77,6 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
     const snapPoints = React.useMemo(() => ["45%"], []);
     const { theme, setTheme } = useThemeStore();
     const [localTheme, setLocalTheme] = useState(theme);
-    const [loading, setLoading] = useState(false);
 
     const prefMutation = useUpdatePreferences();
 
@@ -105,30 +104,18 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
         return;
       }
 
-      // §13: apply theme synchronously first (instant local feedback)
+      // Match web ThemeSettingSheet: apply locally first, PATCH in background, rollback on error
       setTheme(localTheme);
       handleClose();
 
-      // Persist to server; rollback is handled inside useUpdatePreferences on error
       prefMutation.mutate(
         { theme: localTheme },
         {
           onError: () => {
-            // Roll back local theme store on server failure
             setTheme(previousTheme);
           },
         }
       );
-
-      // Reload the app after a short delay so NativeWind picks up the new class
-      setLoading(true);
-      setTimeout(async () => {
-        try {
-          await Updates.reloadAsync();
-        } catch {
-          setLoading(false);
-        }
-      }, 200);
     };
 
     const handleOptionSelect = (selectedTheme: typeof theme) => {
@@ -171,12 +158,21 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
                 <TouchableOpacity
                   key={option.id}
                   onPress={() => handleOptionSelect(option.id as any)}
-                  style={tw`flex-1 rounded-2xl p-4 border ${
-                    selected ? "border-primary-500 bg-white dark:bg-neutral-900" : "border-transparent bg-[#FAFAFA] dark:bg-neutral-800"
-                  }`}
+                  style={[
+                    tw`flex-1 rounded-2xl px-3 pt-3 pb-2 min-h-[66px]`,
+                    selected
+                      ? {
+                          borderWidth: 1,
+                          borderColor: brandColors.primary,
+                          backgroundColor: "rgba(59, 136, 62, 0.08)",
+                        }
+                      : tw`border border-neutral-200 dark:border-neutral-700 bg-neutral-100/40 dark:bg-neutral-800/60`,
+                  ]}
                 >
-                  <View style={tw`mb-8`}>{option.icon}</View>
-                  <AppText style={tw`text-[15px] font-medium ${selected ? "text-neutral-900 dark:text-white" : "text-neutral-500 dark:text-neutral-400"}`}>
+                  <View style={tw`mb-2`}>{option.icon}</View>
+                  <AppText
+                    style={tw`text-xs font-medium ${selected ? "text-neutral-900 dark:text-white" : "text-neutral-500 dark:text-neutral-400"}`}
+                  >
                     {option.label}
                   </AppText>
                 </TouchableOpacity>
@@ -186,8 +182,8 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
 
           {/* Save */}
           <View style={tw`mt-6`}>
-            <Button onPress={handleSave} loading={loading}>
-              Save settings
+            <Button onPress={handleSave} loading={prefMutation.isPending}>
+              Save
             </Button>
           </View>
         </BottomSheetView>

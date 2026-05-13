@@ -450,7 +450,14 @@ export default function VocabularyDrill() {
       const currentSentence = drill.target_sentences?.[currentItemIndex];
       const word =
         currentSentence?.word || currentSentence?.text?.split(" ")[0] || drill.title;
-      await bookmarkWord(word, drill._id);
+      const translation =
+        currentSentence?.wordTranslation || currentSentence?.translation;
+      const context = currentSentence?.text;
+      await bookmarkWord(word, drill._id, {
+        translation,
+        context,
+        type: "word",
+      });
       setIsBookmarked(true);
       Alert.alert("Saved", `"${word}" has been bookmarked.`);
     } catch (error) {

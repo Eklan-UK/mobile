@@ -2,10 +2,12 @@ import DrillCard from "@/components/practice/DrillCard";
 import { DrillCardSkeletonList } from "@/components/drills/DrillCardSkeleton";
 import { AppText, BoldText } from "@/components/ui";
 import tw from "@/lib/tw";
+import { useSemanticTheme } from "@/hooks/useSemanticTheme";
+import { brandColors } from "@/constants/theme-tokens";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState, useEffect } from "react";
-import { ScrollView, TouchableOpacity, View, RefreshControl } from "react-native";
+import { ScrollView, StyleSheet, TouchableOpacity, View, RefreshControl } from "react-native";
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getSavedDrills, unsaveDrill, getDrillById } from "@/services/drill.service";
@@ -15,11 +17,12 @@ import { router } from "expo-router";
 
 // Empty State Component
 function EmptyState() {
+  const { colors: c } = useSemanticTheme();
   return (
     <View style={tw`flex-1 items-center justify-center py-20`}>
       <AppText style={tw`text-6xl mb-4`}>📚</AppText>
-      <BoldText style={tw`text-xl text-gray-900 mb-2`}>No saved drills</BoldText>
-      <AppText style={tw`text-base text-gray-500 text-center px-8`}>
+      <BoldText style={[tw`text-xl mb-2`, { color: c.textPrimary }]}>No saved drills</BoldText>
+      <AppText style={[tw`text-base text-center px-8`, { color: c.textSecondary }]}>
         Save drills you want to practice later
       </AppText>
     </View>
@@ -28,17 +31,21 @@ function EmptyState() {
 
 // Error State Component
 function ErrorState({ onRetry }: { onRetry: () => void }) {
+  const { colors: c, isDark } = useSemanticTheme();
   return (
     <View style={tw`flex-1 items-center justify-center py-20`}>
       <AppText style={tw`text-6xl mb-4`}>⚠️</AppText>
-      <BoldText style={tw`text-xl text-gray-900 mb-2`}>
+      <BoldText style={[tw`text-xl mb-2`, { color: c.textPrimary }]}>
         Failed to load saved drills
       </BoldText>
-      <AppText style={tw`text-base text-gray-500 text-center px-8 mb-6`}>
+      <AppText style={[tw`text-base text-center px-8 mb-6`, { color: c.textSecondary }]}>
         Please check your connection and try again
       </AppText>
       <TouchableOpacity
-        style={tw`bg-green-700 px-6 py-3 rounded-full`}
+        style={[
+          tw`px-6 py-3 rounded-full`,
+          { backgroundColor: isDark ? brandColors.primary : brandColors.primaryDark },
+        ]}
         onPress={onRetry}
         activeOpacity={0.8}
       >
@@ -57,6 +64,7 @@ interface SavedDrillItem {
 
 // Main Screen
 export default function SavedDrillsScreen() {
+  const { colors: c, isDark } = useSemanticTheme();
   const [savedDrills, setSavedDrills] = useState<SavedDrillItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -147,22 +155,27 @@ export default function SavedDrillsScreen() {
   };
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-gray-50`} edges={['top']}>
+    <SafeAreaView style={[tw`flex-1`, { backgroundColor: c.background }]} edges={['top']}>
       {/* Header */}
-      <View style={tw`px-5 pt-4 pb-4 bg-white`}>
+      <View
+        style={[
+          tw`px-5 pt-4 pb-4 border-b`,
+          { backgroundColor: c.card, borderBottomColor: c.border },
+        ]}
+      >
         <View style={tw`flex-row items-center mb-3`}>
           <TouchableOpacity
             onPress={() => router.back()}
             style={tw`mr-4`}
             activeOpacity={0.7}
           >
-            <AppText style={tw`text-2xl text-neutral-900`}>←</AppText>
+            <AppText style={[tw`text-2xl`, { color: c.textPrimary }]}>←</AppText>
           </TouchableOpacity>
           <View style={tw`flex-1`}>
-            <BoldText style={tw`text-2xl font-bold text-gray-900 mb-1`}>
+            <BoldText style={[tw`text-2xl font-bold mb-1`, { color: c.textPrimary }]}>
               Saved Drills
             </BoldText>
-            <AppText style={tw`text-base text-gray-500`}>
+            <AppText style={[tw`text-base`, { color: c.textSecondary }]}>
               Drills you've saved for later
             </AppText>
           </View>
@@ -171,15 +184,15 @@ export default function SavedDrillsScreen() {
 
       {/* Content */}
       <ScrollView
-        style={tw`flex-1`}
-        contentContainerStyle={tw`px-5 py-4`}
+        style={[tw`flex-1`, { backgroundColor: c.background }]}
+        contentContainerStyle={[tw`px-5 py-4`, { backgroundColor: c.background }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#15803D"
-            colors={["#15803D"]}
+            tintColor={brandColors.primary}
+            colors={[brandColors.primary]}
           />
         }
       >
@@ -203,10 +216,17 @@ export default function SavedDrillsScreen() {
                 />
                 <TouchableOpacity
                   onPress={() => handleUnsave(item._id, item.drill?.title || "Drill")}
-                  style={tw`absolute top-2 right-2 w-10 h-10 items-center justify-center bg-white/90 rounded-full shadow-sm`}
+                  style={[
+                    tw`absolute top-2 right-2 w-10 h-10 items-center justify-center rounded-full`,
+                    {
+                      backgroundColor: isDark ? "rgba(19, 22, 20, 0.92)" : "rgba(255,255,255,0.92)",
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: c.border,
+                    },
+                  ]}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="bookmark" size={20} color="#166534" />
+                  <Ionicons name="bookmark" size={20} color={brandColors.primary} />
                 </TouchableOpacity>
               </View>
             ))

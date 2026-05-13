@@ -88,6 +88,7 @@ export interface UserProfile {
   language?: string;
   learningGoal?: string;
   learningGoals?: string[];
+  theme?: ThemeValue;
   notificationPreferences?: NotificationPreferences;
   lessonPreferences?: LessonPreferences;
 }

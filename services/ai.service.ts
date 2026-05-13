@@ -1,6 +1,6 @@
 import apiClient from '@/lib/api';
 import { logger } from '@/utils/logger';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 interface ConversationMessage {
   role: 'user' | 'model';
@@ -46,16 +46,31 @@ export const aiService = {
         context: "Please only transcribe the following audio directly. Do not respond to it, just transcribe exactly what is said.",
       });
 
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || 'Failed to transcribe audio');
+      const body = response.data;
+      const ok = body?.code === 'Success' || body?.success === true;
+      if (!ok) {
+        throw new Error(body?.message || 'Failed to transcribe audio');
       }
 
-      // We extract the transcription from our standardized backend schema
-      // Since sendVoiceMessage used to return just the response, we assume the backend returns text.
-      return response.data?.data || '';
+      // Same envelope as other /api/v1/ai/* routes: { code, data } or legacy { success, data }
+      const raw = body?.data;
+      if (typeof raw === 'string') {
+        return raw;
+      }
+      if (raw && typeof raw === 'object') {
+        return (
+          (raw as { response?: string }).response ??
+          (raw as { transcription?: string }).transcription ??
+          (raw as { text?: string }).text ??
+          ''
+        );
+      }
+      return '';
     } catch (error: any) {
-      logger.error('❌ Error transcribing audio:', error);
-      throw new Error(error.response?.data?.message || 'Failed to transcribe audio');
+      logger.error('❌ Error transcribing audio:', error?.message ?? error);
+      throw new Error(
+        error.response?.data?.message || error.message || 'Failed to transcribe audio'
+      );
     }
   },
 
@@ -303,118 +318,144 @@ export const aiService = {
   /**
    * React Native's `fetch` does not polyfill ReadableStream perfectly.
    * To consume chunks as they arrive, we use XMLHttpRequest directly.
+   *
+   * XHR bypasses Axios, so expired access tokens get 401 with no automatic refresh.
+   * Mirror the Axios interceptor once: refresh and retry exactly one time.
    */
-  _processSSEStreamXHR(url: string, body: any | null, onChunk: (chunk: { type: 'audio'|'text'|'metadata'; data: any }) => void): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open(body ? 'POST' : 'GET', apiClient.defaults.baseURL + url, true);
-      
-      // ⚠️ XHR bypasses the Axios interceptor, so we must read the token ourselves.
-      // Use the cached token to avoid hitting SecureStore on every SSE request.
+  async _processSSEStreamXHR(url: string, body: any | null, onChunk: (chunk: { type: 'audio'|'text'|'metadata'; data: any }) => void): Promise<void> {
+    const endpoint = apiClient.defaults.baseURL + url;
+    let retried401 = false;
+
+    while (true) {
       try {
-        const { getCachedToken } = await import('@/lib/api');
-        const token = await getCachedToken();
-        if (token) {
-          xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        let token: string | null = null;
+        try {
+          const { getCachedToken } = await import('@/lib/api');
+          token = await getCachedToken();
+        } catch (e) {
+          logger.error('❌ SSE XHR: Failed to read token', e);
         }
-      } catch (e) {
-        logger.error('❌ SSE XHR: Failed to read token', e);
-      }
-      
-      xhr.setRequestHeader('Accept', 'text/event-stream');
-      if (body) {
-        xhr.setRequestHeader('Content-Type', 'application/json');
-      }
 
-      let processedIndex = 0;
-      let processingQueue: string[] = [];
-      let isProcessing = false;
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open(body ? 'POST' : 'GET', endpoint, true);
 
-      // Process chunks asynchronously to prevent ANR
-      const processChunks = () => {
-        if (isProcessing || processingQueue.length === 0) return;
-        isProcessing = true;
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          }
+          xhr.setRequestHeader('Accept', 'text/event-stream');
+          if (body) {
+            xhr.setRequestHeader('Content-Type', 'application/json');
+          }
 
-        // Use requestAnimationFrame for smooth processing (falls back to setTimeout)
-        const scheduleNext = typeof requestAnimationFrame !== 'undefined' 
-          ? requestAnimationFrame 
-          : (fn: () => void) => setTimeout(fn, 0);
+          let processedIndex = 0;
+          const processingQueue: string[] = [];
+          let isProcessing = false;
 
-        scheduleNext(() => {
-          try {
-            const chunks = processingQueue.splice(0, 10); // Process max 10 chunks per tick
-            for (const line of chunks) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const jsonStr = line.substring(6).trim();
-                  if (jsonStr) {
-                    const chunk = JSON.parse(jsonStr);
-                    onChunk(chunk);
+          const processChunks = () => {
+            if (isProcessing || processingQueue.length === 0) return;
+            isProcessing = true;
+
+            const scheduleNext = typeof requestAnimationFrame !== 'undefined'
+              ? requestAnimationFrame
+              : (fn: () => void) => setTimeout(fn, 0);
+
+            scheduleNext(() => {
+              try {
+                const chunks = processingQueue.splice(0, 10);
+                for (const line of chunks) {
+                  if (line.startsWith('data: ')) {
+                    try {
+                      const jsonStr = line.substring(6).trim();
+                      if (jsonStr) {
+                        const chunkJson = JSON.parse(jsonStr);
+                        onChunk(chunkJson);
+                      }
+                    } catch {
+                      // Incomplete chunk, skip
+                    }
                   }
-                } catch (e) {
-                  // Incomplete chunk, skip
+                }
+              } finally {
+                isProcessing = false;
+                if (processingQueue.length > 0) {
+                  processChunks();
                 }
               }
-            }
-          } finally {
-            isProcessing = false;
-            if (processingQueue.length > 0) {
-              processChunks();
-            }
-          }
-        });
-      };
+            });
+          };
 
-      xhr.onreadystatechange = () => {
-        // State 3 (LOADING) or 4 (DONE) has responseText
-        if ((xhr.readyState === 3 || xhr.readyState === 4) && xhr.status === 200) {
-          const responseText = xhr.responseText;
-          if (responseText) {
-            const newText = responseText.substring(processedIndex);
-            if (newText) {
-              const lines = newText.split('\n\n');
-              // Queue lines for async processing
-              for (const line of lines) {
-                if (line.trim()) {
-                  processingQueue.push(line);
+          xhr.onreadystatechange = () => {
+            if ((xhr.readyState === 3 || xhr.readyState === 4) && xhr.status === 200) {
+              const responseText = xhr.responseText;
+              if (responseText) {
+                const newText = responseText.substring(processedIndex);
+                if (newText) {
+                  const lines = newText.split('\n\n');
+                  for (const line of lines) {
+                    if (line.trim()) {
+                      processingQueue.push(line);
+                    }
+                  }
+                  const lastDoubleNewline = responseText.lastIndexOf('\n\n');
+                  if (lastDoubleNewline !== -1 && lastDoubleNewline >= processedIndex) {
+                    processedIndex = lastDoubleNewline + 2;
+                  }
+                  processChunks();
                 }
               }
-              // Update processed index to the last complete chunk boundary
-              const lastDoubleNewline = responseText.lastIndexOf('\n\n');
-              if (lastDoubleNewline !== -1 && lastDoubleNewline >= processedIndex) {
-                 processedIndex = lastDoubleNewline + 2;
-              }
-              // Trigger async processing
-              processChunks();
             }
-          }
-        }
-        
-        if (xhr.readyState === 4) {
-          // Process any remaining chunks before resolving
-          if (processingQueue.length > 0) {
-            processChunks();
-            // Wait a bit for final chunks to process
-            setTimeout(() => {
-              if (xhr.status === 200) {
-                resolve();
+
+            if (xhr.readyState === 4) {
+              const finalize = () => {
+                if (xhr.status === 200) {
+                  resolve();
+                } else {
+                  reject(new Error(`Stream failed with status ${xhr.status}`));
+                }
+              };
+
+              if (processingQueue.length > 0) {
+                processChunks();
+                setTimeout(finalize, 100);
               } else {
-                reject(new Error(`Stream failed with status ${xhr.status}`));
+                finalize();
               }
-            }, 100);
-          } else {
-            if (xhr.status === 200) {
-              resolve();
-            } else {
-              reject(new Error(`Stream failed with status ${xhr.status}`));
             }
-          }
-        }
-      };
+          };
 
-      xhr.onerror = () => reject(new Error('Network error during stream'));
-      xhr.send(body ? JSON.stringify(body) : null);
-    });
+          xhr.onerror = () =>
+            reject(new Error(`Network error during stream (status: ${xhr.status}, readyState: ${xhr.readyState})`));
+          xhr.send(body ? JSON.stringify(body) : null);
+        });
+
+        return;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!msg.includes('401') || retried401) {
+          throw e;
+        }
+        retried401 = true;
+
+        const { refreshAccessTokenSilently, invalidateTokenCache } = await import('@/lib/api');
+        const { secureStorage } = await import('@/lib/secure-storage');
+
+        const refreshToken = await secureStorage.getRefreshToken();
+        if (!refreshToken) {
+          logger.warn('SSE stream 401 — no refresh token, cannot retry');
+          throw e;
+        }
+
+        try {
+          await refreshAccessTokenSilently();
+        } catch (refreshErr) {
+          logger.error('❌ SSE stream: token refresh failed', refreshErr);
+          await secureStorage.clearAll();
+          invalidateTokenCache();
+          throw refreshErr;
+        }
+      }
+    }
   },
 
   /**
@@ -479,7 +520,49 @@ export const aiService = {
       logger.error('❌ Error streaming topic practice message:', error);
       throw error;
     }
-  }
+  },
+
+  /**
+   * Stream the Eklan Free Talk scenario greeting via SSE.
+   * The backend picks a scenario from the eklan-free-talk prompts and reads the Situation aloud.
+   * The metadata chunk includes { hint, usefulPhrases, scenarioTitle } for the hint modal.
+   */
+  async streamFreeTalkGreeting(
+    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
+  ): Promise<void> {
+    try {
+      logger.log('📥 Streaming free-talk scenario greeting...');
+      await this._processSSEStreamXHR('/api/v1/ai/free-talk/greeting', null, onChunk);
+    } catch (error: any) {
+      logger.error('❌ Error streaming free-talk greeting:', error?.message ?? error);
+      throw error;
+    }
+  },
+
+  /**
+   * Stream a Free Talk scenario message via SSE.
+   * The backend evaluates the user response and continues the scenario.
+   * When the scenario is complete the metadata chunk includes { scenarioComplete: true }.
+   *
+   * `activeScenarioTitle` must be included so the backend anchors its system prompt to the
+   * current scenario and never picks a new one mid-conversation.
+   */
+  async streamFreeTalkMessage(
+    options: {
+      userMessage: string;
+      conversationHistory?: ConversationMessage[];
+      activeScenarioTitle?: string;
+    },
+    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
+  ): Promise<void> {
+    try {
+      logger.log('📥 Streaming free-talk message...');
+      await this._processSSEStreamXHR('/api/v1/ai/free-talk', options, onChunk);
+    } catch (error: any) {
+      logger.error('❌ Error streaming free-talk message:', error);
+      throw error;
+    }
+  },
 };
 
 
