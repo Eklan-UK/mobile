@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { logger } from '@/utils/logger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { notificationService } from '@/services/notification.service';
+import { isProSubscriber } from '@/utils/subscription';
 
 const PUSH_TOKEN_STORAGE_KEY = '@push_token';
 
@@ -23,6 +24,7 @@ export interface User {
   subscriptionPlan?: "free" | "premium";
   subscriptionActivatedAt?: string | null;
   subscriptionExpiresAt?: string | null;
+  stripeSubscriptionStatus?: string | null;
   isSubscribed?: boolean;
 }
 
@@ -151,7 +153,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           subscriptionPlan: userData.subscriptionPlan || "free",
           subscriptionActivatedAt: userData.subscriptionActivatedAt || null,
           subscriptionExpiresAt: userData.subscriptionExpiresAt || null,
-          isSubscribed: userData.isSubscribed ?? false,
+          stripeSubscriptionStatus: userData.stripeSubscriptionStatus ?? null,
+          isSubscribed: isProSubscriber(userData),
         };
 
         // Update stored user data
@@ -273,8 +276,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ...user,
         hasProfile,
         emailVerified: emailVerified,
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
-      
+
       await secureStorage.setUser(userWithProfile);
       logger.log('✅ Credentials stored successfully');
 
@@ -376,8 +381,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userWithProfile = {
         ...user,
         hasProfile: hasProfile || false, // Ensure false for new users
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
-      
+
       await secureStorage.setUser(userWithProfile);
       logger.log('✅ Credentials stored successfully');
 
@@ -461,6 +468,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userWithProfile = {
         ...user,
         hasProfile,
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
 
       // Store credentials
@@ -519,6 +528,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userWithProfile = {
         ...user,
         hasProfile,
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
 
       // Store credentials

@@ -43,7 +43,7 @@ export interface LearningGoalOption {
   icon: string;
 }
 
-// ─── Preferences request body (mirrors §6 of MOBILE_SETTINGS.md) ──────────────
+// ─── Preferences request body (mirrors §6 of docs/MOBILE_SETTINGS.md) ──────────────
 
 export interface PreferencesBody {
   nationality?: string;
@@ -106,6 +106,8 @@ export interface UserCurrentResponse {
     subscriptionPlan?: 'free' | 'premium';
     isSubscribed?: boolean;
     subscriptionExpiresAt?: string | null;
+    subscriptionActivatedAt?: string | null;
+    stripeSubscriptionStatus?: string | null;
     hasProfile?: boolean;
   };
   profile?: UserProfile;

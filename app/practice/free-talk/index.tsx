@@ -10,10 +10,12 @@ import { ttsService } from "@/services/tts.service";
 import { useAiUsageStore } from "@/store/ai-usage-store";
 import { setAudioModeSafely } from "@/utils/audio";
 import { logger } from "@/utils/logger";
+import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -43,6 +45,16 @@ interface HintData {
 
 export default function FreeTalkScreen() {
   const router = useRouter();
+  const isSubscribed = useIsSubscribed();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isSubscribed) {
+        router.replace("/premium");
+      }
+    }, [isSubscribed, router])
+  );
+
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
   const recordingRef = useRef<Audio.Recording | null>(null);

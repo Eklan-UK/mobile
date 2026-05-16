@@ -2,7 +2,7 @@ import { completeDrill, getDrillById, getMyDrills } from '@/services/drill.servi
 import { DrillStatus } from '@/types/drill.types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-/** Full-list page size for `my-drills` (My Plan, warm-up prefetch). MOBILE_MY_PLAN.md §4 — high `limit` for main listing. */
+/** Full-list page size for `my-drills` (My Plan, warm-up prefetch). docs/MOBILE_MY_PLAN.md §4 — high `limit` for main listing. */
 export const MY_DRILLS_FULL_LIST_LIMIT = 200;
 
 /**

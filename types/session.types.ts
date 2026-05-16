@@ -1,6 +1,6 @@
 /**
  * Session and Class types for the Learner Sessions feature.
- * Mirrors the backend DTOs described in NEXT_SESSION_BACKEND.md.
+ * Mirrors the backend DTOs described in docs/NEXT_SESSION_BACKEND.md.
  */
 
 export type SessionStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';

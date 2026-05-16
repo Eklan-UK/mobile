@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { z } from 'zod';
-import apiClient from '@/lib/api';
+import apiClient, { API_BASE_URL } from '@/lib/api';
 import { logger } from '@/utils/logger';
 import type {
   PreferencesBody,
@@ -68,8 +68,6 @@ export function parseEnvelopeError(err: unknown): SettingsApiError {
 }
 
 // ─── Tokenless axios instance (for public /contact endpoint) ──────────────────
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 const publicClient = axios.create({
   baseURL: API_BASE_URL,

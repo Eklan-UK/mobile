@@ -4,13 +4,15 @@ import DrillCard from "@/components/practice/DrillCard";
 import { NextSessionCard } from "@/components/sessions/NextSessionCard";
 import { AppText, BoldText } from "@/components/ui";
 import { MY_DRILLS_FULL_LIST_LIMIT, useDrills } from "@/hooks/useDrills";
+import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import { useLearnerClasses } from "@/hooks/useLearnerClasses";
 import tw from "@/lib/tw";
 import { DrillAssignment } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
-import { useMemo, useState } from "react";
-import { RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
+import { useLayoutEffect, useMemo, useState } from "react";
+import { ActivityIndicator, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Types
@@ -74,7 +76,7 @@ function EmptyState({ tab }: { tab: TabType }) {
       emoji: "✍️",
       title: "No reviewed drills yet",
       subtitle:
-        "When your tutor marks a completed drill as reviewed, it shows up here (see MOBILE_MY_PLAN.md §7).",
+        "When your tutor marks a completed drill as reviewed, it shows up here (see docs/MOBILE_MY_PLAN.md §7).",
     },
     completed: {
       emoji: "🎉",
@@ -121,13 +123,14 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 // Main Screen
 export default function MyPlanScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("ongoing");
+  const isSubscribed = useIsSubscribed();
 
-  // Fetch drills for My Plan — MOBILE_MY_PLAN.md §4: high `limit` for main listing (see MY_DRILLS_FULL_LIST_LIMIT)
+  // Fetch drills for My Plan — docs/MOBILE_MY_PLAN.md §4: high `limit` for main listing (see MY_DRILLS_FULL_LIST_LIMIT)
   const { data, isLoading, isError, refetch } = useDrills(undefined, MY_DRILLS_FULL_LIST_LIMIT);
   // Fetch learner classes for Next Session card
   const { nextSession } = useLearnerClasses();
 
-  // Categorize drills — MOBILE_MY_PLAN.md §7: Reviewed = completed + latestAttempt.reviewStatus === 'reviewed' (see utils/drillPlanTab.ts)
+  // Categorize drills — docs/MOBILE_MY_PLAN.md §7: Reviewed = completed + latestAttempt.reviewStatus === 'reviewed' (see utils/drillPlanTab.ts)
   const categorizedDrills = useMemo(() => {
     if (!data?.drills) {
       return { ongoing: [], reviewed: [], completed: [] };
@@ -148,6 +151,23 @@ export default function MyPlanScreen() {
     await refetch();
     setRefreshing(false);
   };
+
+  useLayoutEffect(() => {
+    if (!isSubscribed) {
+      router.replace("/premium" as never);
+    }
+  }, [isSubscribed, router]);
+
+  if (!isSubscribed) {
+    return (
+      <SafeAreaView
+        edges={["top"]}
+        style={tw`flex-1 bg-gray-50 dark:bg-neutral-900 items-center justify-center`}
+      >
+        <ActivityIndicator size="large" color="#15803D" />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['top']} style={tw`flex-1 bg-gray-50 dark:bg-neutral-900`}>

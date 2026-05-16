@@ -15,6 +15,7 @@ import { AlertProvider } from "@/contexts/AlertContext";
 import { NotificationToastProvider } from "@/contexts/NotificationToastContext";
 import { BackgroundPrefetcher } from "@/components/BackgroundPrefetcher";
 import { ProfileThemeSync } from "@/components/ProfileThemeSync";
+import { SubscriptionDeepLinkHandler } from "@/components/subscription/SubscriptionDeepLinkHandler";
 import * as Updates from "expo-updates";
 import * as SystemUI from "expo-system-ui";
 import tw from "@/lib/tw";
@@ -133,6 +134,7 @@ export default function RootLayout() {
           <BottomSheetModalProvider>
             <SafeAreaProvider>
               <NotificationToastProvider>
+              <SubscriptionDeepLinkHandler />
               <BackgroundPrefetcher />
               <ProfileThemeSync />
               <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>

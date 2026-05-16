@@ -2,8 +2,28 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosE
 import { secureStorage } from './secure-storage';
 import { logger } from '@/utils/logger';
 
-// Get the backend URL from environment or use default
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+/**
+ * Normalize `EXPO_PUBLIC_API_URL` so every request path is joined exactly once.
+ *
+ * - Trims whitespace and removes trailing `/`.
+ * - If the value ends with `/api` while the app already uses paths like `/api/v1/...`,
+ *   strips that suffix (avoids `.../api/api/v1/...` → 404 on the real Next app).
+ *
+ * A 404 on `POST /api/v1/stripe/checkout` usually means the request never reached the
+ * Next.js app that defines that route — re-check this URL, proxy/CDN routing, and env
+ * (dev vs prod) until `POST {origin}/api/v1/stripe/checkout` hits the same deployment as the repo.
+ */
+export function normalizeApiBaseUrl(raw: string): string {
+  let base = raw.trim();
+  while (base.endsWith('/')) base = base.slice(0, -1);
+  if (base.endsWith('/api')) base = base.slice(0, -4);
+  return base;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(
+  process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'
+);
+
 const isDev = __DEV__;
 
 // ─── In-memory token cache (avoids SecureStore read on every request) ────────

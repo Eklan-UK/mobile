@@ -45,13 +45,13 @@ export default function DrillCard({
   return (
     <TouchableOpacity
       onPress={() => onPress(drill)}
-      disabled={locked}
       style={[
         tw`rounded-2xl mb-3 flex-row items-center p-3`,
         {
           backgroundColor: c.card,
           borderColor: c.border,
           borderWidth: 1,
+          opacity: locked ? 0.85 : 1,
         },
       ]}
       activeOpacity={0.7}

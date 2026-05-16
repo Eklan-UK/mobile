@@ -1,11 +1,24 @@
 import { AppText, BoldText } from "@/components/ui";
+import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
+import { useCallback } from "react";
 import { TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function PressureTestScreen() {
+  const isSubscribed = useIsSubscribed();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isSubscribed) {
+        router.replace("/premium");
+      }
+    }, [isSubscribed])
+  );
+
   return (
     <SafeAreaView edges={["top", "bottom"]} style={tw`flex-1 bg-white dark:bg-neutral-900`}>
       <View style={tw`px-5 pt-4`}>

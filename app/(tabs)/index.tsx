@@ -2,6 +2,7 @@ import { AppText, BoldText } from "@/components/ui";
 import { ContinuePracticeCard } from "@/components/practice/continue-practice-card";
 import { ProgressCircle } from "@/components/ui/ProgressCircle";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import { useConfidence } from "@/hooks/useConfidence";
 import { useDailyFocusToday } from "@/hooks/useDailyFocusToday";
 import { useHomeProgress } from "@/hooks/useHomeProgress";
@@ -338,6 +339,7 @@ const MetricRow = memo(
 
 const ViewSessionsButton = memo(() => {
   const p = useHomePalette();
+  const isSubscribed = useIsSubscribed();
   return (
     <TouchableOpacity
       style={[
@@ -345,17 +347,30 @@ const ViewSessionsButton = memo(() => {
         {
           backgroundColor: p.viewSessionsBtnBg,
           borderColor: p.viewSessionsBtnBorder,
+          opacity: isSubscribed ? 1 : 0.85,
         },
       ]}
-      onPress={() => router.push("/sessions")}
+      onPress={() => {
+        if (!isSubscribed) {
+          router.push("/premium");
+          return;
+        }
+        router.push("/sessions");
+      }}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityLabel="View your sessions"
+      accessibilityLabel={isSubscribed ? "View your sessions" : "Upgrade to Pro to view sessions"}
     >
       <CalendarSessionsIcon />
       <AppText style={[styles.viewSessionsBtnText, { color: p.viewSessionsBtnText }]}>
         View your sessions
       </AppText>
+      {!isSubscribed ? (
+        <View style={tw`ml-1 flex-row items-center gap-1 bg-green-600 px-2 py-0.5 rounded-full`}>
+          <Ionicons name="lock-closed" size={10} color="#fff" />
+          <AppText style={tw`text-[10px] font-bold text-white`}>Pro</AppText>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 });
@@ -456,6 +471,7 @@ const STATUS_BADGE: Record<
 const DrillCard = memo(
   ({ assignment, onPress }: { assignment: DrillAssignment; onPress: () => void }) => {
     const p = useHomePalette();
+    const isSubscribed = useIsSubscribed();
     const { drill } = assignment;
     const drillStatus = getDrillStatus(assignment);
     const isCompleted = drillStatus === "completed";
@@ -566,13 +582,26 @@ const DrillCard = memo(
             <View />
           )}
           <TouchableOpacity
-            style={styles.drillCta}
-            onPress={onPress}
+            style={[styles.drillCta, !isSubscribed && styles.drillCtaLocked]}
+            onPress={() => {
+              if (!isSubscribed) {
+                router.push("/premium");
+                return;
+              }
+              onPress();
+            }}
             activeOpacity={0.85}
           >
-            <BoldText style={styles.drillCtaText}>
-              {isCompleted ? "View Results" : "Start"}
-            </BoldText>
+            {!isSubscribed ? (
+              <View style={tw`flex-row items-center gap-1`}>
+                <Ionicons name="lock-closed" size={12} color="#fff" />
+                <BoldText style={styles.drillCtaTextLocked}>Pro</BoldText>
+              </View>
+            ) : (
+              <BoldText style={styles.drillCtaText}>
+                {isCompleted ? "View Results" : "Start"}
+              </BoldText>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -584,6 +613,7 @@ const DrillCard = memo(
 
 export default function HomeScreen() {
   const { user } = useAuth();
+  const isSubscribed = useIsSubscribed();
   const firstName = user?.firstName ?? "there";
 
   const { prefetchDrill } = usePrefetch();
@@ -632,6 +662,10 @@ export default function HomeScreen() {
 
   const handleDrillPress = useCallback(
     (assignment: DrillAssignment) => {
+      if (!isSubscribed) {
+        router.push("/premium");
+        return;
+      }
       const drillStatus = getDrillStatus(assignment);
       if (drillStatus === "completed") {
         router.push(
@@ -642,7 +676,7 @@ export default function HomeScreen() {
       prefetchDrill(assignment.drill._id);
       navigateToDrill(assignment);
     },
-    [prefetchDrill]
+    [prefetchDrill, isSubscribed]
   );
 
   return (
@@ -699,7 +733,12 @@ export default function HomeScreen() {
           {showContinuePracticeCard && continuePracticeAssignment && (
             <ContinuePracticeCard
               assignment={continuePracticeAssignment}
+              subscriptionLocked={!isSubscribed}
               onPress={() => {
+                if (!isSubscribed) {
+                  router.push("/premium");
+                  return;
+                }
                 prefetchDrill(continuePracticeAssignment.drill._id);
                 navigateToDrill(continuePracticeAssignment);
               }}
@@ -784,11 +823,36 @@ export default function HomeScreen() {
           {/* ── ASSIGNED DRILLS ────────────────────────────── */}
           <View>
             <View style={tw`flex-row items-center justify-between`}>
-              <AppText style={[styles.sectionTitle, { color: p.sectionTitle }]}>
-                Assigned Drills
-              </AppText>
-              <TouchableOpacity onPress={() => router.push("/(tabs)/plan" as any)} activeOpacity={0.7}>
-                <AppText style={[styles.seeAllText, { color: p.seeAllText }]}>See All →</AppText>
+              <View style={tw`flex-row items-center gap-2 flex-1 mr-2 flex-wrap`}>
+                <AppText style={[styles.sectionTitle, { color: p.sectionTitle }]}>
+                  Assigned Drills
+                </AppText>
+                {!isSubscribed ? (
+                  <View style={tw`flex-row items-center gap-1 bg-green-600 pl-1.5 pr-2 py-0.5 rounded-full`}>
+                    <Ionicons name="lock-closed" size={10} color="#fff" />
+                    <AppText style={tw`text-[10px] font-bold text-white`}>Pro</AppText>
+                  </View>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!isSubscribed) {
+                    router.push("/premium");
+                    return;
+                  }
+                  router.push("/(tabs)/plan" as any);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={tw`flex-row items-center gap-1`}>
+                  <AppText style={[styles.seeAllText, { color: p.seeAllText }]}>See All →</AppText>
+                  {!isSubscribed ? (
+                    <View style={tw`flex-row items-center gap-1 bg-green-600 px-1.5 pr-2 py-0.5 rounded-full`}>
+                      <Ionicons name="lock-closed" size={9} color="#fff" />
+                      <AppText style={tw`text-[10px] font-bold text-white`}>Pro</AppText>
+                    </View>
+                  ) : null}
+                </View>
               </TouchableOpacity>
             </View>
             <View style={tw`gap-3 mt-2`}>
@@ -1048,6 +1112,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   drillCtaText: {
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  drillCtaLocked: {
+    backgroundColor: "#16a34a",
+  },
+  drillCtaTextLocked: {
     fontSize: 13,
     color: "#FFFFFF",
   },

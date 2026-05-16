@@ -7,11 +7,12 @@ import {
   useLearnerClassesByBucket,
   useLearnerPastSessions,
 } from '@/hooks/useLearnerClasses';
+import { useIsSubscribed } from '@/hooks/useIsSubscribed';
 import tw from '@/lib/tw';
 import { LearnerClassListItem, PastSession } from '@/types/session.types';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -21,6 +22,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
 type TabKey = 'thisWeek' | 'upcoming' | 'past';
 
@@ -265,6 +267,16 @@ function PastTab({
 
 export default function MySessionsScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('thisWeek');
+  const isSubscribed = useIsSubscribed();
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isSubscribed) {
+        router.replace('/premium');
+      }
+    }, [isSubscribed])
+  );
+
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget | null>(null);
   const [joiningVisible, setJoiningVisible] = useState(false);
   const [successStartUtc, setSuccessStartUtc] = useState<string | null>(null);

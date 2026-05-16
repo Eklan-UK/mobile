@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useThemeStore } from "@/store/theme-store";
 import { useUserCurrent, useResendVerification } from "@/hooks/useSettings";
 import type { UserProfile } from "@/types/settings";
+import { isProSubscriber } from "@/utils/subscription";
 import { LEARNING_GOAL_ITEMS } from "@/constants/settings-options";
 import { useTranslation } from "@/contexts/LanguageContext";
 
@@ -290,7 +291,7 @@ export default function SettingsScreen() {
         />
         <SettingsItem
           label="Subscription"
-          value={user?.subscriptionPlan === 'premium' ? 'Pro' : 'Free'}
+          value={isProSubscriber(user ?? undefined) ? "Pro" : "Free"}
           onPress={() => router.push("/premium")}
         />
         <SettingsItem

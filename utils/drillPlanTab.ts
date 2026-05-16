@@ -1,7 +1,7 @@
 import type { DrillAssignment, DrillAttempt } from '@/types/drill.types';
 
 /**
- * Plan tabs — **MOBILE_MY_PLAN.md §7** (client-side):
+ * Plan tabs — **docs/MOBILE_MY_PLAN.md §7** (client-side):
  * - `ongoing`: assignment not completed
  * - `reviewed`: completed **and** `latestAttempt.reviewStatus === 'reviewed'` (tutor has reviewed)
  * - `completed`: completed but not in the reviewed bucket
@@ -40,7 +40,7 @@ function rootReviewStatusIsReviewed(assignment: DrillAssignment): boolean {
 }
 
 /**
- * @see MOBILE_MY_PLAN.md §7
+ * @see docs/MOBILE_MY_PLAN.md §7
  */
 export function getDrillPlanTab(assignment: DrillAssignment): 'ongoing' | 'reviewed' | 'completed' {
   if (!assignmentIsCompleted(assignment)) {

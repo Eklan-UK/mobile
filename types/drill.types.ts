@@ -206,7 +206,7 @@ export interface DrillAttempt {
   completedAt?: string;
   timeSpent?: number;
   answers?: any[];
-  /** Tutor review state on the attempt (GET /users/current my-drills — see MOBILE_MY_PLAN.md). */
+  /** Tutor review state on the attempt (GET /users/current my-drills — see docs/MOBILE_MY_PLAN.md). */
   reviewStatus?: 'pending' | 'reviewed';
 
   // Results with review status

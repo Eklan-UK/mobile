@@ -1,4 +1,4 @@
-import apiClient from '@/lib/api';
+import apiClient, { API_BASE_URL } from '@/lib/api';
 // Note: expo-av and expo-file-system need to be installed:
 // npx expo install expo-av expo-file-system
 import * as FileSystem from 'expo-file-system/legacy';
@@ -67,7 +67,6 @@ class TTSService {
       }
 
       // Generate new TTS audio - use fetch instead of axios for blob handling
-      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
       const token = await this.getAuthToken();
       
       const requestBody = {

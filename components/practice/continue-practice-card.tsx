@@ -25,6 +25,8 @@ function formatDurationLabel(type: DrillType): string {
 export interface ContinuePracticeCardProps {
   assignment: DrillAssignment;
   onPress: () => void;
+  /** When true, CTA promotes Pro upgrade instead of starting the drill. */
+  subscriptionLocked?: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ export interface ContinuePracticeCardProps {
 export const ContinuePracticeCard = memo(function ContinuePracticeCard({
   assignment,
   onPress,
+  subscriptionLocked = false,
 }: ContinuePracticeCardProps) {
   const { drill } = assignment;
   const isResume = assignment.status === "in_progress";
@@ -41,7 +44,7 @@ export const ContinuePracticeCard = memo(function ContinuePracticeCard({
   const durationLabel = formatDurationLabel(drill.type);
 
   return (
-    <View style={styles.outer}>
+    <View style={[styles.outer, subscriptionLocked && { opacity: 0.92 }]}>
       <LinearGradient
         colors={["#059669", "#047857"]}
         start={{ x: 0, y: 0 }}
@@ -65,13 +68,21 @@ export const ContinuePracticeCard = memo(function ContinuePracticeCard({
         </View>
 
         <TouchableOpacity
-          style={styles.cta}
+          style={[styles.cta, subscriptionLocked && styles.ctaLocked]}
           onPress={onPress}
           activeOpacity={0.88}
           accessibilityRole="button"
-          accessibilityLabel={isResume ? "Resume practice" : "Start practice"}
+          accessibilityLabel={
+            subscriptionLocked
+              ? "Upgrade to Pro to practice"
+              : isResume
+                ? "Resume practice"
+                : "Start practice"
+          }
         >
-          <BoldText style={styles.ctaText}>{isResume ? "Resume" : "Start"}</BoldText>
+          <BoldText style={[styles.ctaText, subscriptionLocked && styles.ctaTextLocked]}>
+            {subscriptionLocked ? "Upgrade to Pro" : isResume ? "Resume" : "Start"}
+          </BoldText>
         </TouchableOpacity>
       </LinearGradient>
     </View>
@@ -135,5 +146,11 @@ const styles = StyleSheet.create({
     color: "#064E3B",
     fontSize: 16,
     fontWeight: "700",
+  },
+  ctaLocked: {
+    backgroundColor: "#16a34a",
+  },
+  ctaTextLocked: {
+    color: "#FFFFFF",
   },
 });
