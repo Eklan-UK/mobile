@@ -1,6 +1,13 @@
 import apiClient from '@/lib/api';
 import { logger } from '@/utils/logger';
 import * as FileSystem from 'expo-file-system/legacy';
+import type {
+  FreeTalkScenarioSummary,
+  FreeTalkScenario,
+  FreeTalkAttemptGradeResult,
+  FreeTalkAttempt,
+  FreeTalkSSEChunk,
+} from '@/types/free-talk';
 
 interface ConversationMessage {
   role: 'user' | 'model';
@@ -522,44 +529,176 @@ export const aiService = {
     }
   },
 
+  // ─── Free Talk ──────────────────────────────────────────────────────────────
+
   /**
-   * Stream the Eklan Free Talk scenario greeting via SSE.
-   * The backend picks a scenario from the eklan-free-talk prompts and reads the Situation aloud.
-   * The metadata chunk includes { hint, usefulPhrases, scenarioTitle } for the hint modal.
+   * Fetch the ordered list of Free Talk scenario summaries.
    */
-  async streamFreeTalkGreeting(
-    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
-  ): Promise<void> {
+  async fetchFreeTalkScenarioSummaries(signal?: AbortSignal): Promise<FreeTalkScenarioSummary[]> {
     try {
-      logger.log('📥 Streaming free-talk scenario greeting...');
-      await this._processSSEStreamXHR('/api/v1/ai/free-talk/greeting', null, onChunk);
+      const response = await apiClient.get('/api/v1/ai/free-talk/scenarios', { signal });
+      if (response.status === 402) throw new Error('Subscription required');
+      const body = response.data;
+      if (!body?.success) throw new Error(body?.message || 'Failed to fetch scenarios');
+      return body.scenarios as FreeTalkScenarioSummary[];
     } catch (error: any) {
-      logger.error('❌ Error streaming free-talk greeting:', error?.message ?? error);
+      if (error?.response?.status === 402) throw new Error('Subscription required');
+      logger.error('❌ fetchFreeTalkScenarioSummaries:', error?.message ?? error);
       throw error;
     }
   },
 
   /**
-   * Stream a Free Talk scenario message via SSE.
-   * The backend evaluates the user response and continues the scenario.
-   * When the scenario is complete the metadata chunk includes { scenarioComplete: true }.
-   *
-   * `activeScenarioTitle` must be included so the backend anchors its system prompt to the
-   * current scenario and never picks a new one mid-conversation.
+   * Fetch a full scenario by ID (or random if omitted).
    */
-  async streamFreeTalkMessage(
-    options: {
-      userMessage: string;
-      conversationHistory?: ConversationMessage[];
-      activeScenarioTitle?: string;
-    },
-    onChunk: (chunk: { type: 'audio' | 'text' | 'metadata'; data: any }) => void
+  async fetchFreeTalkScenario(options: { scenarioId?: string; signal?: AbortSignal } = {}): Promise<FreeTalkScenario> {
+    try {
+      const params: Record<string, string> = {};
+      if (options.scenarioId) params.scenarioId = options.scenarioId;
+      const response = await apiClient.get('/api/v1/ai/free-talk/greeting', { params, signal: options.signal });
+      if (response.status === 402) throw new Error('Subscription required');
+      const body = response.data;
+      if (!body?.success) throw new Error(body?.message || 'Failed to fetch scenario');
+      return body.scenario as FreeTalkScenario;
+    } catch (error: any) {
+      if (error?.response?.status === 402) throw new Error('Subscription required');
+      logger.error('❌ fetchFreeTalkScenario:', error?.message ?? error);
+      throw error;
+    }
+  },
+
+  /**
+   * Stream Free Talk grading via SSE (XHR-based for React Native).
+   */
+  async streamFreeTalkGrading(
+    options: { userResponse: string; scenarioId: string; signal?: AbortSignal },
+    onChunk: (chunk: FreeTalkSSEChunk) => void
   ): Promise<void> {
     try {
-      logger.log('📥 Streaming free-talk message...');
-      await this._processSSEStreamXHR('/api/v1/ai/free-talk', options, onChunk);
+      logger.log('📥 Streaming Free Talk grading...');
+      await this._processSSEStreamXHR(
+        '/api/v1/ai/free-talk',
+        { userResponse: options.userResponse, scenarioId: options.scenarioId },
+        onChunk as any
+      );
     } catch (error: any) {
-      logger.error('❌ Error streaming free-talk message:', error);
+      if (error?.response?.status === 402 || error?.message?.includes('402')) {
+        throw new Error('Subscription required');
+      }
+      logger.error('❌ streamFreeTalkGrading:', error?.message ?? error);
+      throw error;
+    }
+  },
+
+  /**
+   * Transcribe an audio file via multipart POST to /api/v1/ai/transcribe.
+   * Returns the transcript string.
+   */
+  async transcribeFreeTalkAudio(audioUri: string, mimeType = 'audio/m4a'): Promise<string> {
+    try {
+      const formData = new FormData();
+      formData.append('audio', {
+        uri: audioUri,
+        name: 'recording.m4a',
+        type: mimeType,
+      } as any);
+      const response = await apiClient.post('/api/v1/ai/transcribe', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const body = response.data;
+      const raw = body?.data;
+      if (typeof raw === 'string') return raw;
+      if (raw && typeof raw === 'object') {
+        return (
+          (raw as any).transcription ??
+          (raw as any).response ??
+          (raw as any).text ??
+          ''
+        );
+      }
+      return body?.transcription ?? '';
+    } catch (error: any) {
+      logger.error('❌ transcribeFreeTalkAudio:', error?.message ?? error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetch TTS audio blob for the given text and return a base64 data URI.
+   */
+  async fetchFreeTalkTtsDataUri(text: string): Promise<string> {
+    try {
+      const response = await apiClient.post(
+        '/api/v1/ai/free-talk/tts',
+        { text },
+        { responseType: 'arraybuffer' }
+      );
+      const bytes = new Uint8Array(response.data as ArrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64 = btoa(binary);
+      return `data:audio/wav;base64,${base64}`;
+    } catch (error: any) {
+      logger.error('❌ fetchFreeTalkTtsDataUri:', error?.message ?? error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get the list of the learner's past Free Talk attempts (paginated).
+   */
+  async fetchFreeTalkAttempts(options: { limit?: number; cursor?: string; signal?: AbortSignal } = {}): Promise<{ attempts: FreeTalkAttempt[]; nextCursor: string | null }> {
+    try {
+      const params: Record<string, any> = { limit: options.limit ?? 50 };
+      if (options.cursor) params.cursor = options.cursor;
+      const response = await apiClient.get('/api/v1/ai/free-talk/attempts', { params, signal: options.signal });
+      if (response.status === 402) throw new Error('Subscription required');
+      const body = response.data;
+      if (!body?.success) throw new Error(body?.message || 'Failed to fetch attempts');
+      return { attempts: body.attempts as FreeTalkAttempt[], nextCursor: body.nextCursor ?? null };
+    } catch (error: any) {
+      if (error?.response?.status === 402) throw new Error('Subscription required');
+      logger.error('❌ fetchFreeTalkAttempts:', error?.message ?? error);
+      throw error;
+    }
+  },
+
+  /**
+   * Persist a completed Free Talk attempt (with optional audio).
+   */
+  async saveFreeTalkAttempt(
+    body: {
+      scenarioId: string;
+      scenarioTitle: string;
+      scenarioType: string;
+      feedbackText?: string;
+      gradeResult?: FreeTalkAttemptGradeResult | null;
+      durationMs?: number;
+      usedVoice?: boolean;
+    },
+    audioBlob?: { uri: string; mimeType: string } | null
+  ): Promise<FreeTalkAttempt> {
+    try {
+      if (audioBlob) {
+        const formData = new FormData();
+        formData.append('payload', JSON.stringify(body));
+        formData.append('audio', {
+          uri: audioBlob.uri,
+          name: 'recording.m4a',
+          type: audioBlob.mimeType,
+        } as any);
+        const response = await apiClient.post('/api/v1/ai/free-talk/attempts', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        return response.data?.attempt as FreeTalkAttempt;
+      } else {
+        const response = await apiClient.post('/api/v1/ai/free-talk/attempts', body);
+        return response.data?.attempt as FreeTalkAttempt;
+      }
+    } catch (error: any) {
+      logger.error('❌ saveFreeTalkAttempt:', error?.message ?? error);
       throw error;
     }
   },

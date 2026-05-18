@@ -1,7 +1,6 @@
 import LogoWhite from "@/assets/icons/logo-white.svg";
 import LogoYellow from "@/assets/icons/logo-yellow.svg";
 import { AppText } from "@/components/ui";
-import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -14,16 +13,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function PracticeScreen() {
-  const isSubscribed = useIsSubscribed();
-
-  const handleOpenAiFreeTalk = () => {
-    if (!isSubscribed) {
-      router.push("/premium");
-      return;
-    }
-    router.push("/practice/free-talk");
-  };
-
   return (
     <SafeAreaView edges={["top"]} style={tw`flex-1 bg-white dark:bg-neutral-900`}>
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
@@ -41,9 +30,9 @@ export default function PracticeScreen() {
           <View style={tw`gap-3`}>
             {/* Eklan Free Talk */}
             <TouchableOpacity
-              style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-3 flex-row items-center gap-3 ${!isSubscribed ? "opacity-90" : ""}`}
+              style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-3 flex-row items-center gap-3`}
               activeOpacity={0.7}
-              onPress={handleOpenAiFreeTalk}
+              onPress={() => router.push("/practice/free-talk")}
             >
               <View
                 style={tw`h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4CAF50]`}
@@ -55,12 +44,6 @@ export default function PracticeScreen() {
                   <AppText style={tw`text-sm font-bold text-[#171717] dark:text-white`}>
                     Eklan Free Talk
                   </AppText>
-                  {!isSubscribed ? (
-                    <View style={tw`flex-row items-center gap-1 bg-green-600 pl-1.5 pr-2 py-0.5 rounded-full`}>
-                      <Ionicons name="lock-closed" size={10} color="#fff" />
-                      <AppText style={tw`text-[10px] font-bold text-white`}>Pro</AppText>
-                    </View>
-                  ) : null}
                 </View>
                 <AppText style={tw`text-xs text-[#777] dark:text-neutral-400`}>
                   Speak about anything
@@ -71,15 +54,9 @@ export default function PracticeScreen() {
 
             {/* Eklan Pressure Test */}
             <TouchableOpacity
-              style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-3 flex-row items-center gap-3 ${!isSubscribed ? "opacity-90" : ""}`}
+              style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-3 flex-row items-center gap-3`}
               activeOpacity={0.7}
-              onPress={() => {
-                if (!isSubscribed) {
-                  router.push("/premium");
-                  return;
-                }
-                router.push("/practice/pressure-test");
-              }}
+              onPress={() => router.push("/practice/coming-soon")}
             >
               <View
                 style={tw`h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2A602C]`}
@@ -91,12 +68,6 @@ export default function PracticeScreen() {
                   <AppText style={tw`text-sm font-bold text-[#171717] dark:text-white`}>
                     Eklan Pressure Test
                   </AppText>
-                  {!isSubscribed ? (
-                    <View style={tw`flex-row items-center gap-1 bg-green-600 pl-1.5 pr-2 py-0.5 rounded-full`}>
-                      <Ionicons name="lock-closed" size={10} color="#fff" />
-                      <AppText style={tw`text-[10px] font-bold text-white`}>Pro</AppText>
-                    </View>
-                  ) : null}
                 </View>
                 <AppText style={tw`text-xs text-[#777] dark:text-neutral-400`}>
                   Test your response speed in a real-life scenario.

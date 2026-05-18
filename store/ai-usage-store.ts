@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface AiUsageState {
-  // Number of AI free-talk turns used in current period
+  // Number of AI talk turns used in current period
   freeTurnsUsed: number;
   // Maximum free turns before hard gate
   freeTurnLimit: number;
