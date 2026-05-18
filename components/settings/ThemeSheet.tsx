@@ -5,9 +5,9 @@ import tw from "@/lib/tw";
 import { AppText, Button } from "@/components/ui";
 import Svg, { Circle, Path } from "react-native-svg";
 import { useThemeStore } from "@/store/theme-store";
-import * as Updates from "expo-updates";
+import { useUpdatePreferences } from "@/hooks/useSettings";
+import { brandColors } from "@/constants/theme-tokens";
 
-// Helper hook to get the effective theme (reactive)
 function useEffectiveTheme() {
   const { theme } = useThemeStore();
   const systemColorScheme = useColorScheme();
@@ -77,7 +77,8 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
     const snapPoints = React.useMemo(() => ["45%"], []);
     const { theme, setTheme } = useThemeStore();
     const [localTheme, setLocalTheme] = useState(theme);
-    const [loading, setLoading] = useState(false);
+
+    const prefMutation = useUpdatePreferences();
 
     useEffect(() => {
       setLocalTheme(theme);
@@ -90,37 +91,35 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
       []
     );
 
-    const handleSave = async () => {
-      const previousTheme = theme;
-      setTheme(localTheme);
-      handleClose();
-      
-      // Only reload if theme actually changed
-      if (previousTheme !== localTheme) {
-        setLoading(true);
-        // Small delay to ensure state is saved to AsyncStorage
-        setTimeout(async () => {
-          try {
-            // Reload the app to apply theme changes everywhere
-            await Updates.reloadAsync();
-          } catch (error) {
-            // If reload fails (e.g., in dev mode), just continue
-            // The theme will still be saved and apply on next app start
-            console.log('Theme saved. App will reload on next start.');
-            setLoading(false);
-          }
-        }, 200);
-      }
-    };
-
-    const handleOptionSelect = (selectedTheme: typeof theme) => {
-      setLocalTheme(selectedTheme);
-    };
-
     const handleClose = () => {
       if (ref && "current" in ref) {
         ref.current?.dismiss();
       }
+    };
+
+    const handleSave = async () => {
+      const previousTheme = theme;
+      if (previousTheme === localTheme) {
+        handleClose();
+        return;
+      }
+
+      // Match web ThemeSettingSheet: apply locally first, PATCH in background, rollback on error
+      setTheme(localTheme);
+      handleClose();
+
+      prefMutation.mutate(
+        { theme: localTheme },
+        {
+          onError: () => {
+            setTheme(previousTheme);
+          },
+        }
+      );
+    };
+
+    const handleOptionSelect = (selectedTheme: typeof theme) => {
+      setLocalTheme(selectedTheme);
     };
 
     return (
@@ -142,7 +141,6 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
             </TouchableOpacity>
           </View>
 
-          {/* Subtitle */}
           <AppText style={tw`text-[15px] font-medium text-neutral-900 dark:text-white mb-1`}>Theme colour</AppText>
           <AppText style={tw`text-sm text-neutral-500 dark:text-neutral-400 mb-6 leading-5`}>
             Turn on dark mode or let eklan visually match your device settings
@@ -160,23 +158,32 @@ export const ThemeSheet = React.forwardRef<BottomSheetModal, ThemeSheetProps>(
                 <TouchableOpacity
                   key={option.id}
                   onPress={() => handleOptionSelect(option.id as any)}
-                  style={tw`flex-1 rounded-2xl p-4 border ${
-                    selected ? "border-primary-500 bg-white dark:bg-neutral-900" : "border-transparent bg-[#FAFAFA] dark:bg-neutral-800"
-                  }`}
+                  style={[
+                    tw`flex-1 rounded-2xl px-3 pt-3 pb-2 min-h-[66px]`,
+                    selected
+                      ? {
+                          borderWidth: 1,
+                          borderColor: brandColors.primary,
+                          backgroundColor: "rgba(59, 136, 62, 0.08)",
+                        }
+                      : tw`border border-neutral-200 dark:border-neutral-700 bg-neutral-100/40 dark:bg-neutral-800/60`,
+                  ]}
                 >
-                  <View style={tw`mb-8`}>{option.icon}</View>
-                  <AppText style={tw`text-[15px] font-medium ${selected ? "text-neutral-900 dark:text-white" : "text-neutral-500 dark:text-neutral-400"}`}>
+                  <View style={tw`mb-2`}>{option.icon}</View>
+                  <AppText
+                    style={tw`text-xs font-medium ${selected ? "text-neutral-900 dark:text-white" : "text-neutral-500 dark:text-neutral-400"}`}
+                  >
                     {option.label}
                   </AppText>
                 </TouchableOpacity>
-              )
+              );
             })}
           </View>
 
-          {/* Save Action */}
+          {/* Save */}
           <View style={tw`mt-6`}>
-            <Button onPress={handleSave} loading={loading}>
-              Save settings
+            <Button onPress={handleSave} loading={prefMutation.isPending}>
+              Save
             </Button>
           </View>
         </BottomSheetView>

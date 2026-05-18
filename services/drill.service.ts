@@ -37,7 +37,7 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
     pagination: data.pagination || {
       total: data.drills?.length || 0,
       page: params?.page || 1,
-      limit: params?.limit || 50,
+      limit: params?.limit ?? data.drills?.length ?? 0,
     },
   };
 
@@ -73,6 +73,7 @@ export async function completeDrill(
     timeSpent: number;
     answers?: any[];
     vocabularyResults?: any;
+    pronunciationResults?: any;
     roleplayResults?: any;
     matchingResults?: any;
     definitionResults?: any;
@@ -136,16 +137,29 @@ export async function getAssignmentAttempts(assignmentId: string): Promise<{
   };
 }
 
+export type BookmarkWordOptions = {
+  translation?: string;
+  context?: string;
+  type?: 'word' | 'sentence';
+};
+
 /**
- * Bookmark a word
+ * Bookmark a word or sentence from a drill (server dedupes by user + drill + content).
  */
-export async function bookmarkWord(word: string, drillId: string): Promise<any> {
+export async function bookmarkWord(
+  word: string,
+  drillId: string,
+  opts?: BookmarkWordOptions
+): Promise<any> {
   try {
     const response = await apiClient.post('/api/v1/bookmarks', {
       drillId,
-      type: 'word',
+      type: opts?.type ?? 'word',
       content: word,
-      context: 'vocabulary-drill'
+      ...(opts?.translation != null && opts.translation !== ''
+        ? { translation: opts.translation }
+        : {}),
+      ...(opts?.context != null && opts.context !== '' ? { context: opts.context } : {}),
     });
     return response.data;
   } catch (error: any) {

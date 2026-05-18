@@ -1,6 +1,6 @@
 import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HomeIcon from "@/assets/icons/home.svg";
@@ -12,29 +12,39 @@ import ProfileActiveIcon from "@/assets/icons/user-fill.svg";
 import PracticeActiveIcon from "@/assets/icons/practice-grey.svg";
 import TargetArrowActiveIcon from "@/assets/icons/target-arrow-green.svg";
 import { useThemeStore } from "@/store/theme-store";
-
+import { useTranslation } from "@/contexts/LanguageContext";
+import { useIsSubscribed } from "@/hooks/useIsSubscribed";
+import { Ionicons } from "@expo/vector-icons";
 
 function TabIcon({
   icon: Icon,
   focusedIcon: FocusedIcon,
   label,
   focused,
+  locked = false,
 }: {
   icon: any;
   focusedIcon?: any;
   label: string;
   focused: boolean;
+  /** Pro-only tab: show lock badge for free users */
+  locked?: boolean;
 }) {
   const IconComponent = focused && FocusedIcon ? FocusedIcon : Icon;
-  
+
   return (
     <View style={tw`items-center justify-center min-w-16 pt-3 gap-1.5`}>
-      <IconComponent 
-        width={24} 
-        height={24} 
-        // color={focused ? "#166534" : "none"}
-        // stroke={focused ? "#166534" : "none"} // Attempt to stroke if supported
-      />
+      <View style={tw`relative`}>
+        <IconComponent width={24} height={24} />
+        {locked ? (
+          <View
+            style={tw`absolute -right-1 -top-0.5 w-[18px] h-[18px] rounded-full bg-green-600 items-center justify-center border-2 border-white dark:border-neutral-900`}
+            accessibilityLabel="Locked — Pro only"
+          >
+            <Ionicons name="lock-closed" size={10} color="#fff" />
+          </View>
+        ) : null}
+      </View>
       <AppText
         style={tw`text-xs ${
           focused ? "text-green-800 dark:text-green-400 font-medium" : "text-neutral-400 dark:text-neutral-500"
@@ -51,7 +61,11 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { theme } = useThemeStore();
   const systemColorScheme = useColorScheme();
-  
+  const { t } = useTranslation();
+  const router = useRouter();
+  const isSubscribed = useIsSubscribed();
+  const planLocked = !isSubscribed;
+
   // Calculate effective theme (reactive - will cause re-render when theme changes)
   const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";
 
@@ -60,9 +74,9 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: isDark ? "#171717" : "#ffffff", // neutral-900
+          backgroundColor: isDark ? "#171717" : "#ffffff",
           borderTopWidth: 1,
-          borderTopColor: isDark ? "#262626" : "#F3F4F6", // neutral-800
+          borderTopColor: isDark ? "#262626" : "#F3F4F6",
           height: 50 + insets.bottom,
           paddingBottom: insets.bottom,
           padding: 14, 
@@ -73,12 +87,12 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
+          title: t('tabs.home'),
           tabBarIcon: ({ focused }) => (
             <TabIcon 
               icon={HomeIcon} 
               focusedIcon={HomeFillIcon} 
-              label="Home" 
+              label={t('tabs.home')} 
               focused={focused} 
             />
           ),
@@ -87,27 +101,41 @@ export default function TabLayout() {
       <Tabs.Screen
         name="practice"
         options={{
-          title: "",
+          title: t('tabs.practice'),
           tabBarIcon: ({ focused }) => (
-            <TabIcon focusedIcon={PracticeIcon} icon={PracticeActiveIcon} label="Practice" focused={focused} />
+            <TabIcon focusedIcon={PracticeIcon} icon={PracticeActiveIcon} label={t('tabs.practice')} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
         name="plan"
+        listeners={{
+          tabPress: (e) => {
+            if (planLocked) {
+              e.preventDefault();
+              router.push("/premium" as never);
+            }
+          },
+        }}
         options={{
-            title: "My Plan",
+          title: t('tabs.plan'),
           tabBarIcon: ({ focused }) => (
-            <TabIcon icon={TargetArrowIcon} focusedIcon={TargetArrowActiveIcon} label="My Plan" focused={focused} />
+            <TabIcon
+              icon={TargetArrowIcon}
+              focusedIcon={TargetArrowActiveIcon}
+              label={t('tabs.plan')}
+              focused={focused}
+              locked={planLocked}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-            title: "Profile",
+          title: t('tabs.profile'),
           tabBarIcon: ({ focused }) => (
-            <TabIcon icon={ProfileIcon} focusedIcon={ProfileActiveIcon} label="Profile" focused={focused} />
+            <TabIcon icon={ProfileIcon} focusedIcon={ProfileActiveIcon} label={t('tabs.profile')} focused={focused} />
           ),
         }}
       />

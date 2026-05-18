@@ -3,6 +3,11 @@ import { secureStorage } from '@/lib/secure-storage';
 import apiClient, { invalidateTokenCache } from '@/lib/api';
 import { router } from 'expo-router';
 import { logger } from '@/utils/logger';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { notificationService } from '@/services/notification.service';
+import { isProSubscriber } from '@/utils/subscription';
+
+const PUSH_TOKEN_STORAGE_KEY = '@push_token';
 
 export interface User {
   id: string;
@@ -19,6 +24,7 @@ export interface User {
   subscriptionPlan?: "free" | "premium";
   subscriptionActivatedAt?: string | null;
   subscriptionExpiresAt?: string | null;
+  stripeSubscriptionStatus?: string | null;
   isSubscribed?: boolean;
 }
 
@@ -147,7 +153,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           subscriptionPlan: userData.subscriptionPlan || "free",
           subscriptionActivatedAt: userData.subscriptionActivatedAt || null,
           subscriptionExpiresAt: userData.subscriptionExpiresAt || null,
-          isSubscribed: userData.isSubscribed ?? false,
+          stripeSubscriptionStatus: userData.stripeSubscriptionStatus ?? null,
+          isSubscribed: isProSubscriber(userData),
         };
 
         // Update stored user data
@@ -269,8 +276,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ...user,
         hasProfile,
         emailVerified: emailVerified,
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
-      
+
       await secureStorage.setUser(userWithProfile);
       logger.log('✅ Credentials stored successfully');
 
@@ -372,8 +381,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userWithProfile = {
         ...user,
         hasProfile: hasProfile || false, // Ensure false for new users
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
-      
+
       await secureStorage.setUser(userWithProfile);
       logger.log('✅ Credentials stored successfully');
 
@@ -407,6 +418,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   // Logout
   logout: async () => {
+    // Deregister push token before signing out (§9 / §8.1)
+    try {
+      const pushToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+      if (pushToken) {
+        await notificationService.unregisterToken(pushToken);
+        await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
+      }
+    } catch (error) {
+      // Continue even if deregistration fails
+      logger.warn('Push token deregistration failed (non-critical):', error);
+    }
+
     try {
       // Call backend logout with empty body to ensure Content-Type is set
       await apiClient.post('/api/v1/auth/sign-out', {});
@@ -445,6 +468,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userWithProfile = {
         ...user,
         hasProfile,
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
 
       // Store credentials
@@ -503,6 +528,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userWithProfile = {
         ...user,
         hasProfile,
+        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        isSubscribed: isProSubscriber(user),
       };
 
       // Store credentials

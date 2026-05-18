@@ -55,12 +55,16 @@ export class AudioStreamPlayer {
   private readonly BYTES_PER_SAMPLE = 2;  // 16-bit
   private readonly CHANNELS = 1;
   private readonly BYTES_PER_SEC = 24000 * 2 * 1;  // 48 000
-  // Flush after accumulating this many ms of audio.
-  // Higher = fewer synchronous Buffer operations (less ANR risk), but slightly more latency.
-  // 1000ms is a good mix between smooth gapless performance and acceptable time to first audio chunk.
+  // After the first flush we keep chunks large for gapless playback.
+  // The first flush uses a lower threshold so speech starts soon after the user opens the screen.
   private readonly MIN_CHUNK_MS = 1000;
+  private readonly MIN_FIRST_CHUNK_MS = 220;
+  private firstPcmFlushDone = false;
   private get MIN_CHUNK_BYTES() {
     return Math.floor((this.MIN_CHUNK_MS / 1000) * this.BYTES_PER_SEC);
+  }
+  private get MIN_FIRST_CHUNK_BYTES() {
+    return Math.floor((this.MIN_FIRST_CHUNK_MS / 1000) * this.BYTES_PER_SEC);
   }
 
   /**
@@ -148,8 +152,8 @@ export class AudioStreamPlayer {
 
   /**
    * Add a raw base64 PCM chunk (from the Gemini Live API SSE stream).
-   * Chunks are accumulated until we have enough audio (~1000ms) before writing
-   * to disk — this prevents the per-file startup gap that makes audio sound choppy.
+   * The first flush uses a short buffer so playback starts quickly; later flushes
+   * use a larger buffer to reduce gaps between expo-av chunk files.
    */
   async addCompressedChunkBase64(pcmBase64: string) {
     try {
@@ -157,9 +161,10 @@ export class AudioStreamPlayer {
       this.pendingPcmBuffers.push(pcmBuffer);
       this.pendingPcmBytes += pcmBuffer.length;
 
-      // Flush when we have reached the minimum playable chunk size
-      if (this.pendingPcmBytes >= this.MIN_CHUNK_BYTES) {
+      const threshold = this.firstPcmFlushDone ? this.MIN_CHUNK_BYTES : this.MIN_FIRST_CHUNK_BYTES;
+      if (this.pendingPcmBytes >= threshold) {
         await this._flushPendingPcm();
+        this.firstPcmFlushDone = true;
       }
     } catch (e) {
       logger.error('Failed to add audio chunk to queue:', e);
@@ -242,5 +247,6 @@ export class AudioStreamPlayer {
     
     this.pendingPcmBuffers = [];
     this.pendingPcmBytes = 0;
+    this.firstPcmFlushDone = false;
   }
 }

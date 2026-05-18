@@ -4,10 +4,11 @@ import AudioButton from "@/components/drills/AudioButton";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
+import { useAuth } from "@/hooks/useAuth";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -22,14 +23,14 @@ import {
 import { Alert } from "@/utils/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useActivityStore } from "@/store/activity-store";
-import Svg, { Path } from "react-native-svg";
 import { logger } from "@/utils/logger";
 
-type SectionType = 'intro' | 'definition' | 'sentences';
+type SectionType = "intro" | "definition" | "sentences";
 
 type WordProgress = {
   word: string;
-  phonetic: string;
+  hint?: string;
+  audioUrl?: string;
   definition: string;
   sentence1: string;
   sentence2: string;
@@ -40,18 +41,21 @@ export default function SentenceWritingDrill() {
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
 
-  const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
+    useActivityStore();
   const startTimeRef = useRef(Date.now());
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
+  const { user } = useAuth();
 
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showContext, setShowContext] = useState(false);
 
   // Paging state
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [currentSection, setCurrentSection] = useState<SectionType>('intro');
+  const [currentSection, setCurrentSection] = useState<SectionType>("intro");
   const [wordProgressList, setWordProgressList] = useState<WordProgress[]>([]);
 
   // Restore progress
@@ -66,6 +70,9 @@ export default function SentenceWritingDrill() {
       }
       if (saved.data?.currentSection) {
         setCurrentSection(saved.data.currentSection);
+      }
+      if (saved.data?.showContext !== undefined) {
+        setShowContext(saved.data.showContext);
       }
     }
   }, [drillId]);
@@ -96,12 +103,12 @@ export default function SentenceWritingDrill() {
         currentStep: currentWordIndex + 1,
         totalSteps: wordProgressList.length,
         answers: [],
-        data: { wordProgressList, currentWordIndex, currentSection },
+        data: { wordProgressList, currentWordIndex, currentSection, showContext },
         startTime: startTimeRef.current,
         lastUpdated: Date.now(),
       });
     }
-  }, [wordProgressList, currentWordIndex, currentSection, drill]);
+  }, [wordProgressList, currentWordIndex, currentSection, showContext, drill]);
 
   useEffect(() => {
     loadDrill();
@@ -113,55 +120,71 @@ export default function SentenceWritingDrill() {
       const drillData = await getDrillById(drillId, assignmentId);
       setDrill(drillData);
 
-      // Initialize word progress list
-      // Priority: sentence_writing_items (for sentence_writing drills) > target_sentences (fallback)
-      let words: any[] = [];
+      // Word resolution order (per spec):
+      // 1. sentence_writing_items
+      // 2. sentence_drill_word (legacy single word)
+      // 3. target_sentences with a word field
+      let rawWords: Array<{ word: string; hint?: string; audioUrl?: string }> = [];
 
       if (drillData.sentence_writing_items && drillData.sentence_writing_items.length > 0) {
-        // Use sentence_writing_items (has word and optional hint)
-        words = drillData.sentence_writing_items;
+        rawWords = drillData.sentence_writing_items.map((item) => ({
+          word: item.word,
+          hint: item.hint,
+          audioUrl: item.audioUrl,
+        }));
+      } else if (drillData.sentence_drill_word) {
+        rawWords = [
+          {
+            word: drillData.sentence_drill_word,
+            audioUrl: drillData.sentence_drill_audio_url,
+          },
+        ];
       } else if (drillData.target_sentences && drillData.target_sentences.length > 0) {
-        // Fallback to target_sentences (for backward compatibility)
-        words = drillData.target_sentences;
+        rawWords = drillData.target_sentences
+          .filter((s) => s.word)
+          .map((s) => ({ word: s.word! }));
       }
 
-      const initialProgress: WordProgress[] = words.map((item: any) => {
-        // Handle sentence_writing_items structure: { word: string, hint?: string }
-        // Handle target_sentences structure: { word?: string, text?: string, phonetic?: string, ... }
-        const word = item.word || item.text?.split(' ')[0] || "Word";
-        const phonetic = item.phonetic || "/ˈwɜːrd/"; // Default phonetic if not provided
-
-        return {
-          word,
-          phonetic,
-          definition: '',
-          sentence1: '',
-          sentence2: '',
-        };
-      });
+      const initialProgress: WordProgress[] = rawWords.map((item) => ({
+        word: item.word,
+        hint: item.hint,
+        audioUrl: item.audioUrl,
+        definition: "",
+        sentence1: "",
+        sentence2: "",
+      }));
 
       if (initialProgress.length === 0) {
-        logger.warn('⚠️ No words found in sentence_writing drill');
+        logger.warn("No words found in sentence_writing drill");
       }
 
       setWordProgressList(initialProgress);
+
+      // Show context screen first if the drill has a context field
+      if (drillData.context && !drillProgress[drillId]) {
+        setShowContext(true);
+      }
     } catch (error) {
-      logger.error('❌ Failed to load drill:', error);
+      logger.error("Failed to load drill:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const updateCurrentWord = (updates: Partial<WordProgress>) => {
-    setWordProgressList(prev => {
+    setWordProgressList((prev) => {
       const newList = [...prev];
       newList[currentWordIndex] = { ...newList[currentWordIndex], ...updates };
       return newList;
     });
   };
 
+  const handleDismissContext = () => {
+    setShowContext(false);
+  };
+
   const handleContinueFromIntro = () => {
-    setCurrentSection('definition');
+    setCurrentSection("definition");
   };
 
   const handleNextFromDefinition = () => {
@@ -170,7 +193,7 @@ export default function SentenceWritingDrill() {
       Alert.alert("Required", "Please write the word definition before continuing.");
       return;
     }
-    setCurrentSection('sentences');
+    setCurrentSection("sentences");
   };
 
   const handleSubmitSentences = async () => {
@@ -181,12 +204,31 @@ export default function SentenceWritingDrill() {
       return;
     }
 
-    // Move to next word or complete drill
     if (currentWordIndex < wordProgressList.length - 1) {
-      setCurrentWordIndex(prev => prev + 1);
-      setCurrentSection('intro'); // Reset to intro for next word
+      setCurrentWordIndex((prev) => prev + 1);
+      setCurrentSection("intro");
     } else {
-      // All words completed - submit drill
+      // Pre-submit completeness check across all words
+      const firstIncomplete = wordProgressList.findIndex(
+        (wp) =>
+          !wp.definition.trim() || !wp.sentence1.trim() || !wp.sentence2.trim()
+      );
+      if (firstIncomplete !== -1) {
+        Alert.alert(
+          "Incomplete",
+          `Word ${firstIncomplete + 1} ("${wordProgressList[firstIncomplete].word}") is missing some fields. Please complete it first.`,
+          [
+            {
+              text: "Go there",
+              onPress: () => {
+                setCurrentWordIndex(firstIncomplete);
+                setCurrentSection("definition");
+              },
+            },
+          ]
+        );
+        return;
+      }
       await submitDrill();
     }
   };
@@ -198,8 +240,6 @@ export default function SentenceWritingDrill() {
     try {
       const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
-      // Build sentenceResults structure matching backend schema
-      // The schema expects: word, definition, sentences[], words[], reviewStatus
       if (wordProgressList.length === 0) {
         Alert.alert("Error", "No words to submit. Please try again.");
         setIsSubmitting(false);
@@ -208,29 +248,28 @@ export default function SentenceWritingDrill() {
 
       const firstWord = wordProgressList[0];
       const sentenceResults = {
-        // Legacy single word format (required)
         word: firstWord?.word || "",
         definition: firstWord?.definition?.trim() || "",
-        sentences: firstWord ? [
-          { text: firstWord.sentence1?.trim() || "", index: 0 },
-          { text: firstWord.sentence2?.trim() || "", index: 1 },
-        ] : [],
-        // Multiple words format (required)
-        words: wordProgressList.map((wp) => ({
+        sentences: firstWord
+          ? [
+              { text: firstWord.sentence1?.trim() || "", index: 0 },
+              { text: firstWord.sentence2?.trim() || "", index: 1 },
+            ]
+          : [],
+        words: wordProgressList.map((wp, idx) => ({
           word: wp.word,
           definition: wp.definition.trim() || "",
           sentences: [
-            { text: wp.sentence1.trim() || "", index: 0 },
-            { text: wp.sentence2.trim() || "", index: 1 },
+            { text: wp.sentence1.trim() || "", index: idx * 2 },
+            { text: wp.sentence2.trim() || "", index: idx * 2 + 1 },
           ],
         })),
-        // Review status (required)
         reviewStatus: "pending" as const,
       };
 
       await completeDrill(drillId, {
         drillAssignmentId: assignmentId,
-        score: 0, // Score will be set after review
+        score: 0,
         timeSpent,
         answers: [],
         sentenceResults,
@@ -243,17 +282,19 @@ export default function SentenceWritingDrill() {
         title: drill.title,
         type: drill.type,
         durationSeconds: timeSpent,
-        score: 0, // Pending review
+        score: 0,
       });
 
       clearDrillProgress(drillId);
     } catch (error: any) {
-      logger.error('Failed to submit drill:', error);
+      logger.error("Failed to submit drill:", error);
       Alert.alert("Error", "Failed to submit. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  // ── Loading / Error screens ──────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -271,13 +312,10 @@ export default function SentenceWritingDrill() {
     );
   }
 
-  // Check if no words are available
   if (wordProgressList.length === 0) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center px-5`}>
-        <AppText style={tw`text-gray-600 text-center mb-2`}>
-          No words found in this drill
-        </AppText>
+        <AppText style={tw`text-gray-600 text-center mb-2`}>No words found in this drill</AppText>
         <AppText style={tw`text-sm text-gray-500 text-center`}>
           This drill may not be configured correctly. Please contact your tutor.
         </AppText>
@@ -285,7 +323,6 @@ export default function SentenceWritingDrill() {
     );
   }
 
-  // Success Screen
   if (showSuccess) {
     return (
       <DrillCompletedScreen
@@ -301,8 +338,56 @@ export default function SentenceWritingDrill() {
   const currentWord = wordProgressList[currentWordIndex];
   const totalWords = wordProgressList.length;
 
-  // INTRO SECTION - Show word with phonetic
-  if (currentSection === 'intro') {
+  // ── CONTEXT SCREEN ──────────────────────────────────────────────────────
+  if (showContext && drill.context) {
+    return (
+      <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
+        <DrillHeader
+          title={drill.title}
+          currentStep={1}
+          totalSteps={totalWords}
+          drillId={drillId}
+          isSaved={isSaved}
+          onSave={handleSave}
+          onUnsave={handleUnsave}
+        />
+        <ScrollView
+          style={tw`flex-1 px-5`}
+          contentContainerStyle={tw`pb-6`}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={tw`mt-6 mb-4`}>
+            <AppText style={tw`text-2xl font-bold text-gray-900 mb-2`}>
+              Drill Context
+            </AppText>
+            <AppText style={tw`text-gray-500 text-base`}>
+              Read the context below before starting.
+            </AppText>
+          </View>
+          <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-5`}>
+            <AppText style={tw`text-gray-800 text-base leading-6`}>
+              {drill.context}
+            </AppText>
+          </View>
+        </ScrollView>
+        <View style={tw`px-5 pb-6`}>
+          <TouchableOpacity
+            onPress={handleDismissContext}
+            style={tw`bg-green-700 rounded-full py-4 items-center`}
+          >
+            <AppText style={tw`text-white text-base font-semibold`}>
+              Got it, let's start
+            </AppText>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── INTRO SECTION ────────────────────────────────────────────────────────
+  if (currentSection === "intro") {
+    const greeting = user?.firstName ? `Hello ${user.firstName}!` : "Let's practice!";
+
     return (
       <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
         <DrillHeader
@@ -322,7 +407,7 @@ export default function SentenceWritingDrill() {
         >
           <View style={tw`mb-6`}>
             <AppText style={tw`text-green-700 font-medium mb-1`}>
-              Hello Amy 👋!
+              {greeting}
             </AppText>
             <AppText style={tw`text-gray-600 text-base`}>
               Take a moment to understand the word before writing.
@@ -330,29 +415,23 @@ export default function SentenceWritingDrill() {
           </View>
 
           <View style={tw`items-center my-16`}>
-            <AppText style={tw`text-[34px] font-bold text-gray-900 mb-3`}>
+            <AppText style={tw`text-[34px] font-bold text-gray-900 mb-6`}>
               {currentWord?.word}
             </AppText>
 
-            <AppText style={tw`text-gray-500 text-lg mb-6`}>
-              {currentWord?.phonetic}
-            </AppText>
-
-            <View style={tw`flex-row items-center gap-3`}>
-              <TouchableOpacity style={tw`w-8 h-8 items-center justify-center`}>
-                <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-                  <Path
-                    d="M12.87 15.07l-2.54-2.51.03-.03A6.002 6.002 0 007 6.5 6 6 0 1019 6.5c0 1.64-.66 3.12-1.73 4.19l.03.03-2.54 2.51L12 15.99l-2.76-2.76 2.5-2.5A4 4 0 0017 6.5a4 4 0 10-8 0c0 1.3.62 2.45 1.58 3.19l2.5 2.5-2.76 2.76L12 12.19z"
-                    fill="#6B7280"
-                  />
-                </Svg>
-              </TouchableOpacity>
-              <AudioButton
-                text={currentWord?.word || ""}
-                size={24}
-              />
-            </View>
+            <AudioButton
+              text={currentWord?.word || ""}
+              audioUri={currentWord?.audioUrl}
+              size={28}
+            />
           </View>
+
+          {currentWord?.hint ? (
+            <View style={tw`bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4`}>
+              <AppText style={tw`text-amber-800 text-sm font-semibold mb-1`}>Hint</AppText>
+              <AppText style={tw`text-amber-700 text-sm leading-5`}>{currentWord.hint}</AppText>
+            </View>
+          ) : null}
         </ScrollView>
 
         <View style={tw`px-5 pb-6`}>
@@ -360,17 +439,15 @@ export default function SentenceWritingDrill() {
             onPress={handleContinueFromIntro}
             style={tw`bg-green-700 rounded-full py-4 items-center`}
           >
-            <AppText style={tw`text-white text-base font-semibold`}>
-              Continue
-            </AppText>
+            <AppText style={tw`text-white text-base font-semibold`}>Continue</AppText>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // DEFINITION SECTION
-  if (currentSection === 'definition') {
+  // ── DEFINITION SECTION ───────────────────────────────────────────────────
+  if (currentSection === "definition") {
     const hasDefinition = currentWord?.definition?.trim().length > 0;
 
     return (
@@ -403,37 +480,34 @@ export default function SentenceWritingDrill() {
                     What does this word mean?
                   </AppText>
                   <AppText style={tw`text-gray-600 text-base`}>
-                    Explain the meaning in your own words. You can use a dictionary or the web for definition.
+                    Explain the meaning in your own words.
                   </AppText>
                 </View>
 
-                <View style={tw`items-center my-12`}>
-                  <AppText style={tw`text-[34px] font-bold text-gray-900 mb-3`}>
+                <View style={tw`items-center my-10`}>
+                  <AppText style={tw`text-[34px] font-bold text-gray-900 mb-4`}>
                     {currentWord?.word}
                   </AppText>
-
-                  <AppText style={tw`text-gray-500 text-base mb-6`}>
-                    {currentWord?.phonetic}
-                  </AppText>
-
-                  <View style={tw`flex-row items-center gap-3`}>
-                    <TouchableOpacity style={tw`w-8 h-8 items-center justify-center`}>
-                      <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-                        <Path
-                          d="M12.87 15.07l-2.54-2.51.03-.03A6.002 6.002 0 007 6.5 6 6 0 1019 6.5c0 1.64-.66 3.12-1.73 4.19l.03.03-2.54 2.51L12 15.99l-2.76-2.76 2.5-2.5A4 4 0 0017 6.5a4 4 0 10-8 0c0 1.3.62 2.45 1.58 3.19l2.5 2.5-2.76 2.76L12 12.19z"
-                          fill="#6B7280"
-                        />
-                      </Svg>
-                    </TouchableOpacity>
-                    <AudioButton
-                      text={currentWord?.word || ""}
-                      size={24}
-                    />
-                  </View>
+                  <AudioButton
+                    text={currentWord?.word || ""}
+                    audioUri={currentWord?.audioUrl}
+                    size={24}
+                  />
                 </View>
 
+                {currentWord?.hint ? (
+                  <View
+                    style={tw`bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4`}
+                  >
+                    <AppText style={tw`text-amber-800 text-sm font-semibold mb-1`}>Hint</AppText>
+                    <AppText style={tw`text-amber-700 text-sm leading-5`}>
+                      {currentWord.hint}
+                    </AppText>
+                  </View>
+                ) : null}
+
                 <TextInput
-                  value={currentWord?.definition || ''}
+                  value={currentWord?.definition || ""}
                   onChangeText={(text) => updateCurrentWord({ definition: text })}
                   placeholder="Type the meaning here..."
                   multiline
@@ -442,7 +516,7 @@ export default function SentenceWritingDrill() {
                   textAlignVertical="top"
                 />
 
-                <AppText style={tw`text-sm text-gray-600`}>
+                <AppText style={tw`text-sm text-gray-500`}>
                   Write how you understand the word.
                 </AppText>
               </ScrollView>
@@ -473,8 +547,8 @@ export default function SentenceWritingDrill() {
     );
   }
 
-  // SENTENCES SECTION
-  if (currentSection === 'sentences') {
+  // ── SENTENCES SECTION ────────────────────────────────────────────────────
+  if (currentSection === "sentences") {
     const hasSentence1 = currentWord?.sentence1?.trim().length > 0;
     const hasSentence2 = currentWord?.sentence2?.trim().length > 0;
     const canSubmit = hasSentence1 && hasSentence2;
@@ -521,6 +595,7 @@ export default function SentenceWritingDrill() {
                     </AppText>
                     <AudioButton
                       text={currentWord?.word || ""}
+                      audioUri={currentWord?.audioUrl}
                       size={24}
                     />
                   </View>
@@ -531,12 +606,14 @@ export default function SentenceWritingDrill() {
                     Sentence 1
                   </AppText>
                   <TextInput
-                    value={currentWord?.sentence1 || ''}
+                    value={currentWord?.sentence1 || ""}
                     onChangeText={(text) => updateCurrentWord({ sentence1: text })}
                     placeholder="Type your sentence here..."
                     multiline
                     numberOfLines={4}
-                    style={tw`bg-white border ${hasSentence1 ? 'border-green-500' : 'border-gray-200'} rounded-2xl p-4 text-base text-gray-900 min-h-28`}
+                    style={tw`bg-white border ${
+                      hasSentence1 ? "border-green-500" : "border-gray-200"
+                    } rounded-2xl p-4 text-base text-gray-900 min-h-28`}
                     textAlignVertical="top"
                   />
                 </View>
@@ -546,12 +623,14 @@ export default function SentenceWritingDrill() {
                     Sentence 2
                   </AppText>
                   <TextInput
-                    value={currentWord?.sentence2 || ''}
+                    value={currentWord?.sentence2 || ""}
                     onChangeText={(text) => updateCurrentWord({ sentence2: text })}
                     placeholder="Type your sentence here..."
                     multiline
                     numberOfLines={4}
-                    style={tw`bg-white border ${hasSentence2 ? 'border-green-500' : 'border-gray-200'} rounded-2xl p-4 text-base text-gray-900 min-h-28`}
+                    style={tw`bg-white border ${
+                      hasSentence2 ? "border-green-500" : "border-gray-200"
+                    } rounded-2xl p-4 text-base text-gray-900 min-h-28`}
                     textAlignVertical="top"
                   />
                 </View>
@@ -575,7 +654,7 @@ export default function SentenceWritingDrill() {
                         canSubmit ? tw`text-white` : tw`text-gray-400`,
                       ]}
                     >
-                      {isLastWord ? 'Submit' : 'Next'}
+                      {isLastWord ? "Submit" : "Next"}
                     </AppText>
                   )}
                 </TouchableOpacity>

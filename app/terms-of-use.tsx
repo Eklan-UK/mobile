@@ -117,13 +117,13 @@ export default function TermsOfUseScreen() {
         <TouchableOpacity onPress={handleBack} style={tw`w-10 h-10 rounded-full border border-neutral-200 dark:border-neutral-700 items-center justify-center`}>
           <BackIcon />
         </TouchableOpacity>
-        <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Terms of use</AppText>
+        <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Terms of Use</AppText>
       </View>
 
       <ScrollView contentContainerStyle={tw`px-6 pb-6 pt-2`} showsVerticalScrollIndicator={false}>
         {/* Intro */}
         <View style={tw`mb-8`}>
-          <AppText style={tw`text-[28px] font-bold text-neutral-900 dark:text-white mb-4`}>Terms of use</AppText>
+          <AppText style={tw`text-[28px] font-bold text-neutral-900 dark:text-white mb-4`}>Terms of Use</AppText>
           <AppText style={tw`text-[15px] text-neutral-900 dark:text-neutral-300 leading-[22px]`}>
             These terms and conditions ("Terms and Conditions")
             constitute a legally binding agreement between you, the

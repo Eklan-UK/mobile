@@ -13,6 +13,7 @@ const DRILL_ROUTE_MAP: Record<DrillType, string> = {
   sentence_writing: "/practice/drills/sentence_writing",
   sentence: "/practice/drills/sentence",
   fill_blank: "/practice/drills/fill_blank",
+  pronunciation: "/practice/drills/pronunciation",
 };
 
 /**

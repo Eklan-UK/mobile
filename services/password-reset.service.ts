@@ -1,7 +1,4 @@
-import apiClient from '@/lib/api';
-import { logger } from '@/utils/logger';
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+import apiClient, { API_BASE_URL } from '@/lib/api';
 
 export interface SendOTPResponse {
   code: string;

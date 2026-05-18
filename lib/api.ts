@@ -2,8 +2,28 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosE
 import { secureStorage } from './secure-storage';
 import { logger } from '@/utils/logger';
 
-// Get the backend URL from environment or use default
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+/**
+ * Normalize `EXPO_PUBLIC_API_URL` so every request path is joined exactly once.
+ *
+ * - Trims whitespace and removes trailing `/`.
+ * - If the value ends with `/api` while the app already uses paths like `/api/v1/...`,
+ *   strips that suffix (avoids `.../api/api/v1/...` → 404 on the real Next app).
+ *
+ * A 404 on `POST /api/v1/stripe/checkout` usually means the request never reached the
+ * Next.js app that defines that route — re-check this URL, proxy/CDN routing, and env
+ * (dev vs prod) until `POST {origin}/api/v1/stripe/checkout` hits the same deployment as the repo.
+ */
+export function normalizeApiBaseUrl(raw: string): string {
+  let base = raw.trim();
+  while (base.endsWith('/')) base = base.slice(0, -1);
+  if (base.endsWith('/api')) base = base.slice(0, -4);
+  return base;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(
+  process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'
+);
+
 const isDev = __DEV__;
 
 // ─── In-memory token cache (avoids SecureStore read on every request) ────────
@@ -32,6 +52,31 @@ export async function getCachedToken(): Promise<string | null> {
   cachedToken = await secureStorage.getToken();
   tokenCacheTime = now;
   return cachedToken;
+}
+
+/**
+ * Exchange the stored refresh token for a new access token.
+ * Mirrors the Axios 401-interceptor logic. Use for requests that bypass Axios
+ * (e.g. SSE over XMLHttpRequest) so expired sessions can still recover.
+ */
+export async function refreshAccessTokenSilently(): Promise<string> {
+  const refreshToken = await secureStorage.getRefreshToken();
+  if (!refreshToken) {
+    throw new Error('No refresh token available');
+  }
+
+  const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+    refreshToken,
+  });
+
+  const token = response.data?.token;
+  if (!token || typeof token !== 'string') {
+    throw new Error('Refresh response missing token');
+  }
+
+  await secureStorage.setToken(token);
+  invalidateTokenCache();
+  return token;
 }
 
 /**
@@ -103,14 +148,10 @@ apiClient.interceptors.request.use(
       });
     }
     
-    // Set Origin header for Better Auth validation (production only)
-    // React Native doesn't automatically send Origin header like web browsers do
-    // Better Auth requires this header in production to validate trusted origins
-    // In development, Better Auth is more lenient and doesn't require this
-    if (!isDev && config.headers && !config.headers['Origin']) {
-      // Use the API base URL as origin (should be in Better Auth trusted origins)
-      // Fallback to mobile app scheme if API URL is not available
-      // The mobile scheme 'elkan://' is also in trusted origins as a backup
+    // Set Origin header for Better Auth / CORS-style validation
+    // React Native doesn't send Origin like browsers; many APIs reject requests without it
+    if (config.headers && !config.headers['Origin']) {
+      // Must match backend trusted origins (e.g. Better Auth trustedOrigins)
       const origin = API_BASE_URL || 'elkan://';
       config.headers['Origin'] = origin;
     }
@@ -194,26 +235,18 @@ apiClient.interceptors.response.use(
 
       try {
         const refreshToken = await secureStorage.getRefreshToken();
-        
-        if (refreshToken) {
-          // Attempt to refresh the token
-          const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
-            refreshToken,
-          });
-
-          const { token } = response.data;
-          
-          // Store new token and invalidate cache so it picks up the new one
-          await secureStorage.setToken(token);
-          invalidateTokenCache();
-          
-          // Retry original request with new token
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-          }
-          
-          return apiClient(originalRequest);
+        if (!refreshToken) {
+          return Promise.reject(error);
         }
+
+        const token = await refreshAccessTokenSilently();
+
+        // Retry original request with new token
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+        }
+
+        return apiClient(originalRequest);
       } catch (refreshError) {
         logger.error('❌ Token refresh failed:', refreshError);
         // Refresh failed, clear auth data

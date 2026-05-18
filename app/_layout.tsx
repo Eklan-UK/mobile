@@ -14,11 +14,15 @@ import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { AlertProvider } from "@/contexts/AlertContext";
 import { NotificationToastProvider } from "@/contexts/NotificationToastContext";
 import { BackgroundPrefetcher } from "@/components/BackgroundPrefetcher";
+import { ProfileThemeSync } from "@/components/ProfileThemeSync";
+import { SubscriptionDeepLinkHandler } from "@/components/subscription/SubscriptionDeepLinkHandler";
 import * as Updates from "expo-updates";
 import * as SystemUI from "expo-system-ui";
 import tw from "@/lib/tw";
 import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import { getSemanticColors } from "@/constants/theme-tokens";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -28,31 +32,36 @@ export default function RootLayout() {
   const { theme } = useThemeStore();
   const systemColorScheme = useColorScheme();
 
-  // Attach twrnc to the React Native device context so `tw` works everywhere
-  useDeviceContext(tw);
+  // Attach twrnc to RN device context. With options, twrnc skips overwriting our color
+  // scheme on every render (otherwise useColorScheme() fights Zustand + causes an infinite loop).
+  useDeviceContext(tw, {
+    observeDeviceColorSchemeChanges: false,
+    initialColorScheme: "device",
+  });
 
   // Control twrnc's color scheme from our theme store (or system when set to "system")
-  const [twColorScheme, , setTwColorScheme] = useAppColorScheme(tw);
+  const [, , setTwColorScheme] = useAppColorScheme(tw);
 
   useEffect(() => {
     const effectiveTheme =
       theme === "system" ? (systemColorScheme || "light") : theme;
 
-    // Only update twrnc if the desired scheme actually changed to avoid render loops
-    if (twColorScheme !== effectiveTheme) {
+    // Compare against tw instance so we don't depend on twColorScheme + unstable setter identity
+    if (tw.getColorScheme() !== effectiveTheme) {
       setTwColorScheme(effectiveTheme as "light" | "dark");
     }
 
     // Sync React Native's native Appearance module with our Zustand store
     Appearance.setColorScheme(theme === "system" ? null : theme);
 
-    // Set the system UI background color to match
-    SystemUI.setBackgroundColorAsync(
-      effectiveTheme === "dark" ? "#171717" : "#ffffff"
-    );
-  }, [theme, systemColorScheme, twColorScheme, setTwColorScheme]);
+    // Set the system UI background color to match web `--background`
+    const surface = getSemanticColors(effectiveTheme === "dark" ? "dark" : "light").background;
+    SystemUI.setBackgroundColorAsync(surface);
+    // setTwColorScheme from twrnc is not referentially stable; omit to avoid running this effect every render.
+  }, [theme, systemColorScheme]);
 
   const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";
+  const stackSurface = getSemanticColors(isDark ? "dark" : "light").background;
 
   const [fontsLoaded, fontError] = useFonts({
     // Nunito - for headers
@@ -119,15 +128,18 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <LanguageProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <AlertProvider>
           <BottomSheetModalProvider>
             <SafeAreaProvider>
               <NotificationToastProvider>
+              <SubscriptionDeepLinkHandler />
               <BackgroundPrefetcher />
+              <ProfileThemeSync />
               <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-                <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0d1f0e' : '#2E7D32'} />
-                <Stack screenOptions={{ headerShown: false, contentStyle: tw`bg-white dark:bg-neutral-900` }}>
+                <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0c0e0d' : '#2E7D32'} />
+                <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: stackSurface } }}>
                   <Stack.Screen name="index" options={{ headerShown: false }} />
                   {/* First-install onboarding / splash */}
                   <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
@@ -137,6 +149,7 @@ export default function RootLayout() {
                   <Stack.Screen name="(profile-setup)" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="practice" options={{ headerShown: false }} />
+                  <Stack.Screen name="sessions" options={{ headerShown: false }} />
                   <Stack.Screen name="settings" options={{ headerShown: false }} />
                   <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
                   <Stack.Screen name="lesson" options={{ headerShown: false }} />
@@ -158,6 +171,7 @@ export default function RootLayout() {
           </BottomSheetModalProvider>
         </AlertProvider>
       </GestureHandlerRootView>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

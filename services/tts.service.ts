@@ -1,4 +1,4 @@
-import apiClient from '@/lib/api';
+import apiClient, { API_BASE_URL } from '@/lib/api';
 // Note: expo-av and expo-file-system need to be installed:
 // npx expo install expo-av expo-file-system
 import * as FileSystem from 'expo-file-system/legacy';
@@ -34,6 +34,8 @@ interface TTSResponse {
 class TTSService {
   private sound: Audio.Sound | null = null;
   private currentAudioUri: string | null = null;
+  /** Resolve function for the pending playAudio promise; called by stopAudio so callers unblock. */
+  private playbackFinishResolve: (() => void) | null = null;
 
   /**
    * Generate TTS audio using backend API
@@ -65,7 +67,6 @@ class TTSService {
       }
 
       // Generate new TTS audio - use fetch instead of axios for blob handling
-      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
       const token = await this.getAuthToken();
       
       const requestBody = {
@@ -360,24 +361,44 @@ class TTSService {
       // Stop any currently playing audio
       await this.stopAudio();
 
-      // Load and play new audio
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUri },
-        { shouldPlay: true }
-      );
+      // Load then explicitly play — some RN/Expo builds do not reliably start
+      // playback with shouldPlay: true on createAsync alone.
+      const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
 
       this.sound = sound;
       this.currentAudioUri = audioUri;
 
-      // Use expo-av's status callback instead of polling — fires once when done
-      if (onFinish) {
+      // Wait for audio to finish (or be cancelled via stopAudio) before resolving.
+      // This keeps the calling effect in "ai_speaking" phase until the line is done,
+      // preventing the effect cleanup from killing audio the moment setPhase fires.
+      await new Promise<void>((resolve) => {
+        this.playbackFinishResolve = resolve;
+        const finishAndRelease = () => {
+          void sound
+            .unloadAsync()
+            .catch(() => {})
+            .finally(() => {
+              if (this.sound === sound) {
+                this.sound = null;
+                this.currentAudioUri = null;
+              }
+              resolve();
+            });
+        };
         sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            sound.setOnPlaybackStatusUpdate(null); // remove listener immediately
-            onFinish();
+          if ((status as any).isLoaded && (status as any).didJustFinish) {
+            sound.setOnPlaybackStatusUpdate(null);
+            this.playbackFinishResolve = null;
+            if (onFinish) onFinish();
+            finishAndRelease();
           }
         });
-      }
+        sound.playAsync().catch(() => {
+          this.playbackFinishResolve = null;
+          sound.setOnPlaybackStatusUpdate(null);
+          finishAndRelease();
+        });
+      });
     } catch (error) {
       logger.error('Error playing audio:', error);
       throw error;
@@ -385,9 +406,16 @@ class TTSService {
   }
 
   /**
-   * Stop currently playing audio
+   * Stop currently playing audio. Also resolves any pending playAudio promise
+   * so callers (effects) can unblock and check their cancellation flags.
    */
   async stopAudio(): Promise<void> {
+    // Unblock any pending playAudio promise first
+    if (this.playbackFinishResolve) {
+      const resolve = this.playbackFinishResolve;
+      this.playbackFinishResolve = null;
+      resolve();
+    }
     if (this.sound) {
       try {
         await this.sound.unloadAsync();
@@ -396,6 +424,7 @@ class TTSService {
       }
       this.sound = null;
     }
+    this.currentAudioUri = null;
   }
 
   /**

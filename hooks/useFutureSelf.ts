@@ -1,4 +1,4 @@
-import apiClient from '@/lib/api';
+import apiClient, { API_BASE_URL } from '@/lib/api';
 import { secureStorage } from '@/lib/secure-storage';
 import { Alert } from '@/utils/alert';
 import { logger } from '@/utils/logger';
@@ -219,7 +219,6 @@ export function useFutureSelf() {
         : 0;
 
       const token = await secureStorage.getToken();
-      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
       const formData = new FormData();
       formData.append('video', {

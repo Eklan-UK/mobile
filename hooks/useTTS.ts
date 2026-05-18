@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ttsService } from '@/services/tts.service';
 import { logger } from "@/utils/logger";
 
@@ -15,13 +15,6 @@ export function useTTS(options: UseTTSOptions = {}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentAudioUri, setCurrentAudioUri] = useState<string | null>(null);
   const audioUriCache = useRef<Map<string, string>>(new Map());
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      ttsService.cleanup();
-    };
-  }, []);
 
   const playAudio = useCallback(
     async (text: string, voiceId?: string) => {
@@ -83,7 +76,10 @@ export function useTTS(options: UseTTSOptions = {}) {
         logger.error('TTS Error:', error);
       }
     },
-    [autoPlay, onPlayStart, onPlayEnd, onError, isPlaying]
+    // isPlaying intentionally omitted — adding it would recreate the callback on every
+    // play-state change and cause stale-closure issues.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [autoPlay, onPlayStart, onPlayEnd, onError]
   );
 
   const stopAudio = useCallback(async () => {

@@ -68,16 +68,21 @@ export default function AiTalkScreen() {
   // SSE Stream Player Reference
   const streamPlayerRef = useRef<AudioStreamPlayer | null>(null);
 
-  // Initialize conversation with greeting
+  // Initialize conversation with greeting (await audio init so playback can start immediately)
   useEffect(() => {
-    // Setup AudioStreamPlayer
-    streamPlayerRef.current = new AudioStreamPlayer();
-    streamPlayerRef.current.initialize();
+    let cancelled = false;
 
-    initializeConversation();
+    const run = async () => {
+      streamPlayerRef.current = new AudioStreamPlayer();
+      await streamPlayerRef.current.initialize();
+      if (cancelled) return;
+      await initializeConversation();
+    };
+
+    void run();
 
     return () => {
-      // Cleanup player
+      cancelled = true;
       streamPlayerRef.current?.stop();
     };
   }, [topic, params.drillId]);
@@ -304,7 +309,7 @@ export default function AiTalkScreen() {
       setMessages(prev => [...prev.filter(m => m.type !== "status"), userMessage]);
       setMicState("normal");
 
-      // Count this as a free-talk turn
+      // Count this as an AI talk turn
       incrementTurn();
 
       // Update local conversation context with transcription so AI remembers it
@@ -351,7 +356,7 @@ export default function AiTalkScreen() {
     };
     setMessages(prev => [...prev, userMessage]);
 
-    // Count this as a free-talk turn
+    // Count this as an AI talk turn
     incrementTurn();
 
     // Update conversation history

@@ -1,6 +1,7 @@
 import ArrowRotate from "@/assets/icons/arrow-rotate.svg";
 import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
+import { useSemanticTheme } from "@/hooks/useSemanticTheme";
 import { Drill, getDrillCategory, getEstimatedTime } from "@/types/drill.types";
 import { Ionicons } from "@expo/vector-icons";
 import { Image, TouchableOpacity, View } from "react-native";
@@ -36,6 +37,7 @@ export default function DrillCard({
   isCompleted = false,
   thumbnail 
 }: DrillCardProps) {
+  const { colors: c } = useSemanticTheme();
   const category = getDrillCategory(drill.type);
   const estimatedTime = getEstimatedTime(drill.type);
   const categoryColor = getCategoryColor(category);
@@ -43,12 +45,24 @@ export default function DrillCard({
   return (
     <TouchableOpacity
       onPress={() => onPress(drill)}
-      disabled={locked}
-      style={tw`bg-white rounded-2xl mb-3 flex-row items-center p-3 border border-gray-100`}
+      style={[
+        tw`rounded-2xl mb-3 flex-row items-center p-3`,
+        {
+          backgroundColor: c.card,
+          borderColor: c.border,
+          borderWidth: 1,
+          opacity: locked ? 0.85 : 1,
+        },
+      ]}
       activeOpacity={0.7}
     >
       {/* Thumbnail */}
-      <View style={tw`w-16 h-16 rounded-xl overflow-hidden mr-3 bg-gray-100`}>
+      <View
+        style={[
+          tw`w-16 h-16 rounded-xl overflow-hidden mr-3`,
+          { backgroundColor: c.muted },
+        ]}
+      >
         {thumbnail ? (
           <Image
             source={thumbnail}
@@ -64,7 +78,7 @@ export default function DrillCard({
 
       {/* Content */}
       <View style={tw`flex-1`}>
-        <AppText style={tw`text-base font-semibold text-gray-900 mb-1`}>
+        <AppText style={[tw`text-base font-semibold mb-1`, { color: c.textPrimary }]}>
           {drill.title}
         </AppText>
         <View style={tw`flex-row items-center gap-2`}>
@@ -83,19 +97,19 @@ export default function DrillCard({
           </View>
         </View>
         <View style={tw`flex-row items-center gap-1 mt-1`}>
-          <Ionicons name="time-outline" size={14} color="#9CA3AF" />
-          <AppText style={tw`text-sm text-gray-500`}>{estimatedTime}</AppText>
+          <Ionicons name="time-outline" size={14} color={c.textLight} />
+          <AppText style={[tw`text-sm`, { color: c.textSecondary }]}>{estimatedTime}</AppText>
         </View>
       </View>
 
       {/* Right Icon */}
       <View>
         {locked ? (
-          <Ionicons name="lock-closed" size={20} color="#9CA3AF" />
+          <Ionicons name="lock-closed" size={20} color={c.textLight} />
         ) : isCompleted ? (
           <ArrowRotate width={20} height={20} />
         ) : (
-          <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+          <Ionicons name="chevron-forward" size={20} color={c.textLight} />
         )}
       </View>
     </TouchableOpacity>

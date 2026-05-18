@@ -1,19 +1,19 @@
-import DrillCard from "@/components/practice/DrillCard";
 import { DrillCardSkeletonList } from "@/components/drills/DrillCardSkeleton";
+import { MyPlanHeader } from "@/components/plan/MyPlanHeader";
+import DrillCard from "@/components/practice/DrillCard";
+import { NextSessionCard } from "@/components/sessions/NextSessionCard";
 import { AppText, BoldText } from "@/components/ui";
+import { MY_DRILLS_FULL_LIST_LIMIT, useDrills } from "@/hooks/useDrills";
+import { useIsSubscribed } from "@/hooks/useIsSubscribed";
+import { useLearnerClasses } from "@/hooks/useLearnerClasses";
 import tw from "@/lib/tw";
 import { DrillAssignment } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
-import { Ionicons } from "@expo/vector-icons";
-import { useState, useMemo } from "react";
-import { ScrollView, TouchableOpacity, View, RefreshControl, Modal } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useDrills, useRefreshDrills } from "@/hooks/useDrills";
-import { logger } from "@/utils/logger";
-import { useAuth } from "@/hooks/useAuth";
+import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
 import { router } from "expo-router";
-import { PlanOnboardingGate } from "@/components/gating/PlanOnboardingGate";
-import { PlanCompletedGate } from "@/components/gating/PlanCompletedGate";
+import { useLayoutEffect, useMemo, useState } from "react";
+import { ActivityIndicator, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 // Types
 type TabType = "ongoing" | "reviewed" | "completed";
@@ -74,8 +74,9 @@ function EmptyState({ tab }: { tab: TabType }) {
     },
     reviewed: {
       emoji: "✍️",
-      title: "No reviewed drills",
-      subtitle: "Drills awaiting review will appear here",
+      title: "No reviewed drills yet",
+      subtitle:
+        "When your tutor marks a completed drill as reviewed, it shows up here (see docs/MOBILE_MY_PLAN.md §7).",
     },
     completed: {
       emoji: "🎉",
@@ -122,65 +123,19 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 // Main Screen
 export default function MyPlanScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("ongoing");
-  const { user } = useAuth();
-  const isFreeUser = !user?.isSubscribed;
-  const [hasSeenPlanGate, setHasSeenPlanGate] = useState(false);
+  const isSubscribed = useIsSubscribed();
 
-  console.log(user)
-  
-  // Fetch all drills (we'll filter client-side)
-  const { data, isLoading, isError, refetch } = useDrills();
-  const refreshDrills = useRefreshDrills();
+  // Fetch drills for My Plan — docs/MOBILE_MY_PLAN.md §4: high `limit` for main listing (see MY_DRILLS_FULL_LIST_LIMIT)
+  const { data, isLoading, isError, refetch } = useDrills(undefined, MY_DRILLS_FULL_LIST_LIMIT);
+  // Fetch learner classes for Next Session card
+  const { nextSession } = useLearnerClasses();
 
-  // Categorize drills by status
+  // Categorize drills — docs/MOBILE_MY_PLAN.md §7: Reviewed = completed + latestAttempt.reviewStatus === 'reviewed' (see utils/drillPlanTab.ts)
   const categorizedDrills = useMemo(() => {
     if (!data?.drills) {
       return { ongoing: [], reviewed: [], completed: [] };
     }
-
-    logger.log('🔄 Categorizing drills...', {
-      totalDrills: data.drills.length,
-    });
-
-    const now = new Date();
-    
-    const { ongoing, reviewed, completed } = data.drills.reduce(
-      (acc, assignment) => {
-        // 1. Check for REVIEWED status (Highest priority)
-        // A drill is reviewed if it has a latest attempt with reviewStatus === 'reviewed'
-        const attempt = assignment.latestAttempt;
-        const isReviewed = attempt && (
-             (attempt.summaryResults?.reviewStatus === 'reviewed') ||
-             (attempt.sentenceResults?.reviewStatus === 'reviewed') ||
-             (attempt.grammarResults?.reviewStatus === 'reviewed')
-        );
-
-        if (isReviewed) {
-          acc.reviewed.push(assignment);
-          return acc;
-        }
-
-        // 2. Check for COMPLETED status
-        // A drill is completed if status is 'completed' OR has completedAt date
-        if (assignment.status === "completed" || !!assignment.completedAt) {
-          acc.completed.push(assignment);
-          return acc;
-        }
-
-        // 3. Otherwise it's ONGOING
-        acc.ongoing.push(assignment);
-        return acc;
-      },
-      { ongoing: [] as DrillAssignment[], reviewed: [] as DrillAssignment[], completed: [] as DrillAssignment[] }
-    );
-
-    logger.log('📊 Categorization results:', {
-      ongoing: ongoing.length,
-      reviewed: reviewed.length,
-      completed: completed.length,
-    });
-
-    return { ongoing, reviewed, completed };
+    return categorizeDrillsByPlanTab(data.drills);
   }, [data?.drills]);
 
   const currentDrills = categorizedDrills[activeTab];
@@ -197,61 +152,66 @@ export default function MyPlanScreen() {
     setRefreshing(false);
   };
 
+  useLayoutEffect(() => {
+    if (!isSubscribed) {
+      router.replace("/premium" as never);
+    }
+  }, [isSubscribed, router]);
+
+  if (!isSubscribed) {
+    return (
+      <SafeAreaView
+        edges={["top"]}
+        style={tw`flex-1 bg-gray-50 dark:bg-neutral-900 items-center justify-center`}
+      >
+        <ActivityIndicator size="large" color="#15803D" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView edges={['top']} style={tw`flex-1 bg-gray-50 dark:bg-neutral-900`}>
-      {/* Header */}
-      <View style={tw`px-5 pt-4 pb-4 bg-white dark:bg-neutral-900 border-b border-gray-100 dark:border-neutral-800`}>
-        <View style={tw`flex-row items-start justify-between mb-1`}>
-          <View style={tw`flex-1`}>
-            <BoldText style={tw`text-2xl font-bold text-gray-900 dark:text-white mb-1`}>
-              My plans
-            </BoldText>
-            <AppText style={tw`text-base text-gray-500 dark:text-neutral-400`}>
-              Designed for you, based on your goals
-            </AppText>
-          </View>
-          <View style={tw`flex-row items-end gap-1`}>
-            <View style={tw`w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-full items-center justify-center`}>
-              <AppText style={tw`text-lg`}>🔆</AppText>
-            </View>
-            <View style={tw`flex-row items-center bg-orange-50 dark:bg-orange-900/20 rounded-full px-3 py-1.5`}>
-              <AppText style={tw`text-base mr-1`}>🔥</AppText>
-              <AppText style={tw`text-base font-semibold text-gray-900 dark:text-white`}>22</AppText>
-            </View>
-            <TouchableOpacity style={tw`w-10 h-10 items-center justify-center`}>
-              <Ionicons name="notifications-outline" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-        </View>
+      <MyPlanHeader />
+
+      {/* Next Session Card — always visible; empty state when no upcoming class */}
+      <View style={tw`bg-white dark:bg-neutral-900 pt-3`}>
+        <NextSessionCard session={nextSession} />
       </View>
 
-      {/* Tabs */}
-      <View style={tw`p-[8px] bg-white dark:bg-neutral-900 border-solid`}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={tw`gap-2`}
-          style={tw`border rounded-full p-[8px] border-gray-200 dark:border-neutral-800`}
-        >
-          <TabButton
-            label="Ongoing"
-            count={categorizedDrills.ongoing.length}
-            isActive={activeTab === "ongoing"}
-            onPress={() => setActiveTab("ongoing")}
-          />
-          <TabButton
-            label="Reviewed"
-            count={categorizedDrills.reviewed.length}
-            isActive={activeTab === "reviewed"}
-            onPress={() => setActiveTab("reviewed")}
-          />
-          <TabButton
-            label="Completed"
-            count={categorizedDrills.completed.length}
-            isActive={activeTab === "completed"}
-            onPress={() => setActiveTab("completed")}
-          />
-        </ScrollView>
+      {/* Assigned Drills label + Tabs */}
+      <View style={tw`bg-white dark:bg-neutral-900`}>
+        <View style={tw`px-5 pt-4 pb-2`}>
+          <BoldText style={tw`text-base font-bold text-gray-900 dark:text-white`}>
+            Assigned Drills
+          </BoldText>
+        </View>
+        <View style={tw`p-[8px] border-solid`}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={tw`gap-2`}
+            style={tw`border rounded-full p-[8px] border-gray-200 dark:border-neutral-800`}
+          >
+            <TabButton
+              label="Ongoing"
+              count={categorizedDrills.ongoing.length}
+              isActive={activeTab === "ongoing"}
+              onPress={() => setActiveTab("ongoing")}
+            />
+            <TabButton
+              label="Reviewed"
+              count={categorizedDrills.reviewed.length}
+              isActive={activeTab === "reviewed"}
+              onPress={() => setActiveTab("reviewed")}
+            />
+            <TabButton
+              label="Completed"
+              count={categorizedDrills.completed.length}
+              isActive={activeTab === "completed"}
+              onPress={() => setActiveTab("completed")}
+            />
+          </ScrollView>
+        </View>
       </View>
 
       {/* Content */}
@@ -287,23 +247,6 @@ export default function MyPlanScreen() {
           ))
         )}
       </ScrollView>
-
-      {/* Plan Gates */}
-      {(() => {
-        const showOnboarding = isFreeUser && !hasSeenPlanGate;
-        const showCompleted = isFreeUser && hasSeenPlanGate && categorizedDrills.ongoing.length === 0 && categorizedDrills.completed.length > 0;
-        return (
-          <PlanOnboardingGate 
-            visible={showOnboarding || showCompleted} 
-            isCompletedState={showCompleted}
-            onClose={() => {
-              if (showOnboarding) {
-                setHasSeenPlanGate(true);
-              }
-            }} 
-          />
-        );
-      })()}
     </SafeAreaView>
   );
 }

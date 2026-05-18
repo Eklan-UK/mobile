@@ -2,12 +2,23 @@ import { AppText, Button, Input } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
 import { useState } from "react";
-import { ScrollView, TouchableOpacity, View, KeyboardAvoidingView, Platform, TextInput } from "react-native";
-import { Alert } from '@/utils/alert';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { Alert } from "@/utils/alert";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
+import { useAuth } from "@/hooks/useAuth";
+import { useSubmitContact } from "@/hooks/useSettings";
+import type { SettingsApiError } from "@/types/settings";
 
-// Icons
+const MAX_MESSAGE_LENGTH = 500;
+
 function BackIcon() {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
@@ -57,37 +68,56 @@ function EmailIcon() {
   );
 }
 
-export default function ContactScreen() {
-  const [name, setName] = useState("Amy kosuleim");
-  const [email, setEmail] = useState("Amyko@gmail.com");
-  const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  const insets = useSafeAreaInsets();
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
-  const handleBack = () => {
-    router.back();
-  };
+export default function ContactScreen() {
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
+  const [name, setName] = useState(
+    user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : ''
+  );
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+
+  const mutation = useSubmitContact();
+
+  const isFormValid =
+    name.trim().length > 0 &&
+    isValidEmail(email) &&
+    subject.trim().length > 0 &&
+    message.trim().length > 0 &&
+    message.length <= MAX_MESSAGE_LENGTH;
 
   const handleSubmit = async () => {
-    if (!subject.trim() || !message.trim()) {
-      Alert.alert("Error", "Please fill in all fields");
+    if (!isFormValid) {
+      if (!isValidEmail(email)) {
+        Alert.alert("Invalid email", "Please enter a valid email address.");
+        return;
+      }
+      if (message.length > MAX_MESSAGE_LENGTH) {
+        Alert.alert("Message too long", `Your message must be at most ${MAX_MESSAGE_LENGTH} characters.`);
+        return;
+      }
+      Alert.alert("Incomplete form", "Please fill in all fields.");
       return;
     }
 
-    setLoading(true);
-    // TODO: Implement contact form submission
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setLoading(false);
-
-    Alert.alert(
-      "Message Sent",
-      "Thank you for reaching out! We'll get back to you within 24 hours.",
-      [{ text: "OK", onPress: () => router.back() }]
-    );
+    try {
+      await mutation.mutateAsync({ name: name.trim(), email: email.trim(), subject: subject.trim(), message: message.trim() });
+      Alert.alert(
+        "Message Sent",
+        "Thank you for reaching out! We'll get back to you within 24 hours.",
+        [{ text: "OK", onPress: () => router.back() }]
+      );
+    } catch (err) {
+      const apiErr = err as SettingsApiError;
+      Alert.alert("Error", apiErr.message || "Failed to send message. Please try again.");
+    }
   };
-
-  const isFormValid = subject.trim() !== "" && message.trim() !== "";
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900`} edges={["top"]}>
@@ -98,7 +128,10 @@ export default function ContactScreen() {
       >
         {/* Header */}
         <View style={tw`px-6 pt-4 pb-4 flex-row items-center gap-4`}>
-          <TouchableOpacity onPress={handleBack} style={tw`w-10 h-10 rounded-full border border-neutral-200 dark:border-neutral-700 items-center justify-center`}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={tw`w-10 h-10 rounded-full border border-neutral-200 dark:border-neutral-700 items-center justify-center`}
+          >
             <BackIcon />
           </TouchableOpacity>
           <AppText style={tw`text-xl font-bold text-neutral-900 dark:text-white`}>Contact Us</AppText>
@@ -106,71 +139,85 @@ export default function ContactScreen() {
 
         <ScrollView
           style={tw`flex-1`}
-          contentContainerStyle={tw`px-6 pb-6 pt-2`}
+          contentContainerStyle={tw`px-6 pb-6 pt-2 gap-5`}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
-          {/* Form */}
-          <View style={tw`gap-5`}>
-            <Input
-              label="Name"
-              placeholder="Enter your name"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              icon={<UserIcon />}
-            />
+          <Input
+            label="Name"
+            placeholder="Enter your name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+            icon={<UserIcon />}
+          />
 
-            <Input
-              label="Email"
-              placeholder="Enter your email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              icon={<EmailIcon />}
-            />
+          <Input
+            label="Email"
+            placeholder="Enter your email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            icon={<EmailIcon />}
+          />
 
-            <View>
-              <AppText style={tw`text-[15px] text-neutral-600 dark:text-neutral-400 mb-2`}>Subject</AppText>
-              <View style={tw`bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-2xl px-4 py-3.5`}>
-                <TextInput
-                  placeholder="Message (max 500 character"
-                  value={subject}
-                  onChangeText={setSubject}
-                  style={tw`text-[15px] text-neutral-900 dark:text-white`}
-                  placeholderTextColor="#a3a3a3"
-                />
-              </View>
+          <View>
+            <AppText style={tw`text-[15px] text-neutral-600 dark:text-neutral-400 mb-2`}>Subject</AppText>
+            <View style={tw`bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-2xl px-4 py-3.5`}>
+              <TextInput
+                placeholder="What is this about?"
+                value={subject}
+                onChangeText={setSubject}
+                style={tw`text-[15px] text-neutral-900 dark:text-white`}
+                placeholderTextColor="#a3a3a3"
+              />
             </View>
+          </View>
 
-            <View>
-              <AppText style={tw`text-[15px] text-neutral-600 dark:text-neutral-400 mb-2`}>Your message</AppText>
-              <View style={tw`bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-3xl px-4 py-4`}>
-                <TextInput
-                  placeholder="Message (max 500 character"
-                  value={message}
-                  onChangeText={setMessage}
-                  multiline
-                  numberOfLines={10}
-                  textAlignVertical="top"
-                  style={tw`text-[15px] text-neutral-900 dark:text-white min-h-[220px]`}
-                  placeholderTextColor="#a3a3a3"
-                />
-              </View>
+          <View>
+            <View style={tw`flex-row justify-between items-center mb-2`}>
+              <AppText style={tw`text-[15px] text-neutral-600 dark:text-neutral-400`}>Your message</AppText>
+              <AppText
+                style={tw`text-[13px] ${
+                  message.length > MAX_MESSAGE_LENGTH
+                    ? "text-red-500"
+                    : "text-neutral-400 dark:text-neutral-500"
+                }`}
+              >
+                {message.length}/{MAX_MESSAGE_LENGTH}
+              </AppText>
+            </View>
+            <View style={tw`bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-3xl px-4 py-4`}>
+              <TextInput
+                placeholder="Tell us how we can help you…"
+                value={message}
+                onChangeText={(v) => {
+                  if (v.length <= MAX_MESSAGE_LENGTH) setMessage(v);
+                }}
+                multiline
+                numberOfLines={10}
+                textAlignVertical="top"
+                style={tw`text-[15px] text-neutral-900 dark:text-white min-h-[180px]`}
+                placeholderTextColor="#a3a3a3"
+                maxLength={MAX_MESSAGE_LENGTH}
+              />
             </View>
           </View>
         </ScrollView>
 
-        {/* Submit Button */}
-        <View style={[tw`px-6 pb-4 bg-white dark:bg-neutral-900`, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          <Button 
-            onPress={handleSubmit} 
-            loading={loading}
+        {/* Submit */}
+        <View
+          style={[
+            tw`px-6 pb-4 bg-white dark:bg-neutral-900`,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
+          <Button
+            onPress={handleSubmit}
+            loading={mutation.isPending}
             disabled={!isFormValid}
-            style={tw`${!isFormValid ? "bg-neutral-200 opacity-100" : ""}`}
-            textStyle={tw`${!isFormValid ? "text-white font-bold" : ""}`}
           >
             Submit
           </Button>
@@ -179,4 +226,3 @@ export default function ContactScreen() {
     </SafeAreaView>
   );
 }
-

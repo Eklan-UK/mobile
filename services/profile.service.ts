@@ -1,4 +1,4 @@
-import apiClient from '@/lib/api';
+import apiClient, { API_BASE_URL } from '@/lib/api';
 import { logger } from '@/utils/logger';
 import * as FileSystem from 'expo-file-system/legacy';
 import { secureStorage } from '@/lib/secure-storage';
@@ -25,7 +25,6 @@ export const profileService = {
 
       // Get auth token and API URL
       const token = await secureStorage.getToken();
-      const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
       // Create FormData
       const formData = new FormData();

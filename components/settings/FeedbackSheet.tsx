@@ -6,6 +6,8 @@ import { AppText, Button } from "@/components/ui";
 import Svg, { Path, Circle } from "react-native-svg";
 import { useAuth } from "@/hooks/useAuth";
 import { Alert } from "@/utils/alert";
+import { useSubmitFeedback } from "@/hooks/useSettings";
+import type { SettingsApiError } from "@/types/settings";
 
 function UserIcon() {
   return (
@@ -21,14 +23,7 @@ function UserIcon() {
   );
 }
 
-// Rating Star Component
-function RatingStar({
-  filled,
-  onPress,
-}: {
-  filled: boolean;
-  onPress: () => void;
-}) {
+function RatingStar({ filled, onPress }: { filled: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity onPress={onPress} style={tw`p-1 mx-1`}>
       <AppText style={tw`text-[32px]`}>{filled ? "⭐" : "☆"}</AppText>
@@ -43,9 +38,12 @@ export const FeedbackSheet = React.forwardRef<BottomSheetModal, FeedbackSheetPro
     const snapPoints = React.useMemo(() => ["90%"], []);
     const { user } = useAuth();
     const [rating, setRating] = useState(0);
-    const [name, setName] = useState(user ? `${user.firstName} ${user.lastName}`.trim() : "");
+    const [name, setName] = useState(
+      user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : ''
+    );
     const [feedback, setFeedback] = useState("");
-    const [loading, setLoading] = useState(false);
+
+    const mutation = useSubmitFeedback();
 
     const renderBackdrop = useCallback(
       (props: any) => (
@@ -59,19 +57,36 @@ export const FeedbackSheet = React.forwardRef<BottomSheetModal, FeedbackSheetPro
         Alert.alert("Rating Required", "Please give us a star rating");
         return;
       }
+      if (!name.trim()) {
+        Alert.alert("Name Required", "Please enter your name");
+        return;
+      }
 
-      setLoading(true);
-      // TODO: Implement feedback submission to server
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setLoading(false);
+      try {
+        await mutation.mutateAsync({
+          name: name.trim(),
+          rating,
+          message: feedback.trim() || undefined,
+        });
 
-      Alert.alert(
-        "Thank You! 🎉",
-        "Your feedback helps us improve Eklan for everyone.",
-        [{ text: "Done", onPress: () => {
-          if (ref && "current" in ref) ref.current?.dismiss();
-        } }]
-      );
+        Alert.alert(
+          "Thank You! 🎉",
+          "Your feedback helps us improve Eklan for everyone.",
+          [
+            {
+              text: "Done",
+              onPress: () => {
+                if (ref && "current" in ref) ref.current?.dismiss();
+                setRating(0);
+                setFeedback("");
+              },
+            },
+          ]
+        );
+      } catch (err) {
+        const apiErr = err as SettingsApiError;
+        Alert.alert("Error", apiErr.message || "Could not send feedback. Please try again.");
+      }
     };
 
     return (
@@ -81,37 +96,36 @@ export const FeedbackSheet = React.forwardRef<BottomSheetModal, FeedbackSheetPro
         snapPoints={snapPoints}
         backdropComponent={renderBackdrop}
         handleComponent={null}
-        backgroundStyle={tw`bg-transparent`} // Making bottom sheet background transparent to allow custom header design
+        backgroundStyle={tw`bg-transparent`}
       >
         <View style={tw`flex-1 relative`}>
-          {/* Custom Header Graphic */}
+          {/* Custom header graphic */}
           <View style={tw`absolute top-0 left-0 right-0 h-32 bg-[#D1FAE5] rounded-t-[32px] border-b-0 overflow-hidden`}>
-            {/* Some decorative background curves can go here using SVG, simplified for now */}
             <View style={tw`absolute -top-10 -left-10 w-40 h-40 rounded-full bg-[#16a34a] opacity-10`} />
             <View style={tw`absolute top-10 -right-20 w-60 h-60 rounded-full bg-[#16a34a] opacity-10`} />
           </View>
-          
+
           <BottomSheetScrollView
             style={tw`flex-1 mt-10`}
             contentContainerStyle={tw`bg-white rounded-t-[32px] px-6 pt-16 pb-8 min-h-full`}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Emoji Avatar Bubble */}
+            {/* Avatar bubble */}
             <View style={tw`absolute top-[-36px] left-1/2 -ml-[36px] w-[72px] h-[72px] rounded-full bg-white items-center justify-center border-2 border-yellow-400 z-10 shadow-sm`}>
               <AppText style={tw`text-[40px]`}>🥺</AppText>
             </View>
 
-            {/* Title */}
             <AppText style={tw`text-[22px] font-bold text-neutral-900 text-center mb-2`}>
-              How is it going, {user?.firstName || "Amy"}?
+              How is it going, {user?.firstName || "there"}?
             </AppText>
 
-            {/* Subtitle */}
             <AppText style={tw`text-[15px] text-neutral-500 text-center mb-6 px-4`}>
-              Enjoying your experience with <AppText style={tw`text-primary-600 font-bold`}>eklan?</AppText> give us a rating
+              Enjoying your experience with{" "}
+              <AppText style={tw`text-primary-600 font-bold`}>eklan?</AppText>{" "}
+              give us a rating
             </AppText>
 
-            {/* Rating Stars */}
+            {/* Star rating */}
             <View style={tw`flex-row justify-center mb-8`}>
               {[1, 2, 3, 4, 5].map((star) => (
                 <RatingStar
@@ -122,7 +136,7 @@ export const FeedbackSheet = React.forwardRef<BottomSheetModal, FeedbackSheetPro
               ))}
             </View>
 
-            {/* Form */}
+            {/* Name field */}
             <View style={tw`mb-5`}>
               <AppText style={tw`text-sm text-neutral-500 mb-2`}>Name</AppText>
               <View style={tw`flex-row items-center border border-neutral-200 rounded-xl px-4 py-3 bg-white`}>
@@ -137,12 +151,15 @@ export const FeedbackSheet = React.forwardRef<BottomSheetModal, FeedbackSheetPro
               </View>
             </View>
 
+            {/* Feedback textarea */}
             <View style={tw`mb-6`}>
-              <AppText style={tw`text-sm text-neutral-500 mb-2`}>Tell us what you want us to improve</AppText>
+              <AppText style={tw`text-sm text-neutral-500 mb-2`}>
+                Tell us what you want us to improve
+              </AppText>
               <TextInput
                 value={feedback}
                 onChangeText={setFeedback}
-                placeholder="Tell us how we can improve your experience..."
+                placeholder="Tell us how we can improve your experience…"
                 multiline
                 numberOfLines={6}
                 textAlignVertical="top"
@@ -155,10 +172,9 @@ export const FeedbackSheet = React.forwardRef<BottomSheetModal, FeedbackSheetPro
               Your feedback helps us improve and serve you better.
             </AppText>
 
-            {/* Submit Button */}
             <Button
               onPress={handleSubmit}
-              loading={loading}
+              loading={mutation.isPending}
               disabled={rating === 0}
             >
               Submit feedback

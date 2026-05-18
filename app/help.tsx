@@ -74,7 +74,7 @@ export default function HelpScreen() {
         <TouchableOpacity onPress={handleBack} style={tw`w-10 h-10 rounded-full border border-neutral-200 dark:border-neutral-700 items-center justify-center`}>
           <BackIcon />
         </TouchableOpacity>
-        <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Help & feedback</AppText>
+        <AppText style={tw`text-lg font-bold text-neutral-900 dark:text-white`}>Help & Feedback</AppText>
       </View>
 
       {/* Menu Items */}
