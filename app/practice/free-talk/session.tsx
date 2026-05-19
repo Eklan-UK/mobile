@@ -43,6 +43,13 @@ import { setAudioModeSafely } from '@/utils/audio';
 
 // ─── Progress bar phase slots ─────────────────────────────────────────────────
 
+function getSituationTtsText(scenario: FreeTalkScenario): string {
+  const situation = scenario.situation?.trim();
+  if (situation) return situation;
+  const parts = [scenario.background?.trim(), scenario.task?.trim()].filter(Boolean);
+  return parts.join('\n\n');
+}
+
 const PHASE_PROGRESS: Record<FreeTalkSessionPhase, number> = {
   loading: 0.06,
   ready: 0.2,
@@ -143,6 +150,11 @@ export default function FreeTalkSessionScreen() {
 
   // TTS
   const ttsSoundRef = useRef<Audio.Sound | null>(null);
+  const ttsRunIdRef = useRef(0);
+  const autoTtsRunIdRef = useRef(0);
+  const prefetchedTtsUriRef = useRef<string | null>(null);
+  const prefetchedTtsTextRef = useRef<string | null>(null);
+  const loadScenarioRunIdRef = useRef(0);
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [hintTtsPlaying, setHintTtsPlaying] = useState(false);
 
@@ -175,11 +187,32 @@ export default function FreeTalkSessionScreen() {
     return ((scenarioIndex + phaseSlot) / total) * 100;
   }, [phase, scenarioIndex, scenarios.length]);
 
+  function clearPrefetchedTts() {
+    prefetchedTtsUriRef.current = null;
+    prefetchedTtsTextRef.current = null;
+  }
+
+  function takePrefetchedSituationTtsUri(text: string): string | null {
+    const trimmed = text.trim();
+    if (
+      trimmed &&
+      prefetchedTtsTextRef.current === trimmed &&
+      prefetchedTtsUriRef.current
+    ) {
+      const uri = prefetchedTtsUriRef.current;
+      clearPrefetchedTts();
+      return uri;
+    }
+    return null;
+  }
+
   // ─── Load scenario ─────────────────────────────────────────────────────────
 
   const loadScenario = useCallback(async (index: number, list: FreeTalkScenarioSummary[]) => {
     if (list.length === 0) return;
     const target = list[index];
+    const loadRunId = ++loadScenarioRunIdRef.current;
+
     setPhase('loading');
     setScenario(null);
     setFeedbackText('');
@@ -187,25 +220,38 @@ export default function FreeTalkSessionScreen() {
     setLoadError(null);
     setShowTextInput(false);
     setUserTextInput('');
+    clearPrefetchedTts();
 
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
     try {
-      // Fetch scenario + TTS in parallel
-      const [scenarioData] = await Promise.all([
-        aiService.fetchFreeTalkScenario({
-          scenarioId: target.id,
-          signal: abortRef.current.signal,
-        }),
-      ]);
+      const scenarioData = await aiService.fetchFreeTalkScenario({
+        scenarioId: target.id,
+        signal: abortRef.current.signal,
+      });
+      if (loadRunId !== loadScenarioRunIdRef.current) return;
 
+      const ttsText = getSituationTtsText(scenarioData).trim();
+      if (ttsText) {
+        try {
+          const uri = await aiService.fetchFreeTalkTtsUri(ttsText);
+          if (loadRunId !== loadScenarioRunIdRef.current) return;
+          if (uri?.trim()) {
+            prefetchedTtsUriRef.current = uri;
+            prefetchedTtsTextRef.current = ttsText;
+          }
+        } catch (err) {
+          if (loadRunId !== loadScenarioRunIdRef.current) return;
+          logger.warn('Free Talk TTS prefetch failed:', err);
+        }
+      }
+
+      if (loadRunId !== loadScenarioRunIdRef.current) return;
       setScenario(scenarioData);
       setPhase('ready');
-
-      // Pre-fetch and auto-play TTS (non-blocking)
-      playTts(scenarioData.situation, 'situation').catch(() => {});
     } catch (err: any) {
+      if (loadRunId !== loadScenarioRunIdRef.current) return;
       if (err?.name === 'AbortError' || err?.message === 'canceled') return;
       const msg =
         err?.message === 'Subscription required'
@@ -245,10 +291,69 @@ export default function FreeTalkSessionScreen() {
     init();
     return () => {
       cancelled = true;
+      loadScenarioRunIdRef.current += 1;
       abortRef.current?.abort();
+      clearPrefetchedTts();
       stopAndUnloadTts();
     };
   }, []);
+
+  // Auto-play situation TTS when session becomes ready (roleplay intro pattern; separate run id)
+  useEffect(() => {
+    if (phase !== 'ready' || !scenario) return;
+
+    const autoTtsText = getSituationTtsText(scenario).trim();
+    if (!autoTtsText) return;
+
+    const runId = ++autoTtsRunIdRef.current;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await setAudioModeSafely({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+        });
+        await stopAndUnloadTts();
+        if (cancelled || runId !== autoTtsRunIdRef.current) return;
+
+        let audioUri = takePrefetchedSituationTtsUri(autoTtsText);
+        if (!audioUri?.trim()) {
+          audioUri = await aiService.fetchFreeTalkTtsUri(autoTtsText);
+        }
+        if (cancelled || runId !== autoTtsRunIdRef.current || !audioUri?.trim()) return;
+
+        setTtsPlaying(true);
+        const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
+        if (cancelled || runId !== autoTtsRunIdRef.current) {
+          await sound.unloadAsync().catch(() => {});
+          return;
+        }
+
+        ttsSoundRef.current = sound;
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            sound.setOnPlaybackStatusUpdate(null);
+            sound.unloadAsync().catch(() => {});
+            if (ttsSoundRef.current === sound) ttsSoundRef.current = null;
+            setTtsPlaying(false);
+          }
+        });
+        await sound.playAsync();
+        logger.log('✅ Free Talk auto TTS playing');
+      } catch (err) {
+        if (!cancelled && runId === autoTtsRunIdRef.current) {
+          setTtsPlaying(false);
+        }
+        logger.error('Free Talk auto TTS error:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      void stopAndUnloadTts();
+    };
+  }, [phase, scenario?.id]);
 
   // ─── TTS helpers ──────────────────────────────────────────────────────────
 
@@ -265,30 +370,51 @@ export default function FreeTalkSessionScreen() {
   }
 
   async function playTts(text: string, type: 'situation' | 'hint') {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      logger.warn('Free Talk TTS skipped: empty text');
+      return;
+    }
+
+    const runId = ++ttsRunIdRef.current;
     await stopAndUnloadTts();
     try {
       await setAudioModeSafely({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
       });
-      const dataUri = await aiService.fetchFreeTalkTtsDataUri(text);
+      let audioUri =
+        type === 'situation' ? takePrefetchedSituationTtsUri(trimmed) : null;
+      if (!audioUri?.trim()) {
+        audioUri = await aiService.fetchFreeTalkTtsUri(trimmed);
+      }
+      if (runId !== ttsRunIdRef.current) return;
+
       if (type === 'situation') setTtsPlaying(true);
       else setHintTtsPlaying(true);
 
-      const { sound } = await Audio.Sound.createAsync({ uri: dataUri });
+      const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
+      if (runId !== ttsRunIdRef.current) {
+        await sound.unloadAsync().catch(() => {});
+        return;
+      }
+
       ttsSoundRef.current = sound;
-      await sound.playAsync();
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
+          sound.setOnPlaybackStatusUpdate(null);
           sound.unloadAsync().catch(() => {});
-          ttsSoundRef.current = null;
+          if (ttsSoundRef.current === sound) ttsSoundRef.current = null;
           setTtsPlaying(false);
           setHintTtsPlaying(false);
         }
       });
+      await sound.playAsync();
     } catch (err) {
-      setTtsPlaying(false);
-      setHintTtsPlaying(false);
+      if (runId === ttsRunIdRef.current) {
+        setTtsPlaying(false);
+        setHintTtsPlaying(false);
+      }
       logger.error('TTS playback error:', err);
     }
   }
@@ -477,7 +603,9 @@ export default function FreeTalkSessionScreen() {
 
   function handleLeave() {
     setShowLeaveModal(false);
+    loadScenarioRunIdRef.current += 1;
     abortRef.current?.abort();
+    clearPrefetchedTts();
     stopAndUnloadTts();
     if (recordingRef.current) {
       recordingRef.current.stopAndUnloadAsync().catch(() => {});
@@ -594,7 +722,7 @@ export default function FreeTalkSessionScreen() {
               </BoldText>
               <View style={tw`flex-row gap-2`}>
                 <TouchableOpacity
-                  onPress={() => toggleTts(scenario.situation, 'situation')}
+                  onPress={() => toggleTts(getSituationTtsText(scenario), 'situation')}
                   style={tw`w-8 h-8 rounded-full bg-white dark:bg-neutral-700 items-center justify-center`}
                 >
                   <Ionicons
