@@ -624,24 +624,22 @@ export const aiService = {
   },
 
   /**
-   * Fetch TTS audio blob for the given text and return a base64 data URI.
+   * Fetch TTS audio for Free Talk and return a local file URI for playback.
+   * Uses main /api/v1/tts (staging does not reliably serve /ai/free-talk/tts).
    */
-  async fetchFreeTalkTtsDataUri(text: string): Promise<string> {
+  async fetchFreeTalkTtsUri(text: string): Promise<string> {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new Error('TTS text is empty');
+    }
+
     try {
-      const response = await apiClient.post(
-        '/api/v1/ai/free-talk/tts',
-        { text },
-        { responseType: 'arraybuffer' }
-      );
-      const bytes = new Uint8Array(response.data as ArrayBuffer);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const base64 = btoa(binary);
-      return `data:audio/wav;base64,${base64}`;
+      const { ttsService } = await import('./tts.service');
+      const uri = await ttsService.generateTTS({ text: trimmed });
+      if (!uri?.trim()) throw new Error('TTS unavailable');
+      return uri;
     } catch (error: any) {
-      logger.error('❌ fetchFreeTalkTtsDataUri:', error?.message ?? error);
+      logger.error('❌ fetchFreeTalkTtsUri:', error?.message ?? error);
       throw error;
     }
   },
