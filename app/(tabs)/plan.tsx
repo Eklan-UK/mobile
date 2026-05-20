@@ -1,17 +1,25 @@
 import { DrillCardSkeletonList } from "@/components/drills/DrillCardSkeleton";
 import { MyPlanHeader } from "@/components/plan/MyPlanHeader";
+import { AssignedFreeTalkPlanCard } from "@/components/practice/AssignedFreeTalkHomeCard";
 import DrillCard from "@/components/practice/DrillCard";
 import { NextSessionCard } from "@/components/sessions/NextSessionCard";
 import { AppText, BoldText } from "@/components/ui";
 import { MY_DRILLS_FULL_LIST_LIMIT, useDrills } from "@/hooks/useDrills";
+import { useFreeTalkCompletedScenarioIds } from "@/hooks/useFreeTalkCompletedScenarioIds";
+import { useFreeTalkScenarios } from "@/hooks/useFreeTalkScenarios";
+import {
+  buildAssignedPracticeFeed,
+  type AssignedPracticeFeedItem,
+} from "@/utils/assignedPracticeFeed";
 import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import { useLearnerClasses } from "@/hooks/useLearnerClasses";
 import tw from "@/lib/tw";
 import { DrillAssignment } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -126,7 +134,16 @@ export default function MyPlanScreen() {
   const isSubscribed = useIsSubscribed();
 
   // Fetch drills for My Plan — docs/MOBILE_MY_PLAN.md §4: high `limit` for main listing (see MY_DRILLS_FULL_LIST_LIMIT)
-  const { data, isLoading, isError, refetch } = useDrills(undefined, MY_DRILLS_FULL_LIST_LIMIT);
+  const { data, isLoading, isError, refetch: refetchDrills } = useDrills(
+    undefined,
+    MY_DRILLS_FULL_LIST_LIMIT
+  );
+  const {
+    data: freeTalkScenarios = [],
+    isLoading: isFreeTalkLoading,
+    refetch: refetchFreeTalk,
+  } = useFreeTalkScenarios(true);
+  const { data: completedFreeTalkIds } = useFreeTalkCompletedScenarioIds(true);
   // Fetch learner classes for Next Session card
   const { nextSession } = useLearnerClasses();
 
@@ -140,15 +157,34 @@ export default function MyPlanScreen() {
 
   const currentDrills = categorizedDrills[activeTab];
 
+  const ongoingPracticeFeed = useMemo(() => {
+    return buildAssignedPracticeFeed(categorizedDrills.ongoing, freeTalkScenarios);
+  }, [categorizedDrills.ongoing, freeTalkScenarios]);
+
+  const ongoingTabCount = categorizedDrills.ongoing.length + freeTalkScenarios.length;
+
   const handleDrillPress = (assignment: DrillAssignment) => {
     navigateToDrill(assignment, assignment.assignmentId);
   };
+
+  const handleFreeTalkPress = (scenarioId: string) => {
+    router.push({
+      pathname: "/practice/free-talk/session",
+      params: { scenarioId },
+    });
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetchFreeTalk();
+    }, [refetchFreeTalk])
+  );
 
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetchDrills(), refetchFreeTalk()]);
     setRefreshing(false);
   };
 
@@ -194,7 +230,7 @@ export default function MyPlanScreen() {
           >
             <TabButton
               label="Ongoing"
-              count={categorizedDrills.ongoing.length}
+              count={ongoingTabCount}
               isActive={activeTab === "ongoing"}
               onPress={() => setActiveTab("ongoing")}
             />
@@ -228,10 +264,34 @@ export default function MyPlanScreen() {
           />
         }
       >
-        {isLoading ? (
+        {isLoading || (activeTab === "ongoing" && isFreeTalkLoading) ? (
           <DrillCardSkeletonList count={4} />
         ) : isError ? (
-          <ErrorState onRetry={() => refetch()} />
+          <ErrorState onRetry={() => refetchDrills()} />
+        ) : activeTab === "ongoing" ? (
+          ongoingPracticeFeed.length === 0 ? (
+            <EmptyState tab={activeTab} />
+          ) : (
+            ongoingPracticeFeed.map((item: AssignedPracticeFeedItem) =>
+              item.kind === "drill" ? (
+                <DrillCard
+                  key={item.assignment.assignmentId}
+                  drill={item.assignment.drill}
+                  onPress={() => handleDrillPress(item.assignment)}
+                  locked={false}
+                  isCompleted={false}
+                  thumbnail={require("@/assets/images/thumbnail.png")}
+                />
+              ) : (
+                <AssignedFreeTalkPlanCard
+                  key={`free-talk-${item.scenario.id}`}
+                  scenario={item.scenario}
+                  completed={completedFreeTalkIds?.has(item.scenario.id)}
+                  onPress={() => handleFreeTalkPress(item.scenario.id)}
+                />
+              )
+            )
+          )
         ) : currentDrills.length === 0 ? (
           <EmptyState tab={activeTab} />
         ) : (

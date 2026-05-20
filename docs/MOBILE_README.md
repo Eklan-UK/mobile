@@ -259,7 +259,6 @@ export const queryKeys = {
   dailyFocus: ['daily-focus-today'] as const,
   pronunciationProblems: (params?: object) => ['pronunciation-problems', params] as const,
   sessionSummaries: (params?: object) => ['session-summaries', params] as const,
-  pressureTestSessions: ['pressure-test-sessions'] as const,
   bookmarks: ['bookmarks'] as const,
 };
 ```

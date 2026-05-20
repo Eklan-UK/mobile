@@ -11,7 +11,9 @@ import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 
+import { FreeTalkDueBadge } from '@/components/practice/FreeTalkDueBadge';
 import { AppText, BoldText } from '@/components/ui';
+import { useFreeTalkCompletedScenarioIds } from '@/hooks/useFreeTalkCompletedScenarioIds';
 import tw from '@/lib/tw';
 import { aiService } from '@/services/ai.service';
 import { useAuthStore } from '@/store/auth-store';
@@ -24,6 +26,7 @@ import {
   type FreeTalkScenarioSummary,
   type FreeTalkHistoryEntryV1,
 } from '@/types/free-talk';
+import { shouldShowFreeTalkDueIndicator } from '@/utils/freeTalkScenarioCompletion';
 import { format } from 'date-fns';
 
 type Tab = 'ongoing' | 'history';
@@ -33,10 +36,15 @@ type Tab = 'ongoing' | 'history';
 const ScenarioCard = React.memo(function ScenarioCard({
   item,
   onPress,
+  completed,
 }: {
   item: FreeTalkScenarioSummary;
   onPress: (id: string) => void;
+  completed: boolean;
 }) {
+  const completionDate = item.completionDate;
+  const showDue = shouldShowFreeTalkDueIndicator(completionDate, completed);
+
   return (
     <TouchableOpacity
       style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-4 flex-row items-center gap-3 mb-3`}
@@ -53,6 +61,11 @@ const ScenarioCard = React.memo(function ScenarioCard({
         <AppText style={tw`text-xs text-[#777] dark:text-neutral-400`}>
           {formatScenarioType(item.scenarioType)}
         </AppText>
+        {showDue && completionDate ? (
+          <View style={tw`mt-1`}>
+            <FreeTalkDueBadge completionDate={completionDate} compact />
+          </View>
+        ) : null}
       </View>
       <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
     </TouchableOpacity>
@@ -155,6 +168,7 @@ export default function FreeTalkHubScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('ongoing');
   const [historyEntries, setHistoryEntries] = useState<FreeTalkHistoryEntryV1[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const { data: completedScenarioIds } = useFreeTalkCompletedScenarioIds(true);
 
   // Scenarios query
   const {
@@ -207,9 +221,13 @@ export default function FreeTalkHubScreen() {
 
   const renderScenario = useCallback(
     ({ item }: { item: FreeTalkScenarioSummary }) => (
-      <ScenarioCard item={item} onPress={handleScenarioPress} />
+      <ScenarioCard
+        item={item}
+        onPress={handleScenarioPress}
+        completed={completedScenarioIds?.has(item.id) ?? false}
+      />
     ),
-    [handleScenarioPress]
+    [handleScenarioPress, completedScenarioIds]
   );
 
   const renderHistory = useCallback(

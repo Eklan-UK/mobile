@@ -6,7 +6,15 @@ import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import { useConfidence } from "@/hooks/useConfidence";
 import { useDailyFocusToday } from "@/hooks/useDailyFocusToday";
 import { useHomeProgress } from "@/hooks/useHomeProgress";
+import { AssignedFreeTalkHomeCard } from "@/components/practice/AssignedFreeTalkHomeCard";
 import { useDrills } from "@/hooks/useDrills";
+import { useFreeTalkCompletedScenarioIds } from "@/hooks/useFreeTalkCompletedScenarioIds";
+import { useFreeTalkScenarios } from "@/hooks/useFreeTalkScenarios";
+import {
+  buildAssignedPracticeFeed,
+  takeAssignedPracticeFeed,
+  type AssignedPracticeFeedItem,
+} from "@/utils/assignedPracticeFeed";
 import { usePrefetch } from "@/hooks/usePrefetch";
 import { usePronunciation } from "@/hooks/usePronunciation";
 import { useUserStreakCount } from "@/hooks/useUserStreakCount";
@@ -16,6 +24,7 @@ import { format } from "date-fns";
 import tw from "@/lib/tw";
 import BellIcon from "@/assets/icons/bell.svg";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, memo, useMemo } from "react";
@@ -632,17 +641,37 @@ export default function HomeScreen() {
   } = useDailyFocusToday();
 
   const { data: drillsData, isLoading: isDrillsLoading } = useDrills(undefined, 50);
+  const {
+    data: freeTalkScenarios = [],
+    isLoading: isFreeTalkLoading,
+    refetch: refetchFreeTalk,
+  } = useFreeTalkScenarios(isSubscribed);
+  const { data: completedFreeTalkIds } = useFreeTalkCompletedScenarioIds(isSubscribed);
 
-  const assignedDrills = useMemo(() => {
-    const list = drillsData?.drills ?? [];
-    return [...list]
-      .sort((a, b) => {
-        const aDate = (a as any).assignedAt ?? (a.drill as any)?.date ?? "";
-        const bDate = (b as any).assignedAt ?? (b.drill as any)?.date ?? "";
-        return bDate.localeCompare(aDate);
-      })
-      .slice(0, 4);
-  }, [drillsData]);
+  useFocusEffect(
+    useCallback(() => {
+      if (isSubscribed) {
+        void refetchFreeTalk();
+      }
+    }, [isSubscribed, refetchFreeTalk])
+  );
+
+  const assignedPracticeFeed = useMemo(() => {
+    const feed = buildAssignedPracticeFeed(
+      drillsData?.drills ?? [],
+      freeTalkScenarios
+    );
+    return takeAssignedPracticeFeed(feed, 4);
+  }, [drillsData?.drills, freeTalkScenarios]);
+
+  const isAssignedPracticeLoading = isDrillsLoading || (isSubscribed && isFreeTalkLoading);
+
+  const handleFreeTalkPress = useCallback((scenarioId: string) => {
+    router.push({
+      pathname: "/practice/free-talk/session",
+      params: { scenarioId },
+    });
+  }, []);
 
   const continuePracticeAssignment = useMemo(() => {
     const list = drillsData?.drills ?? [];
@@ -856,24 +885,34 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <View style={tw`gap-3 mt-2`}>
-              {isDrillsLoading ? (
+              {isAssignedPracticeLoading ? (
                 <View style={[styles.emptyState, { backgroundColor: p.emptyStateBg }]}>
                   <AppText style={[tw`text-sm`, { color: p.emptyStateText }]}>Loading drills…</AppText>
                 </View>
-              ) : assignedDrills.length === 0 ? (
+              ) : assignedPracticeFeed.length === 0 ? (
                 <View style={[styles.emptyState, { backgroundColor: p.emptyStateBg }]}>
                   <AppText style={[tw`text-sm`, { color: p.emptyStateText }]}>
                     No drills assigned yet
                   </AppText>
                 </View>
               ) : (
-                assignedDrills.map((assignment) => (
-                  <DrillCard
-                    key={assignment.assignmentId}
-                    assignment={assignment}
-                    onPress={() => handleDrillPress(assignment)}
-                  />
-                ))
+                assignedPracticeFeed.map((item: AssignedPracticeFeedItem) =>
+                  item.kind === "drill" ? (
+                    <DrillCard
+                      key={item.assignment.assignmentId}
+                      assignment={item.assignment}
+                      onPress={() => handleDrillPress(item.assignment)}
+                    />
+                  ) : (
+                    <AssignedFreeTalkHomeCard
+                      key={`free-talk-${item.scenario.id}`}
+                      scenario={item.scenario}
+                      palette={p}
+                      completed={completedFreeTalkIds?.has(item.scenario.id)}
+                      onPress={() => handleFreeTalkPress(item.scenario.id)}
+                    />
+                  )
+                )
               )}
             </View>
           </View>

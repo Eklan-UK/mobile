@@ -9,10 +9,9 @@
 The Practice section is the core learning engine. It contains:
 
 1. **Eklan Free Talk** — AI-driven open conversation via text or voice
-2. **Pressure Test** — Timed 3-turn scenario practice with analysis
-3. **Pronunciation Practice** — Word/sentence scoring via SpeechAce
-4. **Listening Drills** — Redirects to drill runner in My Plan
-5. **Bookmark Practice** — Re-practice saved bookmark text with pronunciation scoring
+2. **Pronunciation Practice** — Word/sentence scoring via SpeechAce
+3. **Listening Drills** — Redirects to drill runner in My Plan
+4. **Bookmark Practice** — Re-practice saved bookmark text with pronunciation scoring
 
 The bottom-nav "Practice" tab maps to `/account/practice`.
 
@@ -22,12 +21,10 @@ The bottom-nav "Practice" tab maps to `/account/practice`.
 
 | Web Route | Mobile Screen | Description |
 |-----------|---------------|-------------|
-| `/account/practice` | `practice/index.tsx` | Hub: Free Talk + Pressure Test cards |
+| `/account/practice` | `practice/index.tsx` | Hub: Free Talk card |
 | `/account/practice/ai` | `practice/free-talk/index.tsx` | Session picker: topics, roles, completed drills |
 | `/account/practice/ai/session` | `practice/free-talk/session.tsx` | Main AI chat room (voice + text) |
 | `/account/practice/ai/summaries` | `practice/free-talk/summaries.tsx` | Past session summaries list |
-| `/account/practice/ai/pressure-test` | `practice/pressure-test/index.tsx` | Pressure test picker + history |
-| `/account/practice/ai/pressure-test/chat` | `practice/pressure-test/chat.tsx` | Live timed pressure test |
 | `/account/practice/pronunciation` | `practice/pronunciation/index.tsx` | Pronunciation problems list |
 | `/account/practice/pronunciation/[slug]` | `practice/pronunciation/[slug].tsx` | Word-by-word pronunciation practice |
 | `/account/practice/listening` | `practice/listening/index.tsx` | Listing drills → navigates to my-plan drill |
@@ -66,16 +63,7 @@ All paths under `/api/v1/ai/...`. All use Bearer auth.
 | POST | `/ai/tts/generate` | `{ text, voice? }` | Raw `audio/mpeg` | ElevenLabs-backed |
 | GET | `/ai/tts/voices` | — | `{ voices: Voice[] }` | Available ElevenLabs voices |
 
-### 4.3 Pressure Test
-
-| Method | Path | Body | Response | Notes |
-|--------|------|------|----------|-------|
-| POST (SSE) | `/pressure-test/chat` | `{ messages[], level: 1–20, turnNumber: 1–3, drillId?, sessionId?, isNewSession?, metadata? }` | SSE stream | AI response for each turn |
-| POST | `/pressure-test/analyze` | `{ level, drillId?, turns[], scenarioId? }` | `{ code: 'Success', data: AnalysisResult }` | After 3 turns, get feedback |
-| POST | `/pressure-test/tts` | `{ text: string, voice? }` | Raw `audio/wav` | Gemini TTS for pressure test |
-| GET | `/pressure-test/sessions` | Query: `limit` (10) | `{ code: 'Success', data: PTHistory }` | Past sessions |
-
-### 4.4 Pronunciation Practice
+### 4.3 Pronunciation Practice
 
 | Method | Path | Body / Query | Response | Notes |
 |--------|------|-------------|----------|-------|
@@ -84,7 +72,7 @@ All paths under `/api/v1/ai/...`. All use Bearer auth.
 | POST | `/speechace/score` | `{ text, audioBase64, questionInfo? }` | `{ code, message, data: SpeechaceResponse }` | Immediate UI scoring |
 | POST | `/pronunciation-words/:wordId/attempt` | `{ audioBase64, passingThreshold?: 70 }` | `{ code, data: AttemptResult }` | Persists attempt + updates progress |
 
-### 4.5 Bookmark Practice
+### 4.4 Bookmark Practice
 
 | Method | Path | Response |
 |--------|------|----------|
@@ -188,29 +176,6 @@ export interface Bookmark {
   type: string;
 }
 
-// Pressure Test
-export interface PTTurn {
-  turnNumber: number;
-  aiPrompt: string;
-  studentResponseText: string;
-  latencyMs: number;
-  speedSuccess?: boolean;
-  audioDurationMs?: number;
-  audioBase64?: string;
-}
-
-export interface PTSession {
-  _id: string;
-  score?: number;
-  level: number;
-  createdAt: string;
-  turns: PTTurn[];
-}
-
-export interface PTHistory {
-  sessions: PTSession[];
-  total: number;
-}
 ```
 
 ---
@@ -219,9 +184,8 @@ export interface PTHistory {
 
 ### 6.1 Practice Hub (`practice/index.tsx`)
 
-Two cards only:
+One card:
 1. **Eklan Free Talk** → navigate to `practice/free-talk/index`
-2. **Eklan Pressure Test** → navigate to `practice/pressure-test/index`
 
 Pronunciation and Listening are NOT linked from the hub on web. Consider adding them as secondary cards on mobile for discoverability.
 
@@ -376,56 +340,7 @@ const { data } = useQuery(
 
 Render with `FlashList`. Each row shows: mode badge, topic, date, truncated summary snippet. Tap to expand in a modal.
 
-### 6.5 Pressure Test Picker (`practice/pressure-test/index.tsx`)
-
-```ts
-const { data: drills } = useQuery(['learner-drills'], fetchLearnerDrills);
-const { data: history } = useQuery(['pressure-test-sessions'], () =>
-  apiClient.get('/pressure-test/sessions?limit=10').then(r => r.data.data)
-);
-```
-
-Two tabs: **Practice** (scenario drill list) | **History** (past PT sessions).
-
-Navigate to chat:
-```ts
-router.push({
-  pathname: '/practice/pressure-test/chat',
-  params: { drillId: selectedDrill._id, level: userLevel }
-});
-```
-
-### 6.6 Pressure Test Chat (`practice/pressure-test/chat.tsx`)
-
-Three turns, timed. Each turn:
-
-```ts
-// 1. Fetch AI turn (SSE)
-const chunks = await fetchSSE('/pressure-test/chat', 'POST', {
-  messages: history,
-  level: studentLevel,
-  turnNumber: currentTurn,   // 1, 2, or 3
-  drillId,
-  sessionId,
-  isNewSession: currentTurn === 1,
-});
-
-// 2. Play WAV TTS for AI prompt
-const wavResponse = await apiClient.post('/pressure-test/tts', { text: aiText }, { responseType: 'arraybuffer' });
-await playWavBuffer(wavResponse.data);
-
-// 3. Record student response with timer
-// 4. After 3 turns, call analyze:
-const analysis = await apiClient.post('/pressure-test/analyze', {
-  level: studentLevel,
-  drillId,
-  turns: recordedTurns,
-});
-```
-
-**Fallback TTS**: If `/pressure-test/tts` fails, use `expo-speech` (`Speech.speak(text)`).
-
-### 6.7 Pronunciation List (`practice/pronunciation/index.tsx`)
+### 6.5 Pronunciation List (`practice/pronunciation/index.tsx`)
 
 ```ts
 const { data } = useQuery(['pronunciation-problems'], () =>
@@ -599,9 +514,6 @@ app/(student)/practice/
 │   ├── session.tsx                  ← AI chat session
 │   ├── summaries.tsx                ← Past summaries
 │   └── summary-result.tsx           ← Show summary after session
-├── pressure-test/
-│   ├── index.tsx                    ← Picker + history
-│   └── chat.tsx                     ← Live timed chat
 ├── pronunciation/
 │   ├── index.tsx                    ← Problem list
 │   ├── [slug].tsx                   ← Word practice
@@ -627,7 +539,6 @@ const audioQueue = useRef<Audio.Sound[]>([]);
 useQuery(['session-summaries'], fetchSummaries)       // stale: 60s
 useQuery(['pronunciation-problems'], fetchProblems)   // stale: 5min
 useQuery(['learner-drills', { status: 'completed' }]) // stale: 60s
-useQuery(['pressure-test-sessions'])                  // stale: 30s
 ```
 
 ---
@@ -640,7 +551,6 @@ useQuery(['pressure-test-sessions'])                  // stale: 30s
 | SSE connection drops mid-session | Retry once; if fails, show "Connection lost" with option to resume |
 | TTS endpoint fails | Continue without audio; show text only |
 | SpeechAce score ≤ 0 | Show "Unable to score — please try again" |
-| Pressure test timer runs out before response | Auto-submit what was recorded |
 | `/daily-focus/today` path from home linking here | Accept `dailyFocusId` param, route to appropriate flow |
 | Audio file > 10MB | Compress before upload or warn user to keep responses shorter |
 
@@ -648,13 +558,12 @@ useQuery(['pressure-test-sessions'])                  // stale: 30s
 
 ## 12. Acceptance Checklist
 
-- [ ] Practice hub shows Free Talk and Pressure Test cards
+- [ ] Practice hub shows Free Talk card
 - [ ] Free Talk session starts with greeting for drill-linked mode
 - [ ] Voice mode: mic records → sends to backend → AI text + audio streams back
 - [ ] Text mode: message sends → AI text streams → TTS audio plays
 - [ ] Session summary generated after exit and persisted
 - [ ] Past summaries list loads and displays correctly
-- [ ] Pressure test: 3 timed turns → analysis result shown
 - [ ] Pronunciation list loads with difficulty filters
 - [ ] Word-by-word pronunciation: record → score displayed → progress saved
 - [ ] Listening filter shows only listening drills and navigates to drill runner

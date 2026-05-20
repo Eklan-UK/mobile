@@ -32,6 +32,11 @@ export interface FreeTalkScenarioSummary {
   id: string;
   title: string;
   scenarioType: string;
+  /** Completion deadline (end of calendar day). From GET /api/v1/ai/free-talk/scenarios. */
+  completionDate?: string | null;
+  /** Present when the scenario was assigned to this learner (my-drills-style listing). */
+  assignedAt?: string;
+  assignedBy?: { firstName?: string; lastName?: string };
 }
 
 export interface FreeTalkScenario {

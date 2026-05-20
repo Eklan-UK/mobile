@@ -1,5 +1,4 @@
 import LogoWhite from "@/assets/icons/logo-white.svg";
-import LogoYellow from "@/assets/icons/logo-yellow.svg";
 import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
@@ -47,30 +46,6 @@ export default function PracticeScreen() {
                 </View>
                 <AppText style={tw`text-xs text-[#777] dark:text-neutral-400`}>
                   Speak about anything
-                </AppText>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
-            </TouchableOpacity>
-
-            {/* Eklan Pressure Test */}
-            <TouchableOpacity
-              style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-3 flex-row items-center gap-3`}
-              activeOpacity={0.7}
-              onPress={() => router.push("/practice/coming-soon")}
-            >
-              <View
-                style={tw`h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2A602C]`}
-              >
-                <LogoYellow width={24} height={24} />
-              </View>
-              <View style={tw`flex-1`}>
-                <View style={tw`flex-row items-center gap-2 mb-0.5`}>
-                  <AppText style={tw`text-sm font-bold text-[#171717] dark:text-white`}>
-                    Eklan Pressure Test
-                  </AppText>
-                </View>
-                <AppText style={tw`text-xs text-[#777] dark:text-neutral-400`}>
-                  Test your response speed in a real-life scenario.
                 </AppText>
               </View>
               <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />

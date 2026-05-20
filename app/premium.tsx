@@ -33,7 +33,6 @@ const FREE_FEATURES = [
 
 const PRO_FEATURES = [
   "Eklan Free Talk — unlimited AI conversation practice sessions",
-  "Eklan Pressure Test — timed, high-pressure AI speaking drills",
   "Assigned drills & My Plan — see everything your tutor assigns",
   "Full access to all current and future AI-powered features",
   "AI-driven feedback and scoring on every session",
@@ -113,7 +112,7 @@ export default function PremiumScreen() {
 
   const statusMessage = isPro
     ? "You have full access to AI features — dive in!"
-    : "Upgrade to Pro to unlock Eklan Free Talk, Pressure Test, and all AI features.";
+    : "Upgrade to Pro to unlock Eklan Free Talk and all AI features.";
 
   const runPostCheckoutFlow = useCallback(async () => {
     const ok = await pollUntilSubscribed(5, 2000, queryClient);
