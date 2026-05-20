@@ -306,7 +306,7 @@ See [Section 7](#7-webhook-events-handled) for events.
 
 - Assigned drills are visible but **locked** (action button shows "Pro" and morphs to "Click me" on hover/tap).
 - "View Sessions" button is visible but locked.
-- Practice (Free Talk, Pressure Test) cards are visible but locked.
+- Practice (Free Talk) card is visible but locked.
 - My Plan page (`/account/drills`) is accessible for free users — rows show a compact locked "Click me" instead of a navigate-on-tap row.
 - Navigating to any Pro-only route → `SubscriptionGuard` redirects to `/account/settings/subscriptions`.
 
@@ -381,7 +381,6 @@ If after 5 polling attempts (10 seconds) `isSubscribed` is still false, the app 
 
 ### Pro plan features
 - Eklan Free Talk — unlimited AI conversation practice sessions
-- Eklan Pressure Test — timed, high-pressure AI speaking drills
 - Full access to all current and future AI-powered features
 - AI-driven feedback and scoring on every session
 - Personalised difficulty that adapts as you improve
@@ -390,7 +389,7 @@ If after 5 polling attempts (10 seconds) `isSubscribed` is still false, the app 
 
 | State | Message shown under plan name |
 |---|---|
-| Free | "Upgrade to Pro to unlock Eklan Free Talk, Pressure Test, and all AI features." |
+| Free | "Upgrade to Pro to unlock Eklan Free Talk and all AI features." |
 | Pro | "You have full access to AI features — dive in!" |
 
 ### Locked feature hint (hover / tap tooltip)
@@ -449,7 +448,7 @@ When `user.isSubscribed === false`, individual UI elements show a locked state:
 |---|---|---|
 | Assigned drill action button (home) | Muted "Pro" button with lock icon | Morphs to green "Click me" → opens subscriptions |
 | "View Sessions" button (home) | Full-width muted outline button with lock | Morphs to green "Click me" |
-| Eklan Free Talk / Pressure Test cards | Dimmed card with swap CTA on left | "Click me" on the CTA control; tooltip follows pointer |
+| Eklan Free Talk card | Dimmed card with swap CTA on left | "Click me" on the CTA control; tooltip follows pointer |
 | My Plans drill rows | Non-navigable row with compact "Click me" on right | Green "Click me" on hover |
 | "See all" drills link (home) | Muted chip with lock icon | Green "Click me" chip on hover |
 | "My Plan" bottom nav tab | Normal link (route is allowlisted) | n/a |
@@ -537,7 +536,7 @@ The endpoint:
 #### Feature gating
 - [ ] After every app launch and after checkout, call `GET /api/v1/users/current` and store `isSubscribed`
 - [ ] Locked drill action buttons: show "Pro" badge at rest; on tap show upgrade prompt or navigate to subscriptions
-- [ ] Locked practice cards (Free Talk, Pressure Test): show locked state; on tap → subscriptions screen
+- [ ] Locked practice card (Free Talk): show locked state; on tap → subscriptions screen
 - [ ] Locked "View Sessions": show locked state; on tap → subscriptions screen
 - [ ] My Plans list: accessible for free users; rows show locked state, tap → subscriptions screen
 - [ ] Route guard equivalent: check `isSubscribed` before allowing navigation to Pro-only screens
