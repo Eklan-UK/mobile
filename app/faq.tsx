@@ -107,10 +107,6 @@ const faqData = [
     answer: "Yes, Eklan is available on both iOS and Android mobile devices, as well as through our web application. Your progress syncs across all platforms.",
   },
   {
-    question: "Do I need a subscription to use Eklan?",
-    answer: "Eklan offers both free and premium tiers. The free version includes basic lessons and features, while premium unlocks unlimited AI practice, offline access, and advanced content.",
-  },
-  {
     question: "How do I start a lesson?",
     answer: "Simply open the app, go to the Practice tab, and select a drill or scenario you'd like to work on. You can also start with the daily recommended practice from your home screen.",
   },
