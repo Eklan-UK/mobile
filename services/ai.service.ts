@@ -591,35 +591,57 @@ export const aiService = {
   },
 
   /**
-   * Transcribe an audio file via multipart POST to /api/v1/ai/transcribe.
-   * Returns the transcript string.
+   * Transcribe Free Talk audio for grading.
+   * Uses base64 JSON (reliable on Android release); falls back to /api/v1/ai/voice.
    */
   async transcribeFreeTalkAudio(audioUri: string, mimeType = 'audio/m4a'): Promise<string> {
-    try {
-      const formData = new FormData();
-      formData.append('audio', {
-        uri: audioUri,
-        name: 'recording.m4a',
-        type: mimeType,
-      } as any);
-      const response = await apiClient.post('/api/v1/ai/transcribe', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const body = response.data;
+    const fileInfo = await FileSystem.getInfoAsync(audioUri);
+    if (!fileInfo.exists) {
+      throw new Error('Audio file does not exist');
+    }
+
+    const parseTranscriptBody = (body: any): string => {
       const raw = body?.data;
       if (typeof raw === 'string') return raw;
       if (raw && typeof raw === 'object') {
         return (
-          (raw as any).transcription ??
-          (raw as any).response ??
-          (raw as any).text ??
+          (raw as { transcription?: string }).transcription ??
+          (raw as { response?: string }).response ??
+          (raw as { text?: string }).text ??
           ''
         );
       }
       return body?.transcription ?? '';
+    };
+
+    try {
+      const audioData = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: 'base64',
+      });
+
+      const response = await apiClient.post('/api/v1/ai/transcribe', {
+        audioData,
+        mimeType,
+      });
+
+      const body = response.data;
+      const ok =
+        body?.code === 'Success' ||
+        body?.success === true ||
+        response.status >= 200 && response.status < 300;
+      if (!ok && body?.code && body.code !== 'Success') {
+        throw new Error(body?.message || 'Failed to transcribe audio');
+      }
+
+      const transcript = parseTranscriptBody(body);
+      if (transcript.trim()) return transcript;
+      throw new Error('Empty transcription');
     } catch (error: any) {
-      logger.error('❌ transcribeFreeTalkAudio:', error?.message ?? error);
-      throw error;
+      logger.warn(
+        'transcribeFreeTalkAudio: /transcribe failed, falling back to /voice:',
+        error?.message ?? error
+      );
+      return this.transcribeAudio(audioUri);
     }
   },
 
@@ -687,9 +709,7 @@ export const aiService = {
           name: 'recording.m4a',
           type: audioBlob.mimeType,
         } as any);
-        const response = await apiClient.post('/api/v1/ai/free-talk/attempts', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        const response = await apiClient.post('/api/v1/ai/free-talk/attempts', formData);
         return response.data?.attempt as FreeTalkAttempt;
       } else {
         const response = await apiClient.post('/api/v1/ai/free-talk/attempts', body);

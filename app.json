@@ -2,7 +2,7 @@
   "expo": {
     "name": "Eklan",
     "slug": "mobile",
-    "version": "1.1.0",
+    "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/images/splash-icon.png",
     "scheme": "elkan",
@@ -17,16 +17,17 @@
       "bundleIdentifier": "com.eklan.ai",
       "infoPlist": {
         "NSCameraUsageDescription": "We need access to your camera to record videos for your future self messages and profile pictures.",
-        "NSMicrophoneUsageDescription": "We need access to your microphone to record your pronunciation for practice and feedback in language learning drills.",
+        "NSMicrophoneUsageDescription": "This app requires microphone access to listen to your speech and provide real-time AI feedback on your speaking skills.",
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to upload profile pictures and select videos.",
-        "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library."
+        "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 8,
       "adaptiveIcon": {
-       "foregroundImage": "./assets/images/adaptive-foreground.png",
-    "backgroundColor": "#E6F4FE"
+        "foregroundImage": "./assets/images/adaptive-foreground.png",
+        "backgroundColor": "#E6F4FE"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -67,7 +68,7 @@
         "expo-camera",
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to record videos for your future self messages and profile pictures.",
-          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone to record audio with videos.",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to analyze your pronunciation and give you real-time feedback on your speaking skills, we need access to your microphone. Your voice data is used solely to power your practice sessions.",
           "recordAudioAndroid": true
         }
       ]
@@ -82,7 +83,6 @@
         "projectId": "74671476-d20e-46aa-88fb-6dba53dbea27"
       }
     },
-    
     "owner": "algoredeem"
   }
 }

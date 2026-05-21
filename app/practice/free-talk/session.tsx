@@ -440,30 +440,9 @@ export default function FreeTalkSessionScreen() {
       await stopAndUnloadTts();
       await setAudioModeSafely({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
 
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync({
-        android: {
-          extension: '.m4a',
-          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-          audioEncoder: Audio.AndroidAudioEncoder.AAC,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: '.m4a',
-          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-          audioQuality: Audio.IOSAudioQuality.HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-        web: { mimeType: 'audio/webm', bitsPerSecond: 128000 },
-      });
-      await recording.startAsync();
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
       recordingRef.current = recording;
       recordingStartTimeRef.current = Date.now();
       setIsRecording(true);

@@ -173,9 +173,15 @@ apiClient.interceptors.request.use(
           // Explicitly delete Content-Type for FormData to let axios set it with boundary
           delete config.headers['Content-Type'];
         }
-      } else if (config.headers && config.headers['Content-Type'] && config.data instanceof FormData) {
-        // If Content-Type was set but data is FormData, remove it
-        delete config.headers['Content-Type'];
+      } else if (config.headers && config.headers['Content-Type']) {
+        // RN FormData often fails instanceof; strip preset multipart so axios adds boundary
+        const isFormData =
+          config.data instanceof FormData ||
+          (config.data && typeof config.data === 'object' && '_parts' in config.data) ||
+          (config.data?.constructor?.name === 'FormData');
+        if (isFormData) {
+          delete config.headers['Content-Type'];
+        }
       }
     }
     
