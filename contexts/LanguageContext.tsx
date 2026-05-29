@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { i18n, resolveLocale } from '@/lib/i18n';
 import { useUserCurrent } from '@/hooks/useSettings';
+import { useAuthStore } from '@/store/auth-store';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,8 @@ const LanguageContext = createContext<LanguageContextValue>({
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const { data: me } = useUserCurrent();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { data: me } = useUserCurrent({ enabled: isAuthenticated });
 
   const locale = useMemo(
     () => resolveLocale(me?.profile?.language),

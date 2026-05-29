@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -8,73 +8,77 @@ import { useAuthStore } from "@/store/auth-store";
 import { logger } from "@/utils/logger";
 
 export default function RootSplashRouter() {
-  // Get user directly from auth store (already has hasProfile from login)
-  const { isAuthenticated, hasHydrated, hydrate, user } = useAuthStore();
+  const { isAuthenticated, hasHydrated, hydrate } = useAuthStore();
+  const hydrateStarted = useRef(false);
 
   useEffect(() => {
-    // Hydrate auth state from storage
-    hydrate();
-  }, []);
+    if (hydrateStarted.current) return;
+    hydrateStarted.current = true;
+
+    void hydrate().catch((error) => {
+      logger.error("Hydrate failed:", error);
+    });
+  }, [hydrate]);
 
   useEffect(() => {
     if (!hasHydrated) return;
 
     const checkAuthAndRoute = async () => {
-      // Wait a bit for splash animation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      if (isAuthenticated) {
-        // Fire and forget session check - don't block navigation
-        useAuthStore.getState().checkSession().catch(error => {
-          logger.warn('Background session check failed:', error);
-        });
-
-        // Use cached user data immediately for fast startup
-        const cachedUser = useAuthStore.getState().user;
-        
-        if (cachedUser) {
-          const hasProfile = cachedUser.hasProfile === true || 
-                             cachedUser.role === 'admin' || 
-                             cachedUser.role === 'tutor';
-          const emailVerified =
-            cachedUser.emailVerified === true ||
-            cachedUser.isEmailVerified === true;
-          
-          logger.log('🔍 Profile check (cached):', {
-            hasProfile,
-            userHasProfile: cachedUser.hasProfile,
-            role: cachedUser.role,
-            userId: cachedUser.id
+        if (isAuthenticated) {
+          useAuthStore.getState().checkSession().catch((error) => {
+            logger.warn("Background session check failed:", error);
           });
 
-          // If email is not verified, force user back into email verification flow
-          if (!emailVerified) {
-            logger.log('📧 Email not verified, navigating to verify-email auth flow');
-            router.replace("/(auth)/auth?mode=verify-email");
-            return;
-          }
-          
-          if (hasProfile) {
-            logger.log('🏠 Navigating to main app (hasProfile: true)');
-            router.replace("/(tabs)");
+          const cachedUser = useAuthStore.getState().user;
+
+          if (cachedUser) {
+            const hasProfile =
+              cachedUser.hasProfile === true ||
+              cachedUser.role === "admin" ||
+              cachedUser.role === "tutor";
+            const emailVerified =
+              cachedUser.emailVerified === true ||
+              cachedUser.isEmailVerified === true;
+
+            logger.log("🔍 Profile check (cached):", {
+              hasProfile,
+              userHasProfile: cachedUser.hasProfile,
+              role: cachedUser.role,
+              userId: cachedUser.id,
+            });
+
+            if (!emailVerified) {
+              logger.log("📧 Email not verified, navigating to verify-email auth flow");
+              router.replace("/(auth)/auth?mode=verify-email");
+              return;
+            }
+
+            if (hasProfile) {
+              logger.log("🏠 Navigating to main app (hasProfile: true)");
+              router.replace("/(tabs)");
+            } else {
+              logger.log("🚀 Navigating to profile setup (hasProfile: false)");
+              router.replace("/(profile-setup)");
+            }
           } else {
-            logger.log('🚀 Navigating to profile setup (hasProfile: false)');
+            logger.log("⚠️ No user data in store, navigating to profile setup");
             router.replace("/(profile-setup)");
           }
         } else {
-          // No user data, go to profile setup as fallback
-          logger.log('⚠️ No user data in store, navigating to profile setup');
-          router.replace("/(profile-setup)");
+          logger.log("🔓 Not authenticated, navigating to onboarding");
+          router.replace("/(onboarding)/splash");
         }
-      } else {
-        // Not authenticated, show onboarding
-        logger.log('🔓 Not authenticated, navigating to onboarding');
+      } catch (error) {
+        logger.error("Auth routing failed:", error);
         router.replace("/(onboarding)/splash");
       }
     };
 
-    checkAuthAndRoute();
-  }, [isAuthenticated, hasHydrated]); // Removed user from dependencies to avoid re-running on every user update
+    void checkAuthAndRoute();
+  }, [isAuthenticated, hasHydrated]);
 
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
