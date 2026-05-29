@@ -4,7 +4,8 @@ import { useColorScheme, Appearance } from "react-native";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { getSemanticColors } from "@/constants/theme-tokens";
+import { logger } from "@/utils/logger";
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -81,39 +83,64 @@ export default function RootLayout() {
     "Satoshi-Light": require("@/assets/fonts/satoshi/Satoshi-Light.otf"),
   });
 
+  const updateCheckInFlight = useRef(false);
+
   useEffect(() => {
-    // Check for OTA updates on app start
-    async function checkForUpdates() {
-      if (__DEV__) {
-        // Updates are disabled in development
+    async function checkForUpdates(source: 'startup' | 'foreground') {
+      if (__DEV__) return;
+      if (!Updates.isEnabled) {
+        logger.log('[OTA] expo-updates disabled in this build');
         return;
       }
+      if (updateCheckInFlight.current) return;
+      updateCheckInFlight.current = true;
 
       try {
-        // Add a 5 second timeout to the update check so it doesn't block startup
-        const updatePromise = Updates.checkForUpdateAsync();
-        const timeoutPromise = new Promise<{isAvailable: boolean}>((_, reject) => {
-          setTimeout(() => reject(new Error('Update check timeout')), 5000);
+        logger.log('[OTA] Checking for update…', {
+          source,
+          runtimeVersion: Updates.runtimeVersion,
+          channel: Updates.channel,
+          updateId: Updates.updateId,
         });
-        
-        const update = await Promise.race([updatePromise, timeoutPromise]);
-        
-        if (update.isAvailable) {
-          // Add timeout to fetch as well — don't hang indefinitely on slow networks
-          const fetchPromise = Updates.fetchUpdateAsync();
-          const fetchTimeout = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Update fetch timeout')), 15000);
-          });
-          await Promise.race([fetchPromise, fetchTimeout]);
-          // Reload the app to apply the update
-          await Updates.reloadAsync();
+
+        const update = await Promise.race([
+          Updates.checkForUpdateAsync(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Update check timeout')), 20000);
+          }),
+        ]);
+
+        if (!update.isAvailable) {
+          logger.log('[OTA] No update available');
+          return;
         }
-      } catch {
-        // Silently fail - don't block app startup if update check fails or times out
+
+        logger.log('[OTA] Update available, downloading…');
+        await Promise.race([
+          Updates.fetchUpdateAsync(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Update fetch timeout')), 45000);
+          }),
+        ]);
+
+        logger.log('[OTA] Download complete, reloading app');
+        await Updates.reloadAsync();
+      } catch (e) {
+        logger.warn('[OTA] Update check failed (will retry on next launch):', e);
+      } finally {
+        updateCheckInFlight.current = false;
       }
     }
 
-    checkForUpdates();
+    void checkForUpdates('startup');
+
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        void checkForUpdates('foreground');
+      }
+    });
+
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {

@@ -27,9 +27,9 @@ I've added comprehensive logging throughout the authentication flow to help debu
 ```
 🔵 API Request: {
   method: "POST",
-  url: "/api/v1/auth/sign-in",
+  url: "/api/v1/auth/sign-in/email",
   baseURL: "http://localhost:3000",
-  fullURL: "http://localhost:3000/api/v1/auth/sign-in"
+  fullURL: "http://localhost:3000/api/v1/auth/sign-in/email"
 }
 ⚠️ No token available
 📤 Request data: { email: "...", password: "...", rememberMe: true }
@@ -41,7 +41,7 @@ I've added comprehensive logging throughout the authentication flow to help debu
 ```
 ✅ API Response: {
   status: 200,
-  url: "/api/v1/auth/sign-in",
+  url: "/api/v1/auth/sign-in/email",
   data: { user: {...}, session: {...}, token: "..." }
 }
 ✅ Login response received: {
@@ -98,7 +98,7 @@ OR
 ```
 ❌ API Error: {
   status: undefined,
-  url: "/api/v1/auth/sign-in",
+  url: "/api/v1/auth/sign-in/email",
   message: "Network Error",
   responseData: undefined
 }
@@ -115,7 +115,7 @@ OR
 ```
 ❌ API Error: {
   status: 401,
-  url: "/api/v1/auth/sign-in",
+  url: "/api/v1/auth/sign-in/email",
   message: "Request failed with status code 401",
   responseData: { message: "Invalid credentials" }
 }
@@ -130,7 +130,7 @@ OR
 ```
 ❌ API Error: {
   status: 400,
-  url: "/api/v1/auth/sign-in",
+  url: "/api/v1/auth/sign-in/email",
   responseData: { message: "Email is required" }
 }
 ```
@@ -144,7 +144,7 @@ OR
 ```
 ❌ API Error: {
   status: 500,
-  url: "/api/v1/auth/sign-in",
+  url: "/api/v1/auth/sign-in/email",
   responseData: { message: "Internal server error" }
 }
 ```

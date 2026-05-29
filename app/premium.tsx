@@ -1,29 +1,38 @@
 import { AppText, BoldText, Button } from "@/components/ui";
 import { useNotificationToast } from "@/contexts/NotificationToastContext";
-import { USER_CURRENT_KEY, useUserCurrent } from "@/hooks/useSettings";
+import { useUserCurrent } from "@/hooks/useSettings";
 import tw from "@/lib/tw";
-import { settingsService } from "@/services/settings.service";
 import {
-  createStripeBillingPortalSession,
-  createStripeCheckoutSession,
-} from "@/services/stripe.service";
+  getProSubscriptionProduct,
+  initAppleIap,
+  teardownAppleIap,
+} from "@/services/apple-iap.service";
+import {
+  iapErrorMessage,
+  manageSubscription,
+  pollUntilSubscribed,
+  restorePurchases,
+  startUpgrade,
+} from "@/services/billing";
 import { useAuthStore } from "@/store/auth-store";
 import { Alert } from "@/utils/alert";
 import { logger } from "@/utils/logger";
 import { isProSubscriber } from "@/utils/subscription";
 import { useQueryClient } from "@tanstack/react-query";
-import * as WebBrowser from "expo-web-browser";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
+  Platform,
   ScrollView,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
+import type { ProductSubscription } from "react-native-iap";
+
+const IS_IOS = Platform.OS === "ios";
 
 const FREE_FEATURES = [
   "Basic pronunciation practice",
@@ -72,29 +81,6 @@ function formatDate(iso: string | null | undefined): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
-async function pollUntilSubscribed(
-  maxAttempts: number,
-  intervalMs: number,
-  queryClient: ReturnType<typeof useQueryClient>
-): Promise<boolean> {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const data = await settingsService.getCurrentUser();
-      queryClient.setQueryData(USER_CURRENT_KEY, data);
-      if (isProSubscriber(data.user)) {
-        await useAuthStore.getState().checkSession();
-        return true;
-      }
-    } catch (e) {
-      logger.warn("Subscription poll attempt failed:", e);
-    }
-    if (i < maxAttempts - 1) {
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-  }
-  return false;
-}
-
 export default function PremiumScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ checkout?: string }>();
@@ -107,89 +93,149 @@ export default function PremiumScreen() {
   const expiresAt = user?.subscriptionExpiresAt;
 
   const checkoutPollStarted = useRef(false);
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [portalBusy, setPortalBusy] = useState(false);
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [manageBusy, setManageBusy] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [iapProduct, setIapProduct] = useState<ProductSubscription | null>(null);
 
   const statusMessage = isPro
     ? "You have full access to AI features — dive in!"
-    : "Upgrade to Pro to unlock Eklan Free Talk and all AI features.";
+    : IS_IOS
+      ? "Subscribe with your Apple ID to unlock Eklan Free Talk and all AI features."
+      : "Upgrade to Pro to unlock Eklan Free Talk and all AI features.";
 
-  const runPostCheckoutFlow = useCallback(async () => {
-    const ok = await pollUntilSubscribed(5, 2000, queryClient);
-    if (ok) {
-      showToast({
-        title: "Welcome to Pro!",
-        body: "AI features are now unlocked.",
-        variant: "dark",
-        duration: 4500,
-        emoji: "✨",
-      });
-    } else {
-      showToast({
-        title: "Payment received",
-        body: "Access will activate shortly — pull to refresh on this screen if it doesn't appear within a minute.",
-        variant: "dark",
-        duration: 6000,
-      });
-    }
+  const showPostPurchaseToast = useCallback(
+    (subscribed: boolean) => {
+      if (subscribed) {
+        showToast({
+          title: "Welcome to Pro!",
+          body: "AI features are now unlocked.",
+          variant: "dark",
+          duration: 4500,
+          emoji: "✨",
+        });
+      } else {
+        showToast({
+          title: IS_IOS ? "Purchase confirmed" : "Payment received",
+          body: "Access will activate shortly — pull to refresh on this screen if it doesn't appear within a minute.",
+          variant: "dark",
+          duration: 6000,
+        });
+      }
+    },
+    [showToast]
+  );
+
+  const runPostPurchaseFlow = useCallback(async () => {
+    const ok = await pollUntilSubscribed(queryClient);
+    showPostPurchaseToast(ok);
     await refetch();
-  }, [queryClient, refetch, showToast]);
+  }, [queryClient, refetch, showPostPurchaseToast]);
 
   useEffect(() => {
     if (params.checkout !== "success") return;
     if (checkoutPollStarted.current) return;
     checkoutPollStarted.current = true;
     router.replace("/premium" as never);
-    void runPostCheckoutFlow();
-  }, [params.checkout, router, runPostCheckoutFlow]);
+    void runPostPurchaseFlow();
+  }, [params.checkout, router, runPostPurchaseFlow]);
+
+  useEffect(() => {
+    if (!IS_IOS) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await initAppleIap();
+        const product = await getProSubscriptionProduct();
+        if (!cancelled) setIapProduct(product);
+      } catch (e) {
+        logger.warn("Failed to load App Store product:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      void teardownAppleIap();
+    };
+  }, []);
 
   const handleBack = () => {
     router.replace("/(tabs)/profile" as never);
   };
 
-  const openExternal = async (url: string) => {
-    if (url.startsWith("https://") || url.startsWith("http://")) {
-      await WebBrowser.openBrowserAsync(url);
-      return;
+  const handleUpgrade = async () => {
+    setUpgradeBusy(true);
+    try {
+      await startUpgrade();
+      if (IS_IOS) {
+        await runPostPurchaseFlow();
+      }
+    } catch (e: unknown) {
+      const msg = IS_IOS ? iapErrorMessage(e) : extractStripeError(e);
+      if (msg !== "Purchase cancelled.") {
+        Alert.alert(IS_IOS ? "Subscribe" : "Checkout", msg);
+      }
+    } finally {
+      setUpgradeBusy(false);
     }
-    await Linking.openURL(url);
   };
 
-  const handleUpgrade = async () => {
-    setCheckoutBusy(true);
+  const handleRestore = async () => {
+    setRestoreBusy(true);
     try {
-      const url = await createStripeCheckoutSession();
-      await openExternal(url);
+      const subscribed = await restorePurchases(queryClient);
+      if (subscribed) {
+        showPostPurchaseToast(true);
+        await refetch();
+      } else if (isPro) {
+        Alert.alert(
+          "Restore purchases",
+          "Your account already has Pro access. If features are missing, pull to refresh or sign out and back in."
+        );
+      } else {
+        Alert.alert(
+          "Restore purchases",
+          "No active Pro subscription was found for this Apple ID."
+        );
+      }
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        (e instanceof Error ? e.message : "Checkout failed.");
-      Alert.alert("Checkout", msg);
+      Alert.alert("Restore purchases", iapErrorMessage(e));
     } finally {
-      setCheckoutBusy(false);
+      setRestoreBusy(false);
     }
   };
 
   const handleManage = async () => {
-    setPortalBusy(true);
+    setManageBusy(true);
     try {
-      const url = await createStripeBillingPortalSession();
-      await openExternal(url);
-      await refetch();
-      await useAuthStore.getState().checkSession();
+      await manageSubscription();
+      if (!IS_IOS) {
+        await refetch();
+        await useAuthStore.getState().checkSession();
+      }
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        (e instanceof Error ? e.message : "Could not open billing portal.");
+      const msg = IS_IOS ? iapErrorMessage(e) : extractStripeError(e);
       Alert.alert("Billing", msg);
     } finally {
-      setPortalBusy(false);
+      setManageBusy(false);
     }
   };
 
   const handleSupport = () => {
     router.push("/contact" as never);
   };
+
+  const upgradeLabel = IS_IOS
+    ? upgradeBusy
+      ? "Processing…"
+      : iapProduct?.displayPrice
+        ? `Subscribe — ${iapProduct.displayPrice}/mo`
+        : "Subscribe to Pro"
+    : upgradeBusy
+      ? "Preparing checkout…"
+      : "Upgrade to Pro";
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900`} edges={["top", "bottom"]}>
@@ -289,14 +335,39 @@ export default function PremiumScreen() {
             </View>
 
             {isPro ? (
-              <Button onPress={handleManage} loading={portalBusy}>
-                {portalBusy ? "Opening portal…" : "Manage subscription"}
+              <Button onPress={handleManage} loading={manageBusy}>
+                {manageBusy ? "Opening…" : "Manage subscription"}
               </Button>
             ) : (
-              <Button onPress={handleUpgrade} loading={checkoutBusy}>
-                {checkoutBusy ? "Preparing checkout…" : "Upgrade to Pro"}
+              <Button onPress={handleUpgrade} loading={upgradeBusy}>
+                {upgradeLabel}
               </Button>
             )}
+
+            {IS_IOS ? (
+              <TouchableOpacity
+                onPress={handleRestore}
+                disabled={restoreBusy}
+                style={tw`mt-4 py-3 items-center`}
+                accessibilityRole="button"
+                accessibilityLabel="Restore purchases"
+              >
+                {restoreBusy ? (
+                  <ActivityIndicator color="#16a34a" size="small" />
+                ) : (
+                  <AppText style={tw`text-sm text-neutral-600 dark:text-neutral-300 font-semibold`}>
+                    Restore purchases
+                  </AppText>
+                )}
+              </TouchableOpacity>
+            ) : null}
+
+            {IS_IOS && !isPro ? (
+              <AppText style={tw`text-xs text-neutral-500 dark:text-neutral-400 text-center mt-3 leading-4 px-2`}>
+                Pro access works across devices when you sign in with the same account. Payment is handled by Apple on
+                iOS and may differ on Android or web.
+              </AppText>
+            ) : null}
 
             <TouchableOpacity onPress={handleSupport} style={tw`mt-6 py-3 items-center`}>
               <AppText style={tw`text-sm text-green-700 dark:text-green-400 font-semibold`}>
@@ -307,5 +378,12 @@ export default function PremiumScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function extractStripeError(e: unknown): string {
+  return (
+    (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+    (e instanceof Error ? e.message : "Something went wrong.")
   );
 }

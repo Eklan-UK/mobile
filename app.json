@@ -2,7 +2,7 @@
   "expo": {
     "name": "Eklan",
     "slug": "mobile",
-    "version": "1.2.4",
+    "version": "1.2.5",
     "orientation": "portrait",
     "icon": "./assets/images/splash-icon.png",
     "scheme": "elkan",
@@ -14,6 +14,7 @@
     "runtimeVersion": "1.1.0",
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.eklan.ai",
       "infoPlist": {
         "NSCameraUsageDescription": "We need access to your camera to record videos for your future self messages and profile pictures.",
@@ -21,10 +22,11 @@
         "NSPhotoLibraryUsageDescription": "We need access to your photo library to allow you to upload profile pictures and select videos.",
         "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "4"
     },
     "android": {
-      "versionCode": 8,
+      "versionCode": 9,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-foreground.png",
         "backgroundColor": "#E6F4FE"
@@ -70,6 +72,18 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to record videos for your future self messages and profile pictures.",
           "microphonePermission": "Allow $(PRODUCT_NAME) to analyze your pronunciation and give you real-time feedback on your speaking skills, we need access to your microphone. Your voice data is used solely to power your practice sessions.",
           "recordAudioAndroid": true
+        }
+      ],
+      "react-native-iap",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "kotlinVersion": "2.1.20"
+          }
         }
       ]
     ],

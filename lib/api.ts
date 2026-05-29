@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
+import { router } from 'expo-router';
 import { secureStorage } from './secure-storage';
 import { logger } from '@/utils/logger';
 
@@ -21,7 +22,7 @@ export function normalizeApiBaseUrl(raw: string): string {
 }
 
 export const API_BASE_URL = normalizeApiBaseUrl(
-  process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'
+  process.env.EXPO_PUBLIC_API_URL || 'http://app.elkan.ai'
 );
 
 const isDev = __DEV__;
@@ -234,6 +235,18 @@ apiClient.interceptors.response.use(
     }
     
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+  // Pro paywall: backend returns 402 with code SubscriptionRequired
+  if (error.response?.status === 402) {
+    const code = (error.response.data as { code?: string })?.code;
+    if (!code || code === 'SubscriptionRequired') {
+      try {
+        router.push('/premium' as never);
+      } catch (navError) {
+        logger.warn('Could not navigate to premium after 402:', navError);
+      }
+    }
+  }
 
     // If 401 and we haven't retried yet, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {

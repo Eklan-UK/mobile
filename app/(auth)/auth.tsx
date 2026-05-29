@@ -7,8 +7,9 @@ import { AppText, BoldText, Button, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useRef, useState, useEffect } from "react";
-import { TouchableOpacity, View, Platform, BackHandler, ImageBackground, StyleSheet } from "react-native";
+import React, { useRef, useState, useEffect, useCallback } from "react";
+import { TouchableOpacity, View, Platform, BackHandler, ImageBackground, StyleSheet, Pressable } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { Alert } from '@/utils/alert';
 import { SafeAreaView } from "react-native-safe-area-context";
 import ForgotPasswordSheet from "./components/ForgotPasswordSheet";
@@ -138,6 +139,15 @@ export default function AccessGatewayScreen() {
     }, 200);
   };
 
+  const goToOnboardingLanding = useCallback(() => {
+    verifyEmailOtpSheetRef.current?.dismiss();
+    forgotPasswordSheetRef.current?.dismiss();
+    successSheetRef.current?.dismiss();
+    signupSheetRef.current?.dismiss();
+    loginSheetRef.current?.dismiss();
+    router.replace("/(onboarding)/splash");
+  }, []);
+
   const handleGoogleAuth = async () => {
     try {
       setOauthLoading(true);
@@ -169,6 +179,17 @@ export default function AccessGatewayScreen() {
       setOauthLoading(false);
     }
   };
+
+  // Splash "I already have an account" → open login sheet on mount
+  useEffect(() => {
+    if (mode !== 'login') return;
+
+    const timer = setTimeout(() => {
+      loginSheetRef.current?.present();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [mode]);
 
   // If we are in "verify-email" mode (e.g. user reopened app while unverified),
   // automatically show the verify-email OTP sheet and send a fresh OTP.
@@ -210,12 +231,15 @@ export default function AccessGatewayScreen() {
     openVerifyFlow();
   }, [mode, isAuthenticated, user]);
 
-  // Handle back button to close bottom sheets
+  // Handle back: dismiss sheets first, then return to onboarding landing
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      // Close sheets in reverse order of likely visibility
       if (forgotPasswordSheetRef.current) {
         forgotPasswordSheetRef.current.dismiss();
+        return true;
+      }
+      if (verifyEmailOtpSheetRef.current) {
+        verifyEmailOtpSheetRef.current.dismiss();
         return true;
       }
       if (successSheetRef.current) {
@@ -223,7 +247,6 @@ export default function AccessGatewayScreen() {
         return true;
       }
       if (loadingSheetRef.current) {
-        // Don't allow closing during loading
         return true;
       }
       if (signupSheetRef.current) {
@@ -234,11 +257,12 @@ export default function AccessGatewayScreen() {
         loginSheetRef.current.dismiss();
         return true;
       }
-      return false;
+      goToOnboardingLanding();
+      return true;
     });
 
     return () => backHandler.remove();
-  }, []);
+  }, [goToOnboardingLanding]);
 
   return (
     <ImageBackground
@@ -252,10 +276,28 @@ export default function AccessGatewayScreen() {
         style={styles.overlay}
       />
       <SafeAreaView style={tw`flex-1`} edges={["top", "bottom"]}>
+        <View style={tw`px-4 pt-2`}>
+          <Pressable
+            onPress={goToOnboardingLanding}
+            accessibilityRole="button"
+            accessibilityLabel="Back to welcome"
+            style={tw`w-10 h-10 rounded-full bg-white/80 items-center justify-center`}
+          >
+            <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M19 12H5M12 19l-7-7 7-7"
+                stroke="#171717"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </Pressable>
+        </View>
         <View style={tw`flex-1 justify-around px-6`}>
 
           {/* Logo */}
-          <View style={tw`items-center mt-24 gap-2`}>
+          <View style={tw`items-center mt-8 gap-2`}>
             <Logo width={100} height={130} />
           </View>
 
@@ -294,18 +336,18 @@ export default function AccessGatewayScreen() {
                 {oauthLoading ? 'Signing in...' : 'Continue with Google'}
               </Button>
 
-              {/* Apple - iOS only */}
-
-              <Button
-                onPress={handleAppleAuth}
-                variant="dark"
-                style={tw`px-[40px] py-[16] rounded-full`}
-                icon={<Apple />}
-                disabled={oauthLoading || isLoading}
-              >
-                {oauthLoading ? 'Signing in...' : 'Continue with Apple'}
-              </Button>
-
+              {/* Apple — native SDK is iOS-only */}
+              {Platform.OS === 'ios' && (
+                <Button
+                  onPress={handleAppleAuth}
+                  variant="dark"
+                  style={tw`px-[40px] py-[16] rounded-full`}
+                  icon={<Apple />}
+                  disabled={oauthLoading || isLoading}
+                >
+                  {oauthLoading ? 'Signing in...' : 'Continue with Apple'}
+                </Button>
+              )}
 
             </View>
 
