@@ -91,6 +91,8 @@ export default function ProfileSetupScreen() {
         animated: true,
       });
       setCurrentStep(prevStep);
+    } else {
+      router.replace("/(onboarding)/splash");
     }
   };
 

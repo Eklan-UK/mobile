@@ -1,6 +1,13 @@
 import apiClient, { API_BASE_URL } from '@/lib/api';
 import { logger } from '@/utils/logger';
 import axios from 'axios';
+import { Platform } from 'react-native';
+
+function assertAndroidStripe(): void {
+  if (Platform.OS === 'ios') {
+    throw new Error('Stripe billing is not available on iOS. Use Apple In-App Purchase.');
+  }
+}
 
 /**
  * Defaults match docs/stripe-implementation.md. Override if your backend mounts Stripe elsewhere
@@ -23,6 +30,7 @@ function portalUnavailableMessage(): string {
 }
 
 export async function createStripeCheckoutSession(): Promise<string> {
+  assertAndroidStripe();
   try {
     const response = await apiClient.post<{ url: string }>(STRIPE_CHECKOUT_PATH, {});
     const url = response.data?.url;
@@ -40,6 +48,7 @@ export async function createStripeCheckoutSession(): Promise<string> {
 }
 
 export async function createStripeBillingPortalSession(): Promise<string> {
+  assertAndroidStripe();
   try {
     const response = await apiClient.post<{ url: string }>(STRIPE_PORTAL_PATH, {});
     const url = response.data?.url;

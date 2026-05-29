@@ -20,6 +20,8 @@ export function BackgroundPrefetcher() {
     // Handle app state changes for background prefetching
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
+        // Refresh subscription state after renewals/cancellations (webhooks update server)
+        void useAuthStore.getState().checkSession();
         // App came to foreground - prefetch stale data
         prefetchCommonData();
         // Prefetch pending and in-progress drills (most commonly accessed)

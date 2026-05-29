@@ -87,14 +87,14 @@ export default function NameStep({ data, onUpdate, onNext, onBack, isFirst, curr
         <View style={tw`flex-1 px-6 pt-5`}>
           {/* Header with back button and progress */}
           <View style={tw`flex-row items-center mb-8`}>
-            {!isFirst && (
-              <TouchableOpacity
-                onPress={onBack}
-                style={tw`w-10 h-10 rounded-full bg-gray-100 items-center justify-center`}
-              >
-                <BackArrowIcon />
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              onPress={onBack}
+              accessibilityRole="button"
+              accessibilityLabel={isFirst ? "Back to welcome" : "Back"}
+              style={tw`w-10 h-10 rounded-full bg-gray-100 items-center justify-center`}
+            >
+              <BackArrowIcon />
+            </TouchableOpacity>
             <View style={tw`flex-1 items-center`}>
               <ProgressDots current={currentStep} total={totalSteps} />
             </View>

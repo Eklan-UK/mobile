@@ -61,6 +61,36 @@ interface RegisterData {
   lastName: string;
 }
 
+/** Extract refresh token from Better Auth / verify-id-token response shapes. */
+function extractRefreshToken(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const root = payload as Record<string, unknown>;
+  const nested =
+    root.data && typeof root.data === 'object'
+      ? (root.data as Record<string, unknown>)
+      : undefined;
+  const session =
+    (root.session && typeof root.session === 'object'
+      ? root.session
+      : nested?.session && typeof nested.session === 'object'
+        ? nested.session
+        : undefined) as Record<string, unknown> | undefined;
+
+  const token =
+    root.refreshToken ??
+    nested?.refreshToken ??
+    session?.refreshToken;
+
+  return typeof token === 'string' && token.length > 0 ? token : undefined;
+}
+
+async function persistRefreshTokenIfPresent(payload: unknown): Promise<void> {
+  const refreshToken = extractRefreshToken(payload);
+  if (refreshToken) {
+    await secureStorage.setRefreshToken(refreshToken);
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   // Initial state
   user: null,
@@ -262,6 +292,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await secureStorage.setToken(token);
         invalidateTokenCache(); // Refresh in-memory cache with new token
       }
+      await persistRefreshTokenIfPresent(response.data);
       
       // Extract hasProfile from user object
       const hasProfile = user.hasProfile === true || 
@@ -372,6 +403,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await secureStorage.setToken(token);
         invalidateTokenCache(); // Refresh in-memory cache with new token
       }
+      await persistRefreshTokenIfPresent(response.data);
       
       // New users always have hasProfile: false
       const hasProfile = user.hasProfile === true || 
@@ -455,10 +487,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Sign in with Google
   signInWithGoogle: async () => {
     set({ isLoading: true, error: null });
-    
+
+    // Avoid sending a stale Bearer token to verify-id-token (401 interceptor can clear storage mid-flow)
+    await secureStorage.clearTokens();
+    invalidateTokenCache();
+
     try {
       const { signInWithGoogle } = await import('@/services/oauth.service');
-      const { user, session, token } = await signInWithGoogle();
+      const { user, session, token, refreshToken } = await signInWithGoogle();
 
       // Extract hasProfile from user object
       const hasProfile = user.hasProfile === true || 
@@ -475,6 +511,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Store credentials
       await secureStorage.setToken(token || session?.token);
       invalidateTokenCache(); // Refresh in-memory cache with new token
+      if (refreshToken) {
+        await secureStorage.setRefreshToken(refreshToken);
+      }
       await secureStorage.setUser(userWithProfile);
 
       set({
@@ -515,10 +554,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Sign in with Apple
   signInWithApple: async () => {
     set({ isLoading: true, error: null });
-    
+
+    await secureStorage.clearTokens();
+    invalidateTokenCache();
+
     try {
       const { signInWithApple } = await import('@/services/oauth.service');
-      const { user, session, token } = await signInWithApple();
+      const { user, session, token, refreshToken } = await signInWithApple();
 
       // Extract hasProfile from user object
       const hasProfile = user.hasProfile === true || 
@@ -535,6 +577,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Store credentials
       await secureStorage.setToken(token || session?.token);
       invalidateTokenCache(); // Refresh in-memory cache with new token
+      if (refreshToken) {
+        await secureStorage.setRefreshToken(refreshToken);
+      }
       await secureStorage.setUser(userWithProfile);
 
       set({

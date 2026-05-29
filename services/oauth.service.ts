@@ -40,6 +40,31 @@ export interface OAuthResult {
     userId: string;
   };
   token: string;
+  refreshToken?: string;
+}
+
+function extractRefreshTokenFromAuthPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const root = payload as Record<string, unknown>;
+  const nested =
+    root.data && typeof root.data === 'object'
+      ? (root.data as Record<string, unknown>)
+      : undefined;
+  const session =
+    (root.session && typeof root.session === 'object'
+      ? root.session
+      : nested?.session && typeof nested.session === 'object'
+        ? nested.session
+        : undefined) as Record<string, unknown> | undefined;
+
+  const refreshToken =
+    root.refreshToken ??
+    nested?.refreshToken ??
+    session?.refreshToken;
+
+  return typeof refreshToken === 'string' && refreshToken.length > 0
+    ? refreshToken
+    : undefined;
 }
 
 /**
@@ -232,16 +257,22 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
       provider: 'google',
     });
 
-    const { user, token, session } = response.data?.data || response.data;
+    const authPayload = response.data?.data || response.data;
+    const { user, token, session } = authPayload;
 
     if (!user || !token) {
       throw new Error('Invalid response from backend');
     }
 
+    const refreshToken = extractRefreshTokenFromAuthPayload(authPayload);
+
     logger.log('✅ Backend verified ID token, user:', user.email);
 
     // Store credentials
     await secureStorage.setToken(token);
+    if (refreshToken) {
+      await secureStorage.setRefreshToken(refreshToken);
+    }
     await secureStorage.setUser(user);
 
     // Extract hasProfile from user object
@@ -266,6 +297,7 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
         userId: user.id,
       },
       token: token,
+      refreshToken,
     };
   } catch (error: any) {
     // Handle cancellation errors
@@ -340,16 +372,22 @@ export async function signInWithApple(): Promise<OAuthResult> {
       lastName: credential.fullName?.familyName,
     });
 
-    const { user, token, session } = response.data?.data || response.data;
+    const authPayload = response.data?.data || response.data;
+    const { user, token, session } = authPayload;
 
     if (!user || !token) {
       throw new Error('Invalid response from backend');
     }
 
+    const refreshToken = extractRefreshTokenFromAuthPayload(authPayload);
+
     logger.log('✅ Backend verified ID token, user:', user.email);
 
     // Store credentials
     await secureStorage.setToken(token);
+    if (refreshToken) {
+      await secureStorage.setRefreshToken(refreshToken);
+    }
     await secureStorage.setUser(user);
 
     // Extract hasProfile from user object
@@ -374,6 +412,7 @@ export async function signInWithApple(): Promise<OAuthResult> {
         userId: user.id,
       },
       token: token,
+      refreshToken,
     };
   } catch (error: any) {
     if (error.code === 'ERR_REQUEST_CANCELED' || error.code === 'ERR_CANCELED' || error.code === 1001) {
