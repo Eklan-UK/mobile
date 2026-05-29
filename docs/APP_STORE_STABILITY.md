@@ -35,7 +35,7 @@ iPad App Review crashes on **Eklan 1.2.5 (build 4)** were traced to aggressive s
 
 - `newArchEnabled: false` (`app.json`, `android/gradle.properties`)
 - `experiments.reactCompiler: false`
-- `eas.json` production: `runtimeVersion.policy: "appVersion"` (tracks `expo.version`, e.g. `1.2.6`)
+- `app.json`: `runtimeVersion.policy: "appVersion"` (tracks `expo.version`, e.g. `1.2.6`) — do **not** put `runtimeVersion` under `eas.json` `build` profiles
 - Version **1.2.6**, iOS build **5**
 
 ### Error containment

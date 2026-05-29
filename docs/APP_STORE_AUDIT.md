@@ -36,7 +36,7 @@ npx expo lint                   # legacy lint debt unrelated to stability PR
 - [x] Single OTA entry: `services/ota-updates.ts` + `OtaUpdateCoordinator`
 - [x] No other `Updates.reloadAsync` except OTA policy + manual boundary restart
 - [x] `Updates.isEmergencyLaunch` respected in OTA + boundary restart
-- [x] `app.json` + `eas.json` production/preview `runtimeVersion` aligned
+- [x] `runtimeVersion` in `app.json` only (`appVersion` policy — not in `eas.json` build profiles)
 - [x] Android `gradle.properties` `newArchEnabled=false`
 - [x] `LanguageProvider` uses `enabled: isAuthenticated`
 - [x] IAP init only on `app/premium.tsx` (not root)

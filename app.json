@@ -7,7 +7,7 @@
     "icon": "./assets/images/splash-icon.png",
     "scheme": "elkan",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "updates": {
       "url": "https://u.expo.dev/74671476-d20e-46aa-88fb-6dba53dbea27",
       "checkAutomatically": "NEVER",
@@ -27,7 +27,7 @@
         "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "5"
+      "buildNumber": "7"
     },
     "android": {
       "versionCode": 9,

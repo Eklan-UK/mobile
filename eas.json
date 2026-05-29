@@ -17,9 +17,6 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
-      "runtimeVersion": {
-        "policy": "appVersion"
-      },
       "android": {
         "buildType": "apk"
       },
@@ -30,9 +27,6 @@
     "preview-device": {
       "distribution": "internal",
       "channel": "preview",
-      "runtimeVersion": {
-        "policy": "appVersion"
-      },
       "ios": {
         "simulator": false
       }
@@ -40,9 +34,6 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "runtimeVersion": {
-        "policy": "appVersion"
-      },
       "android": {
         "buildType": "app-bundle"
       }
