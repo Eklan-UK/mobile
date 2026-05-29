@@ -17,12 +17,21 @@ export function initGlobalErrorHandlers(): void {
     });
   }
 
-  const ErrorUtils = global.ErrorUtils;
+  const ErrorUtils = (global as typeof globalThis & {
+    ErrorUtils?: {
+      getGlobalHandler?: () => (error: Error, isFatal?: boolean) => void;
+      setGlobalHandler?: (handler: (error: Error, isFatal?: boolean) => void) => void;
+    };
+  }).ErrorUtils;
   const previousHandler = ErrorUtils?.getGlobalHandler?.();
 
   ErrorUtils?.setGlobalHandler?.((error: Error, isFatal?: boolean) => {
     reportError(isFatal ? 'Fatal JS error' : 'JS error', error);
-    previousHandler?.(error, isFatal);
+    // In production, avoid chaining the default handler for fatals (hard crash).
+    // Render errors are handled by RootErrorBoundary; OTA skips emergency launches.
+    if (__DEV__ || !isFatal) {
+      previousHandler?.(error, isFatal);
+    }
   });
 
   try {

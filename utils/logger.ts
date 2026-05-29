@@ -82,18 +82,6 @@ function safeFormatArgs(args: any[]): any[] {
   });
 }
 
-/**
- * Production-safe error reporter. Always logs to console.error (including prod).
- * Integrate crash reporting (e.g. Sentry) here when available.
- */
-export function reportError(message: string, error?: unknown): void {
-  if (error !== undefined) {
-    console.error(message, ...(error instanceof Error ? [error] : [error]));
-  } else {
-    console.error(message);
-  }
-}
-
 export const logger = {
   log: (...args: any[]) => {
     if (isDev) {

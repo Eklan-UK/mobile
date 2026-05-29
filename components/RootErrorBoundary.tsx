@@ -34,7 +34,10 @@ export class RootErrorBoundary extends Component<Props, State> {
     this.setState({ isRestarting: true });
 
     try {
-      if (Updates.isEnabled) {
+      if (
+        Updates.isEnabled &&
+        !Updates.isEmergencyLaunch
+      ) {
         await Updates.reloadAsync();
       } else {
         this.setState({ hasError: false, isRestarting: false });
