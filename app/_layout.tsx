@@ -4,27 +4,28 @@ import { useColorScheme, Appearance } from "react-native";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { AlertProvider } from "@/contexts/AlertContext";
 import { NotificationToastProvider } from "@/contexts/NotificationToastContext";
 import { BackgroundPrefetcher } from "@/components/BackgroundPrefetcher";
 import { ProfileThemeSync } from "@/components/ProfileThemeSync";
 import { SubscriptionDeepLinkHandler } from "@/components/subscription/SubscriptionDeepLinkHandler";
-import * as Updates from "expo-updates";
+import { OtaUpdateCoordinator } from "@/components/OtaUpdateCoordinator";
+import { RootErrorBoundary } from "@/components/RootErrorBoundary";
+import { initGlobalErrorHandlers } from "@/lib/global-error-handlers";
 import * as SystemUI from "expo-system-ui";
 import tw from "@/lib/tw";
 import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { getSemanticColors } from "@/constants/theme-tokens";
-import { logger } from "@/utils/logger";
+
+initGlobalErrorHandlers();
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -83,73 +84,15 @@ export default function RootLayout() {
     "Satoshi-Light": require("@/assets/fonts/satoshi/Satoshi-Light.otf"),
   });
 
-  const updateCheckInFlight = useRef(false);
+  const appShellReady = fontsLoaded || !!fontError;
 
   useEffect(() => {
-    async function checkForUpdates(source: 'startup' | 'foreground') {
-      if (__DEV__) return;
-      if (!Updates.isEnabled) {
-        logger.log('[OTA] expo-updates disabled in this build');
-        return;
-      }
-      if (updateCheckInFlight.current) return;
-      updateCheckInFlight.current = true;
-
-      try {
-        logger.log('[OTA] Checking for update…', {
-          source,
-          runtimeVersion: Updates.runtimeVersion,
-          channel: Updates.channel,
-          updateId: Updates.updateId,
-        });
-
-        const update = await Promise.race([
-          Updates.checkForUpdateAsync(),
-          new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Update check timeout')), 20000);
-          }),
-        ]);
-
-        if (!update.isAvailable) {
-          logger.log('[OTA] No update available');
-          return;
-        }
-
-        logger.log('[OTA] Update available, downloading…');
-        await Promise.race([
-          Updates.fetchUpdateAsync(),
-          new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Update fetch timeout')), 45000);
-          }),
-        ]);
-
-        logger.log('[OTA] Download complete, reloading app');
-        await Updates.reloadAsync();
-      } catch (e) {
-        logger.warn('[OTA] Update check failed (will retry on next launch):', e);
-      } finally {
-        updateCheckInFlight.current = false;
-      }
-    }
-
-    void checkForUpdates('startup');
-
-    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') {
-        void checkForUpdates('foreground');
-      }
-    });
-
-    return () => sub.remove();
-  }, []);
-
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if (appShellReady) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [appShellReady]);
 
-  if (!fontsLoaded && !fontError) {
+  if (!appShellReady) {
     return null;
   }
 
@@ -161,11 +104,13 @@ export default function RootLayout() {
           <BottomSheetModalProvider>
             <SafeAreaProvider>
               <NotificationToastProvider>
+              <OtaUpdateCoordinator appShellReady={appShellReady} />
               <SubscriptionDeepLinkHandler />
               <BackgroundPrefetcher />
               <ProfileThemeSync />
               <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
                 <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0c0e0d' : '#2E7D32'} />
+                <RootErrorBoundary>
                 <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: stackSurface } }}>
                   <Stack.Screen name="index" options={{ headerShown: false }} />
                   {/* First-install onboarding / splash */}
@@ -192,6 +137,7 @@ export default function RootLayout() {
                     }}
                   />
                 </Stack>
+                </RootErrorBoundary>
               </ThemeProvider>
               </NotificationToastProvider>
             </SafeAreaProvider>

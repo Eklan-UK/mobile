@@ -2,16 +2,17 @@
   "expo": {
     "name": "Eklan",
     "slug": "mobile",
-    "version": "1.2.5",
+    "version": "1.2.6",
     "orientation": "portrait",
     "icon": "./assets/images/splash-icon.png",
     "scheme": "elkan",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "updates": {
-      "url": "https://u.expo.dev/74671476-d20e-46aa-88fb-6dba53dbea27"
+      "url": "https://u.expo.dev/74671476-d20e-46aa-88fb-6dba53dbea27",
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
     },
-    "runtimeVersion": "1.1.0",
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
@@ -23,7 +24,7 @@
         "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "versionCode": 9,
@@ -89,7 +90,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "router": {},
