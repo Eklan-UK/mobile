@@ -28,13 +28,17 @@ export interface AnalysisResult {
 
 interface SpeechAnalysisReviewProps {
   analysisResults: AnalysisResult[];
-  drillType: "vocabulary" | "roleplay" | "pronunciation";
+  drillType: "vocabulary" | "roleplay" | "pronunciation" | "key_phrases";
   onDone: () => void;
   onPracticeAgain: () => void;
-  // vocabulary / pronunciation only
+  // vocabulary / pronunciation / key_phrases
   totalItems?: number;
   passedItems?: number;
   itemTitles?: string[];
+  sectionHeading?: string;
+  statsLine?: string;
+  /** Prefix for accordion group titles, e.g. "Question" or "Item" (default). */
+  groupItemLabel?: string;
 }
 
 // ─── Shared icons ────────────────────────────────────────────────
@@ -292,6 +296,9 @@ function ReviewPerformanceUI({
   itemTitles,
   onDone,
   onPracticeAgain,
+  sectionHeading = "Item-by-Item Analysis",
+  statsLine: statsLineProp,
+  groupItemLabel = "Item",
 }: {
   analysisResults: AnalysisResult[];
   totalItems: number;
@@ -299,6 +306,9 @@ function ReviewPerformanceUI({
   itemTitles: string[];
   onDone: () => void;
   onPracticeAgain: () => void;
+  sectionHeading?: string;
+  statsLine?: string;
+  groupItemLabel?: string;
 }) {
   const [expandedGroupIndex, setExpandedGroupIndex] = useState<number | null>(null);
 
@@ -315,13 +325,15 @@ function ReviewPerformanceUI({
       .sort(([a], [b]) => a - b)
       .map(([idx, rows]) => {
         const title = itemTitles?.[idx]
-          ? `Item ${idx + 1}: ${itemTitles[idx]}`
-          : `Item ${idx + 1}`;
+          ? `${groupItemLabel} ${idx + 1}: ${itemTitles[idx]}`
+          : `${groupItemLabel} ${idx + 1}`;
         return { sceneIndex: idx, sceneTitle: title, rows };
       });
   }, [analysisResults, itemTitles]);
 
-  const statsLine = `${passedItems} of ${totalItems} items passed · ${analysisResults.length} scored attempts`;
+  const statsLine =
+    statsLineProp ??
+    `${passedItems} of ${totalItems} items passed · ${analysisResults.length} scored attempts`;
 
   const toggleGroup = (idx: number) => {
     setExpandedGroupIndex((prev) => (prev === idx ? null : idx));
@@ -356,7 +368,7 @@ function ReviewPerformanceUI({
 
         {/* Section heading */}
         <AppText style={tw`text-base font-bold text-neutral-900 text-center mb-4`}>
-          Item-by-Item Analysis
+          {sectionHeading}
         </AppText>
 
         {/* Item accordion list */}
@@ -602,8 +614,19 @@ export default function SpeechAnalysisReview({
   totalItems = 0,
   passedItems = 0,
   itemTitles = [],
+  sectionHeading,
+  statsLine,
+  groupItemLabel,
 }: SpeechAnalysisReviewProps) {
-  if (drillType === "vocabulary" || drillType === "pronunciation") {
+  if (
+    drillType === "vocabulary" ||
+    drillType === "pronunciation" ||
+    drillType === "key_phrases"
+  ) {
+    const defaultSection =
+      drillType === "key_phrases"
+        ? "Question-by-Question Analysis"
+        : "Item-by-Item Analysis";
     return (
       <ReviewPerformanceUI
         analysisResults={analysisResults}
@@ -612,6 +635,11 @@ export default function SpeechAnalysisReview({
         itemTitles={itemTitles}
         onDone={onDone}
         onPracticeAgain={onPracticeAgain}
+        sectionHeading={sectionHeading ?? defaultSection}
+        statsLine={statsLine}
+        groupItemLabel={
+          groupItemLabel ?? (drillType === "key_phrases" ? "Question" : "Item")
+        }
       />
     );
   }

@@ -6,6 +6,6 @@ export function useHomeProgress() {
     queryKey: ['home-progress'],
     queryFn: getHomeProgressMetrics,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    retry: 1,
+    retry: 0,
   });
 }

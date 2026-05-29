@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,11 +9,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
 
 import { FreeTalkDueBadge } from '@/components/practice/FreeTalkDueBadge';
 import { AppText, BoldText } from '@/components/ui';
 import { useFreeTalkCompletedScenarioIds } from '@/hooks/useFreeTalkCompletedScenarioIds';
+import { useFreeTalkScenarios } from '@/hooks/useFreeTalkScenarios';
+import { useIsSubscribed } from '@/hooks/useIsSubscribed';
 import tw from '@/lib/tw';
 import { aiService } from '@/services/ai.service';
 import { useAuthStore } from '@/store/auth-store';
@@ -164,28 +165,30 @@ const HistoryAccordionItem = React.memo(function HistoryAccordionItem({
 
 export default function FreeTalkHubScreen() {
   const router = useRouter();
+  const isSubscribed = useIsSubscribed();
   const user = useAuthStore((s) => s.user);
   const [activeTab, setActiveTab] = useState<Tab>('ongoing');
   const [historyEntries, setHistoryEntries] = useState<FreeTalkHistoryEntryV1[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const { data: completedScenarioIds } = useFreeTalkCompletedScenarioIds(true);
 
-  // Scenarios query
+  useLayoutEffect(() => {
+    if (!isSubscribed) {
+      router.replace('/premium');
+    }
+  }, [isSubscribed, router]);
+
+  const { data: completedScenarioIds } = useFreeTalkCompletedScenarioIds(isSubscribed);
+
   const {
-    data: scenarios,
+    data: scenarios = [],
     isLoading: scenariosLoading,
     error: scenariosError,
     refetch,
-  } = useQuery({
-    queryKey: ['free-talk-scenarios'],
-    queryFn: () => aiService.fetchFreeTalkScenarioSummaries(),
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
+  } = useFreeTalkScenarios(isSubscribed);
 
   // Load history when History tab is active
   useEffect(() => {
-    if (activeTab !== 'history' || !user?.id) return;
+    if (!isSubscribed || activeTab !== 'history' || !user?.id) return;
     let cancelled = false;
 
     async function load() {
@@ -205,7 +208,7 @@ export default function FreeTalkHubScreen() {
 
     load();
     return () => { cancelled = true; };
-  }, [activeTab, user?.id]);
+  }, [isSubscribed, activeTab, user?.id]);
 
   const handleScenarioPress = useCallback(
     (id: string) => {

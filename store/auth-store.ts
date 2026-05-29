@@ -5,7 +5,10 @@ import { router } from 'expo-router';
 import { logger } from '@/utils/logger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { notificationService } from '@/services/notification.service';
-import { isProSubscriber } from '@/utils/subscription';
+import { queryClient } from '@/lib/query-client';
+import { prefetchUserCurrent } from '@/lib/prefetch-user-current';
+import { USER_CURRENT_KEY } from '@/hooks/useSettings';
+import { isProSubscriber, mergeSubscriptionFields } from '@/utils/subscription';
 
 const PUSH_TOKEN_STORAGE_KEY = '@push_token';
 
@@ -89,6 +92,17 @@ async function persistRefreshTokenIfPresent(payload: unknown): Promise<void> {
   if (refreshToken) {
     await secureStorage.setRefreshToken(refreshToken);
   }
+}
+
+function clearUserCurrentCache(): void {
+  queryClient.removeQueries({ queryKey: USER_CURRENT_KEY });
+}
+
+/** Load `/users/current` so Pro gating matches server before first navigation. */
+async function syncUserSubscriptionFromServer<T extends User>(user: T): Promise<T> {
+  const current = await prefetchUserCurrent();
+  if (!current?.user) return user;
+  return mergeSubscriptionFields(user, current.user);
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -303,13 +317,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user.isEmailVerified === true;
       
       // Update user object with hasProfile
-      const userWithProfile = {
+      clearUserCurrentCache();
+
+      let userWithProfile = {
         ...user,
         hasProfile,
         emailVerified: emailVerified,
         subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
         isSubscribed: isProSubscriber(user),
       };
+
+      userWithProfile = await syncUserSubscriptionFromServer(userWithProfile);
 
       await secureStorage.setUser(userWithProfile);
       logger.log('✅ Credentials stored successfully');
@@ -471,7 +489,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Clear local state regardless of backend response
       await secureStorage.clearAll();
       invalidateTokenCache(); // Clear cached token on logout
-      
+      clearUserCurrentCache();
+
       set({
         user: null,
         session: null,
@@ -494,19 +513,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const { signInWithGoogle } = await import('@/services/oauth.service');
-      const { user, session, token, refreshToken } = await signInWithGoogle();
+      const { user: oauthUser, session, token, refreshToken } = await signInWithGoogle();
+      const user = oauthUser as User;
 
       // Extract hasProfile from user object
       const hasProfile = user.hasProfile === true || 
                          user.role === 'admin' || 
                          user.role === 'tutor';
       
-      const userWithProfile = {
+      clearUserCurrentCache();
+
+      let userWithProfile: User = {
         ...user,
         hasProfile,
-        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        subscriptionPlan:
+          (user.subscriptionPlan ??
+            (user as { subscription_plan?: string }).subscription_plan ??
+            'free') as User['subscriptionPlan'],
         isSubscribed: isProSubscriber(user),
       };
+
+      userWithProfile = await syncUserSubscriptionFromServer(userWithProfile);
 
       // Store credentials
       await secureStorage.setToken(token || session?.token);
@@ -560,19 +587,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const { signInWithApple } = await import('@/services/oauth.service');
-      const { user, session, token, refreshToken } = await signInWithApple();
+      const { user: oauthUser, session, token, refreshToken } = await signInWithApple();
+      const user = oauthUser as User;
 
       // Extract hasProfile from user object
       const hasProfile = user.hasProfile === true || 
                          user.role === 'admin' || 
                          user.role === 'tutor';
+
+      clearUserCurrentCache();
       
-      const userWithProfile = {
+      let userWithProfile: User = {
         ...user,
         hasProfile,
-        subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
+        subscriptionPlan:
+          (user.subscriptionPlan ??
+            (user as { subscription_plan?: string }).subscription_plan ??
+            'free') as User['subscriptionPlan'],
         isSubscribed: isProSubscriber(user),
       };
+
+      userWithProfile = await syncUserSubscriptionFromServer(userWithProfile);
 
       // Store credentials
       await secureStorage.setToken(token || session?.token);

@@ -1,6 +1,14 @@
 import apiClient from '@/lib/api';
-import { Drill, DrillsResponse, DrillStatus } from '@/types/drill.types';
+import {
+  Drill,
+  DrillsResponse,
+  DrillStatus,
+  KeyPhrasesResult,
+  PerformanceReviewSnapshot,
+} from '@/types/drill.types';
+import { normalizeDrillAssignments, shouldFetchDrillDetail } from '@/utils/drillAssignment';
 import { logger } from "@/utils/logger";
+import { isAxiosError } from 'axios';
 
 /**
  * Drill API Service
@@ -32,8 +40,9 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
   // Backend returns: { code, message, data: { drills: [...], pagination: {...} } }
   const data = response.data.data || response.data;
 
+  const rawDrills = Array.isArray(data.drills) ? data.drills : [];
   const result = {
-    drills: data.drills || [],
+    drills: normalizeDrillAssignments(rawDrills),
     pagination: data.pagination || {
       total: data.drills?.length || 0,
       page: params?.page || 1,
@@ -49,16 +58,50 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
  * Fetch single drill by ID
  * Optionally include assignmentId to get assignment-specific data
  */
-export async function getDrillById(drillId: string, assignmentId?: string): Promise<Drill> {
+export async function getDrillById(
+  drillId: string,
+  assignmentId?: string,
+  options?: { drillType?: string }
+): Promise<Drill> {
+  if (options?.drillType && !shouldFetchDrillDetail({ type: options.drillType })) {
+    throw new DrillDetailNotAvailableError(
+      'This practice mode does not use drill detail fetch.'
+    );
+  }
+
   const url = assignmentId
     ? `/api/v1/drills/${drillId}?assignmentId=${assignmentId}`
     : `/api/v1/drills/${drillId}`;
-  
-  const response = await apiClient.get(url);
-  
-  // Handle nested response
-  const data = response.data.data || response.data;
-  return data.drill || data;
+
+  try {
+    const response = await apiClient.get(url);
+    const data = response.data.data || response.data;
+    return data.drill || data;
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      throw new DrillNotFoundError(drillId, assignmentId);
+    }
+    throw error;
+  }
+}
+
+export class DrillNotFoundError extends Error {
+  readonly drillId: string;
+  readonly assignmentId?: string;
+
+  constructor(drillId: string, assignmentId?: string) {
+    super('Drill not found');
+    this.name = 'DrillNotFoundError';
+    this.drillId = drillId;
+    this.assignmentId = assignmentId;
+  }
+}
+
+export class DrillDetailNotAvailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DrillDetailNotAvailableError';
+  }
 }
 
 /**
@@ -82,6 +125,9 @@ export async function completeDrill(
     sentenceResults?: any;
     summaryResults?: any;
     listeningResults?: any;
+    fillBlankResults?: any;
+    keyPhrasesResults?: KeyPhrasesResult;
+    performanceReviewSnapshot?: PerformanceReviewSnapshot;
     deviceInfo?: string;
     platform?: 'web' | 'ios' | 'android';
   }

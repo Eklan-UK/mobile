@@ -540,7 +540,7 @@ export const aiService = {
       if (response.status === 402) throw new Error('Subscription required');
       const body = response.data;
       if (!body?.success) throw new Error(body?.message || 'Failed to fetch scenarios');
-      return body.scenarios as FreeTalkScenarioSummary[];
+      return Array.isArray(body.scenarios) ? body.scenarios : [];
     } catch (error: any) {
       if (error?.response?.status === 402) throw new Error('Subscription required');
       logger.error('❌ fetchFreeTalkScenarioSummaries:', error?.message ?? error);

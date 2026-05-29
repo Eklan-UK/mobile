@@ -59,9 +59,21 @@ export interface HomeProgressMetrics {
   speedWeeklyChange: number;
 }
 
+const EMPTY_HOME_PROGRESS: HomeProgressMetrics = {
+  accurateSentenceUsage: 0,
+  responseSpeed: 0,
+  sentenceWeeklyChange: 0,
+  speedWeeklyChange: 0,
+};
+
 export async function getHomeProgressMetrics(): Promise<HomeProgressMetrics> {
-  const response = await apiClient.get('/api/v1/progress/home');
-  return response.data?.data?.homeProgress;
+  try {
+    const response = await apiClient.get('/api/v1/progress/home');
+    return response.data?.data?.homeProgress ?? EMPTY_HOME_PROGRESS;
+  } catch {
+    // Backend 500 — keep home usable; metrics show as 0 until API recovers
+    return EMPTY_HOME_PROGRESS;
+  }
 }
 
 // ── Streak ─────────────────────────────────────────────────────

@@ -142,8 +142,8 @@ export default function MyPlanScreen() {
     data: freeTalkScenarios = [],
     isLoading: isFreeTalkLoading,
     refetch: refetchFreeTalk,
-  } = useFreeTalkScenarios(true);
-  const { data: completedFreeTalkIds } = useFreeTalkCompletedScenarioIds(true);
+  } = useFreeTalkScenarios(isSubscribed);
+  const { data: completedFreeTalkIds } = useFreeTalkCompletedScenarioIds(isSubscribed);
   // Fetch learner classes for Next Session card
   const { nextSession } = useLearnerClasses();
 
@@ -176,15 +176,21 @@ export default function MyPlanScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refetchFreeTalk();
-    }, [refetchFreeTalk])
+      if (isSubscribed) {
+        void refetchFreeTalk();
+      }
+    }, [isSubscribed, refetchFreeTalk])
   );
 
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchDrills(), refetchFreeTalk()]);
+    const tasks: Promise<unknown>[] = [refetchDrills()];
+    if (isSubscribed) {
+      tasks.push(refetchFreeTalk());
+    }
+    await Promise.all(tasks);
     setRefreshing(false);
   };
 

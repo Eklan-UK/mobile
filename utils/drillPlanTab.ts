@@ -34,9 +34,15 @@ function assignmentIsCompleted(assignment: DrillAssignment): boolean {
   return normalized === 'completed';
 }
 
+function attemptHasKeyPhrasesResults(assignment: DrillAssignment): boolean {
+  const att = resolveLatestAttempt(assignment);
+  return !!att?.keyPhrasesResults?.items?.length;
+}
+
 function rootReviewStatusIsReviewed(assignment: DrillAssignment): boolean {
   const s = readAttemptRootReviewStatus(assignment)?.toLowerCase();
-  return s === 'reviewed';
+  if (s === 'reviewed') return true;
+  return attemptHasKeyPhrasesResults(assignment);
 }
 
 /**

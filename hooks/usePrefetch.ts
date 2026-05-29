@@ -2,7 +2,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { getDrillById, getMyDrills } from '@/services/drill.service';
 import { futureSelfService } from '@/services/future-self.service';
+import type { DrillAssignment } from '@/types/drill.types';
+import { shouldFetchDrillDetail } from '@/utils/drillAssignment';
 import { drillKeys, MY_DRILLS_FULL_LIST_LIMIT } from './useDrills';
+import { isAxiosError } from 'axios';
+
+function shouldRetryDrillFetch(failureCount: number, error: unknown): boolean {
+  if (isAxiosError(error) && error.response?.status === 404) {
+    return false;
+  }
+  return failureCount < 2;
+}
 
 /**
  * Hook for prefetching data in the background
@@ -16,16 +26,26 @@ export function usePrefetch() {
    * Useful when user hovers/touches a drill card
    */
   const prefetchDrill = useCallback(
-    (drillId: string) => {
+    (drillId: string, assignmentId?: string) => {
       if (!drillId) return;
 
       queryClient.prefetchQuery({
-        queryKey: drillKeys.detail(drillId),
-        queryFn: () => getDrillById(drillId),
+        queryKey: drillKeys.detail(drillId, assignmentId),
+        queryFn: () => getDrillById(drillId, assignmentId),
         staleTime: 1000 * 60 * 10, // 10 minutes
+        retry: shouldRetryDrillFetch,
       });
     },
     [queryClient]
+  );
+
+  const prefetchDrillAssignment = useCallback(
+    (assignment: DrillAssignment) => {
+      const { drill } = assignment;
+      if (!drill?._id || !shouldFetchDrillDetail(drill)) return;
+      prefetchDrill(drill._id, assignment.assignmentId);
+    },
+    [prefetchDrill]
   );
 
   /**
@@ -85,6 +105,7 @@ export function usePrefetch() {
 
   return {
     prefetchDrill,
+    prefetchDrillAssignment,
     prefetchDrills,
     prefetchFutureSelf,
     prefetchDrillsBatch,

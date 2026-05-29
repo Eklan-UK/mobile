@@ -1,5 +1,6 @@
 import LogoWhite from "@/assets/icons/logo-white.svg";
 import { AppText } from "@/components/ui";
+import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -12,6 +13,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function PracticeScreen() {
+  const isSubscribed = useIsSubscribed();
+
   return (
     <SafeAreaView edges={["top"]} style={tw`flex-1 bg-white dark:bg-neutral-900`}>
       <ScrollView style={tw`flex-1`} showsVerticalScrollIndicator={false}>
@@ -31,7 +34,13 @@ export default function PracticeScreen() {
             <TouchableOpacity
               style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-3 flex-row items-center gap-3`}
               activeOpacity={0.7}
-              onPress={() => router.push("/practice/free-talk")}
+              onPress={() => {
+                if (!isSubscribed) {
+                  router.push("/premium");
+                  return;
+                }
+                router.push("/practice/free-talk");
+              }}
             >
               <View
                 style={tw`h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4CAF50]`}

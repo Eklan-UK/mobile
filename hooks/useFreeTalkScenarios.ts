@@ -14,6 +14,7 @@ export function useFreeTalkScenarios(enabled = true) {
     queryKey: freeTalkKeys.scenarios(),
     queryFn: () => aiService.fetchFreeTalkScenarioSummaries(),
     enabled,
+    select: (data) => data ?? [],
     staleTime: 1000 * 60 * 5,
     refetchOnMount: true,
     refetchOnReconnect: true,

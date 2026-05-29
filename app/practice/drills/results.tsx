@@ -8,7 +8,8 @@ import { ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet } from "react-native";
-import { getDrillCategory } from "@/types/drill.types";
+import { getDrillCategory, type KeyPhrasesResult } from "@/types/drill.types";
+import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
 
 export default function DrillResultsScreen() {
   const { drillId, assignmentId } = useLocalSearchParams<{
@@ -32,6 +33,11 @@ export default function DrillResultsScreen() {
   const completedAt = assignment?.completedAt ?? latest?.completedAt;
   const score = latest?.score;
   const timeSpent = latest?.timeSpent;
+  const keyPhrasesResults = latest?.keyPhrasesResults as KeyPhrasesResult | undefined;
+  const practiceType = drill ? resolveDrillPracticeType(drill) : null;
+  const isKeyPhrases =
+    !!keyPhrasesResults || practiceType === "key_phrases";
+  const runnerType = isKeyPhrases ? "key_phrases" : (drillType || practiceType || "");
 
   function formatTime(seconds?: number) {
     if (!seconds) return null;
@@ -78,7 +84,7 @@ export default function DrillResultsScreen() {
                   {difficulty ? (
                     <>
                       <AppText style={styles.metaDot}>•</AppText>
-                      <Ionicons name="target" size={12} color="#6B7280" />
+                      <Ionicons name="speedometer-outline" size={12} color="#6B7280" />
                       <AppText style={styles.metaText}>{difficulty}</AppText>
                     </>
                   ) : null}
@@ -130,6 +136,65 @@ export default function DrillResultsScreen() {
                 </View>
               </View>
 
+              {isKeyPhrases && keyPhrasesResults ? (
+                <View style={styles.scoreCard}>
+                  <BoldText style={styles.scoreCardTitle}>Key Phrases Summary</BoldText>
+                  <View style={tw`gap-3 mt-3`}>
+                    <View style={styles.scoreRow}>
+                      <AppText style={styles.scoreLabel}>Correct</AppText>
+                      <BoldText style={styles.scoreValue}>
+                        {keyPhrasesResults.correctItems}
+                      </BoldText>
+                    </View>
+                    <View style={styles.scoreRow}>
+                      <AppText style={styles.scoreLabel}>Questions</AppText>
+                      <AppText style={styles.scoreValueNeutral}>
+                        {keyPhrasesResults.totalItems}
+                      </AppText>
+                    </View>
+                    <View style={styles.scoreRow}>
+                      <AppText style={styles.scoreLabel}>Score</AppText>
+                      <BoldText style={styles.scoreValue}>
+                        {Math.round(keyPhrasesResults.score)}%
+                      </BoldText>
+                    </View>
+                  </View>
+                  <AppText style={tw`text-xs text-gray-400 mt-3`}>
+                    Reviewed — no tutor review required for key phrases drills.
+                  </AppText>
+                </View>
+              ) : null}
+
+              {isKeyPhrases && keyPhrasesResults?.items?.length ? (
+                <View style={styles.card}>
+                  <BoldText style={styles.scoreCardTitle}>Your answers</BoldText>
+                  <View style={tw`gap-4 mt-3`}>
+                    {keyPhrasesResults.items.map((item, idx) => (
+                      <View
+                        key={`${idx}-${item.prompt.slice(0, 20)}`}
+                        style={tw`border-b border-gray-100 pb-3`}
+                      >
+                        <AppText style={tw`text-xs text-gray-500 mb-1`}>
+                          Question {idx + 1}
+                        </AppText>
+                        <AppText style={tw`text-sm text-gray-800 mb-1`}>{item.prompt}</AppText>
+                        <AppText style={tw`text-sm text-gray-600`}>
+                          Your answer: {item.selectedAnswer || "—"}
+                        </AppText>
+                        {!item.isCorrect ? (
+                          <AppText style={tw`text-sm text-red-600 mt-1`}>
+                            Correct: {item.correctAnswer}
+                          </AppText>
+                        ) : null}
+                        <AppText style={tw`text-sm text-gray-500 mt-1`}>
+                          Pronunciation: {Math.round(item.pronunciationScore ?? 0)}%
+                        </AppText>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
               {/* Total attempts info */}
               {data.attempts.length > 0 && (
                 <AppText style={styles.attemptsInfo}>
@@ -150,7 +215,7 @@ export default function DrillResultsScreen() {
                   style={styles.secondaryBtn}
                   onPress={() =>
                     router.push(
-                      `/practice/drills/${drillType}/${drillId}?assignmentId=${assignmentId}` as any
+                      `/practice/drills/${runnerType}/${drillId}?assignmentId=${assignmentId}` as any
                     )
                   }
                   activeOpacity={0.85}

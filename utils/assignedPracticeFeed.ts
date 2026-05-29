@@ -1,5 +1,7 @@
 import type { DrillAssignment } from '@/types/drill.types';
+import { isFreeTalkDrillType } from '@/types/drill.types';
 import type { FreeTalkScenarioSummary } from '@/types/free-talk';
+import { resolveDrillPracticeType } from '@/utils/drillPracticeType';
 
 export type AssignedPracticeFeedItem =
   | { kind: 'drill'; assignment: DrillAssignment; sortKey: string }
@@ -13,18 +15,34 @@ function scenarioSortKey(scenario: FreeTalkScenarioSummary): string {
   return scenario.assignedAt ?? '';
 }
 
+function feedItemTitle(item: AssignedPracticeFeedItem): string {
+  if (item.kind === 'drill') {
+    return item.assignment.drill?.title ?? '';
+  }
+  return item.scenario.title ?? '';
+}
+
 /** Merge drills and Free Talk scenarios, newest first. */
 export function buildAssignedPracticeFeed(
   drills: DrillAssignment[],
-  scenarios: FreeTalkScenarioSummary[]
+  scenarios: FreeTalkScenarioSummary[] | null | undefined
 ): AssignedPracticeFeedItem[] {
+  const safeDrills = drills.filter((assignment) => {
+    if (!assignment?.assignmentId || !assignment.drill?.title) return false;
+    const practiceType = resolveDrillPracticeType(assignment.drill);
+    return !isFreeTalkDrillType(practiceType ?? undefined);
+  });
+  const safeScenarios = Array.isArray(scenarios)
+    ? scenarios.filter((scenario) => scenario?.id && scenario?.title)
+    : [];
+
   const items: AssignedPracticeFeedItem[] = [
-    ...drills.map((assignment) => ({
+    ...safeDrills.map((assignment) => ({
       kind: 'drill' as const,
       assignment,
       sortKey: drillSortKey(assignment),
     })),
-    ...scenarios.map((scenario) => ({
+    ...safeScenarios.map((scenario) => ({
       kind: 'free_talk' as const,
       scenario,
       sortKey: scenarioSortKey(scenario),
@@ -34,11 +52,7 @@ export function buildAssignedPracticeFeed(
   return items.sort((a, b) => {
     const cmp = b.sortKey.localeCompare(a.sortKey);
     if (cmp !== 0) return cmp;
-    const titleA =
-      a.kind === 'drill' ? a.assignment.drill.title : a.scenario.title;
-    const titleB =
-      b.kind === 'drill' ? b.assignment.drill.title : b.scenario.title;
-    return titleA.localeCompare(titleB);
+    return feedItemTitle(a).localeCompare(feedItemTitle(b));
   });
 }
 

@@ -112,3 +112,38 @@ eas update:rollback --channel production
 1. `eas update:list --branch production` — note any update with `runtimeVersion` **1.1.0** still active on `production`.
 2. If suspect bundle exists: `eas update:rollback --channel production` **before** or immediately when shipping **1.2.6** so reviewers do not receive incompatible JS.
 3. After 1.2.6 is live, publish OTAs only with runtime **1.2.6** (`appVersion` policy).
+
+## TestFlight: Pro / Free tier QA (1.2.6 build 7+)
+
+Confirm TestFlight shows **Eklan 1.2.6 (7)** before testing. Crashes that show **“Something went wrong”** + **Restart** are from `RootErrorBoundary` (JS error), not an outdated binary by itself.
+
+### Pre-checks (API)
+
+| Check | Endpoint / action |
+|-------|-------------------|
+| Build version | TestFlight app info → **1.2.6 (7)** |
+| Pro flag | `GET /api/v1/users/current` → `user.isSubscribed`, `subscriptionPlan` |
+| Free Talk list | Same Pro user → `GET /api/v1/ai/free-talk/scenarios` → `scenarios` must be a **JSON array** (not `null`) |
+
+### Repro matrix
+
+**Free account**
+
+- [ ] Email login → lands on Home (no error boundary)
+- [ ] Home → no Free Talk cards / no Pro-only API errors in logs
+- [ ] Plan tab → redirects to Premium (or tab blocked)
+- [ ] Practice → Free Talk → Premium (no hub crash)
+- [ ] Deep link `/practice/free-talk` → Premium redirect
+
+**Pro account**
+
+- [ ] Email login → Home loads assigned practice (drills + Free Talk if assigned)
+- [ ] Plan tab → Ongoing shows merged drill + Free Talk feed
+- [ ] Practice → Free Talk hub loads scenarios
+- [ ] Open a Free Talk session → no crash on back
+
+### If boundary still appears
+
+1. Note exact step (login vs Plan vs Free Talk hub).
+2. Capture device log / TestFlight crash report (stack confirms `scenarios.map` vs sort vs other).
+3. Verify `users/current` matches expected tier immediately after login.

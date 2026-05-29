@@ -1,6 +1,8 @@
 import { completeDrill, getDrillById, getMyDrills } from '@/services/drill.service';
 import { DrillStatus } from '@/types/drill.types';
+import { shouldFetchDrillDetail } from '@/utils/drillAssignment';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 
 /** Full-list page size for `my-drills` (My Plan, warm-up prefetch). docs/MOBILE_MY_PLAN.md §4 — high `limit` for main listing. */
 export const MY_DRILLS_FULL_LIST_LIMIT = 200;
@@ -14,7 +16,8 @@ export const drillKeys = {
   list: (status?: DrillStatus, limit?: number) =>
     [...drillKeys.lists(), { status, limit }] as const,
   details: () => [...drillKeys.all, 'detail'] as const,
-  detail: (id: string) => [...drillKeys.details(), id] as const,
+  detail: (id: string, assignmentId?: string) =>
+    [...drillKeys.details(), id, assignmentId ?? ''] as const,
 };
 
 /**
@@ -38,15 +41,30 @@ export function useDrills(status?: DrillStatus, limit?: number) {
  * @param drillId - The drill ID to fetch
  * @param enabled - Whether the query should run (default: true)
  */
-export function useDrill(drillId: string, enabled: boolean = true) {
+export function useDrill(
+  drillId: string,
+  options?: { enabled?: boolean; assignmentId?: string; drillType?: string }
+) {
+  const enabled = options?.enabled ?? true;
+  const canFetch =
+    !!drillId &&
+    shouldFetchDrillDetail(
+      options?.drillType ? { type: options.drillType } : { type: undefined }
+    );
+
   return useQuery({
-    queryKey: drillKeys.detail(drillId),
-    queryFn: () => getDrillById(drillId),
-    enabled: enabled && !!drillId,
+    queryKey: drillKeys.detail(drillId, options?.assignmentId),
+    queryFn: () => getDrillById(drillId, options?.assignmentId),
+    enabled: enabled && canFetch,
     staleTime: 1000 * 60 * 10, // 10 minutes
-    // Enable background refetching - will refetch when data becomes stale
     refetchOnMount: true,
     refetchOnReconnect: true,
+    retry: (failureCount, error) => {
+      if (isAxiosError(error) && error.response?.status === 404) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 }
 

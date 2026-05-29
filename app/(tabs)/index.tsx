@@ -18,7 +18,13 @@ import {
 import { usePrefetch } from "@/hooks/usePrefetch";
 import { usePronunciation } from "@/hooks/usePronunciation";
 import { useUserStreakCount } from "@/hooks/useUserStreakCount";
-import { DrillAssignment, DrillType, getDrillCategory } from "@/types/drill.types";
+import {
+  DrillAssignment,
+  DrillType,
+  getDrillCategory,
+  isFreeTalkDrillType,
+} from "@/types/drill.types";
+import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { format } from "date-fns";
 import tw from "@/lib/tw";
@@ -49,6 +55,8 @@ const CATEGORY_COLORS: Record<DrillType, string> = {
   sentence: "#6155F5",
   fill_blank: "#00C0E8",
   pronunciation: "#6155F5",
+  key_phrases: "#D97706",
+  eklan_free_talk: "#0088FF",
 };
 
 /* ─── Small SVG icons ─────────────────────────────────────── */
@@ -417,6 +425,8 @@ const DRILL_EMOJI: Record<DrillType, string> = {
   sentence: "💬",
   fill_blank: "📝",
   pronunciation: "🗣️",
+  key_phrases: "🗝️",
+  eklan_free_talk: "💬",
 };
 
 /** Pronunciation cards use a sky-blue mic (matches web / design ref), not the generic emoji. */
@@ -440,6 +450,8 @@ const DRILL_ICON_BG: Record<DrillType, string> = {
   sentence: "#F0EFFE",
   fill_blank: "#E5FAFF",
   pronunciation: "#E8F4FC",
+  key_phrases: "#FFF7ED",
+  eklan_free_talk: "#EBF5FF",
 };
 
 const DRILL_ICON_BG_DARK: Record<DrillType, string> = {
@@ -454,6 +466,8 @@ const DRILL_ICON_BG_DARK: Record<DrillType, string> = {
   sentence: "#252040",
   fill_blank: "#0F2A32",
   pronunciation: "#153243",
+  key_phrases: "#3D2A14",
+  eklan_free_talk: "#1E3A52",
 };
 
 type DrillStatus = "completed" | "missed" | "ongoing" | "active";
@@ -538,7 +552,7 @@ const DrillCard = memo(
               {difficulty && (
                 <>
                   <AppText style={[styles.drillMetaDot, { color: p.drillMetaDot }]}>•</AppText>
-                  <Ionicons name="target" size={11} color={p.drillSmallIcon} />
+                  <Ionicons name="speedometer-outline" size={11} color={p.drillSmallIcon} />
                   <AppText style={[styles.drillMeta, { color: p.drillMeta }]}>{difficulty}</AppText>
                 </>
               )}
@@ -625,7 +639,7 @@ export default function HomeScreen() {
   const isSubscribed = useIsSubscribed();
   const firstName = user?.firstName ?? "there";
 
-  const { prefetchDrill } = usePrefetch();
+  const { prefetchDrillAssignment } = usePrefetch();
   const { data: streakCount = 0 } = useUserStreakCount();
 
   const { data: pronunciation, isLoading: pronunciationLoading, weeklyChange: weeklyPronunciation } =
@@ -675,10 +689,14 @@ export default function HomeScreen() {
 
   const continuePracticeAssignment = useMemo(() => {
     const list = drillsData?.drills ?? [];
-    const open = list.filter(d => d.status !== "completed");
-    const inProgress = open.find(d => d.status === "in_progress");
+    const open = list.filter((d) => {
+      if (d.status === "completed") return false;
+      const practiceType = resolveDrillPracticeType(d.drill);
+      return !isFreeTalkDrillType(practiceType ?? undefined);
+    });
+    const inProgress = open.find((d) => d.status === "in_progress");
     if (inProgress) return inProgress;
-    return open.find(d => d.status === "pending") ?? null;
+    return open.find((d) => d.status === "pending") ?? null;
   }, [drillsData]);
 
   const showContinuePracticeCard =
@@ -702,10 +720,10 @@ export default function HomeScreen() {
         );
         return;
       }
-      prefetchDrill(assignment.drill._id);
+      prefetchDrillAssignment(assignment);
       navigateToDrill(assignment);
     },
-    [prefetchDrill, isSubscribed]
+    [prefetchDrillAssignment, isSubscribed]
   );
 
   return (
@@ -768,7 +786,7 @@ export default function HomeScreen() {
                   router.push("/premium");
                   return;
                 }
-                prefetchDrill(continuePracticeAssignment.drill._id);
+                prefetchDrillAssignment(continuePracticeAssignment);
                 navigateToDrill(continuePracticeAssignment);
               }}
             />

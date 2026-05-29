@@ -11,7 +11,9 @@ export type DrillType =
   | "sentence"
   | "listening"
   | "fill_blank"
-  | "pronunciation";
+  | "pronunciation"
+  | "key_phrases"
+  | "eklan_free_talk";
 
 export type DrillDifficulty = "beginner" | "intermediate" | "advanced";
 
@@ -70,6 +72,56 @@ export interface PronunciationItem {
   soundAudioUrl?: string;
   wordAudioUrl?: string;
   sentenceAudioUrl?: string;
+}
+
+export interface KeyPhraseItem {
+  prompt: string;
+  respondentName?: string;
+  options: string[];
+  correctAnswer: string;
+  promptAudioUrl?: string;
+}
+
+export interface KeyPhrasesResultItem {
+  prompt: string;
+  selectedAnswer: string;
+  correctAnswer: string;
+  isCorrect: boolean;
+  pronunciationScore?: number;
+  textScore?: Record<string, unknown>;
+  attempts: number;
+}
+
+export interface KeyPhrasesResult {
+  items: KeyPhrasesResultItem[];
+  totalItems: number;
+  correctItems: number;
+  score: number;
+}
+
+export interface PerformanceReviewAnalyticsRow {
+  sceneIndex: number;
+  turnIndex: number;
+  text: string;
+  score: number;
+  textScore: Record<string, unknown> | null;
+  attempts: number;
+}
+
+export interface PerformanceReviewGroup {
+  sceneIndex: number;
+  sceneTitle: string;
+  rows: PerformanceReviewAnalyticsRow[];
+}
+
+export interface PerformanceReviewSnapshot {
+  version: 1;
+  ui: "drillPerformance" | "roleplay";
+  avgScore: number;
+  statsLine: string;
+  passThreshold: number;
+  sectionHeading: string;
+  groups: PerformanceReviewGroup[];
 }
 
 export interface FillBlankItem {
@@ -137,6 +189,9 @@ export interface Drill {
   // Pronunciation fields
   pronunciation_items?: PronunciationItem[];
 
+  // Key phrases fields
+  key_phrase_items?: KeyPhraseItem[];
+
   // Metadata
   created_by: string;
   createdById?: string;
@@ -152,8 +207,8 @@ export interface Drill {
 }
 
 // Helper to get drill category display name
-export const getDrillCategory = (type: DrillType): string => {
-  const categories: Record<DrillType, string> = {
+export const getDrillCategory = (type: DrillType | string): string => {
+  const categories: Record<string, string> = {
     vocabulary: "Vocabulary",
     roleplay: "Scenario",
     matching: "Matching",
@@ -165,13 +220,12 @@ export const getDrillCategory = (type: DrillType): string => {
     listening: "Listening",
     fill_blank: "Fill in the Blank",
     pronunciation: "Pronunciation",
+    key_phrases: "Key Phrases",
+    eklan_free_talk: "Free Talk",
   };
-  // Type guard: ensure the type exists in categories
   if (type in categories) {
     return categories[type];
   }
-  // Fallback for unknown types (should never happen with proper typing)
-  console.warn(`Unknown drill type: ${type}`);
   return "Drill";
 };
 
@@ -181,23 +235,36 @@ export const formatDuration = (durationDays: number): string => {
   return `${durationDays} days`;
 };
 
+const DEFAULT_ESTIMATED_TIME = "5-15 mins";
+
 // Helper to get estimated time
-export const getEstimatedTime = (type: DrillType): string => {
-  const times: Record<DrillType, string> = {
-    vocabulary: "5-15 mins",
-    roleplay: "5-15 mins",
-    matching: "5-15 mins",
-    definition: "5-15 mins",
-    summary: "5-15 mins",
-    grammar: "5-15 mins",
-    sentence_writing: "5-15 mins",
-    sentence: "5-15 mins",
-    listening: "5-15 mins",
-    fill_blank: "5-15 mins",
-    pronunciation: "5-15 mins",
+export const getEstimatedTime = (type: DrillType | string): string => {
+  const times: Record<string, string> = {
+    vocabulary: DEFAULT_ESTIMATED_TIME,
+    roleplay: DEFAULT_ESTIMATED_TIME,
+    matching: DEFAULT_ESTIMATED_TIME,
+    definition: DEFAULT_ESTIMATED_TIME,
+    summary: DEFAULT_ESTIMATED_TIME,
+    grammar: DEFAULT_ESTIMATED_TIME,
+    sentence_writing: DEFAULT_ESTIMATED_TIME,
+    sentence: DEFAULT_ESTIMATED_TIME,
+    listening: DEFAULT_ESTIMATED_TIME,
+    fill_blank: DEFAULT_ESTIMATED_TIME,
+    pronunciation: DEFAULT_ESTIMATED_TIME,
+    key_phrases: DEFAULT_ESTIMATED_TIME,
+    eklan_free_talk: "10-20 mins",
   };
-  return times[type];
+  if (type in times) {
+    return times[type];
+  }
+  return DEFAULT_ESTIMATED_TIME;
 };
+
+export const FREE_TALK_DRILL_TYPE = "eklan_free_talk";
+
+export function isFreeTalkDrillType(type: string | undefined): boolean {
+  return type === FREE_TALK_DRILL_TYPE;
+}
 
 // Drill Assignment Types (from backend API)
 export interface DrillAttempt {
@@ -224,6 +291,8 @@ export interface DrillAttempt {
     }>;
   };
   pronunciationResults?: { reviewStatus?: 'pending' | 'reviewed' };
+  keyPhrasesResults?: KeyPhrasesResult;
+  performanceReviewSnapshot?: PerformanceReviewSnapshot;
 }
 
 export interface DrillAssignment {

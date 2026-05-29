@@ -1,8 +1,15 @@
-import { Drill, DrillType, DrillAssignment } from "@/types/drill.types";
+import {
+  Drill,
+  DrillAssignment,
+  DrillType,
+  isFreeTalkDrillType,
+} from "@/types/drill.types";
+import { resolveFreeTalkScenarioId } from "@/utils/drillAssignment";
+import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
 import { router } from "expo-router";
 
 // Route mapping for drill types
-const DRILL_ROUTE_MAP: Record<DrillType, string> = {
+const DRILL_ROUTE_MAP: Partial<Record<DrillType, string>> = {
   vocabulary: "/practice/drills/vocabulary",
   roleplay: "/practice/drills/roleplay",
   matching: "/practice/drills/matching",
@@ -14,6 +21,8 @@ const DRILL_ROUTE_MAP: Record<DrillType, string> = {
   sentence: "/practice/drills/sentence",
   fill_blank: "/practice/drills/fill_blank",
   pronunciation: "/practice/drills/pronunciation",
+  key_phrases: "/practice/drills/key_phrases",
+  eklan_free_talk: "/practice/free-talk/session",
 };
 
 /**
@@ -25,9 +34,19 @@ export const navigateToDrill = (drillOrAssignment: Drill | DrillAssignment, assi
   const drill = 'drill' in drillOrAssignment ? drillOrAssignment.drill : drillOrAssignment;
   const finalAssignmentId = assignmentId || ('assignmentId' in drillOrAssignment ? drillOrAssignment.assignmentId : undefined);
   
-  const route = DRILL_ROUTE_MAP[drill.type];
+  if (isFreeTalkDrillType(drill.type)) {
+    const scenarioId = resolveFreeTalkScenarioId(drill, finalAssignmentId);
+    router.push({
+      pathname: "/practice/free-talk/session",
+      params: scenarioId ? { scenarioId } : {},
+    });
+    return;
+  }
+
+  const practiceType = resolveDrillPracticeType(drill);
+  const route = practiceType ? DRILL_ROUTE_MAP[practiceType as DrillType] : undefined;
   if (!route) {
-    console.error(`No route mapping found for drill type: ${drill.type}`);
+    console.error(`No route mapping found for drill type: ${practiceType ?? drill.type}`);
     return;
   }
   
@@ -43,13 +62,29 @@ export const navigateToDrill = (drillOrAssignment: Drill | DrillAssignment, assi
 /**
  * Check if a drill type is supported
  */
-export const isDrillTypeSupported = (type: DrillType): boolean => {
-  return type in DRILL_ROUTE_MAP;
+export const isDrillTypeSupported = (
+  typeOrDrill: DrillType | Drill | DrillAssignment
+): boolean => {
+  const drill =
+    typeof typeOrDrill === "object" && typeOrDrill !== null && "drill" in typeOrDrill
+      ? typeOrDrill.drill
+      : typeof typeOrDrill === "object" && typeOrDrill !== null && "_id" in typeOrDrill
+        ? (typeOrDrill as Drill)
+        : null;
+  const practiceType = drill
+    ? resolveDrillPracticeType(drill)
+    : normalizePracticeTypeKey(typeOrDrill as DrillType);
+  return !!practiceType && practiceType in DRILL_ROUTE_MAP;
 };
+
+function normalizePracticeTypeKey(type: DrillType): string {
+  return resolveDrillPracticeType({ type }) ?? type;
+}
 
 /**
  * Get the route for a specific drill type
  */
 export const getDrillRoute = (type: DrillType): string | null => {
-  return DRILL_ROUTE_MAP[type] || null;
+  const key = normalizePracticeTypeKey(type);
+  return DRILL_ROUTE_MAP[key as DrillType] || null;
 };
