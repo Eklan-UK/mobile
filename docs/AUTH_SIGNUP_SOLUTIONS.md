@@ -9,10 +9,10 @@ This document is the **actionable companion** to [AUTH_SIGNUP_AUDIT.md](./AUTH_S
 Do these before spending time on lower-priority items:
 
 1. **[C1] EAS secrets:** Set `EXPO_PUBLIC_API_URL` for `preview` and `production` builds → **rebuild** native binaries.
-2. **[C2] EAS secrets:** Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Web application client) → **rebuild**.
+2. **[C2] EAS secrets:** Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Web application client) and `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (iOS client) → **rebuild** (iOS URL scheme requires native build).
 3. **[C3] Google Cloud:** Register **debug and release** Android SHA-1 fingerprints on the Android OAuth client for `com.eklan.ai`.
 4. **[C4] Backend:** Deploy and configure `POST /api/v1/auth/verify-id-token` (`GOOGLE_CLIENT_ID` = same Web Client ID as mobile; Apple keys correct).
-5. **[H1] iOS Google:** Ensure `app.config.js` runs with Web Client ID at build time (plugin adds URL scheme) → **new EAS build** (OTA alone is not enough).
+5. **[H1] iOS Google:** Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` so `app.config.js` adds the correct `iosUrlScheme` → **new EAS iOS build** (OTA alone is not enough).
 6. **[H2] Apple:** Confirm `ios.usesAppleSignIn: true` in native build → **new EAS build** for TestFlight/App Store.
 7. **[H3] Post-login 401:** After C1/C4, verify JWT from verify-id-token works on `GET /api/v1/users/current`.
 8. **Local dev:** Use a **development build**, not Expo Go, for Google on Android; point `EXPO_PUBLIC_API_URL` at your machine’s LAN IP on physical devices.
@@ -32,7 +32,8 @@ Production and preview builds bake `EXPO_PUBLIC_*` values at **build** time; mis
 2. Create secrets (names must match exactly):
    - `EXPO_PUBLIC_API_URL` — production API origin only (e.g. `https://api.example.com`). **No** trailing `/api`; `lib/api.ts` normalizes the base URL.
    - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` — **Web application** OAuth client ID (`*.apps.googleusercontent.com`).
-   - `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` (optional) — e.g. `com.googleusercontent.apps.XXXX`; if omitted, `app.config.js` derives it from the Web Client ID.
+   - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` — **iOS** OAuth client ID for bundle `com.eklan.ai`.
+   - `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` (optional) — e.g. `com.googleusercontent.apps.XXXX`; if omitted, `app.config.js` derives it from the iOS Client ID.
 3. Do **not** commit secret values in the repo or in `eas.json`.
 4. Trigger a **new** build for each profile you ship:
    ```bash
@@ -71,10 +72,17 @@ Google Sign-In fails on release Android (**DEVELOPER_ERROR** / no ID token) or i
 
 ### Solution steps — iOS
 
-1. Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in EAS Secrets (or local `.env` for dev builds).
-2. `app.config.js` adds `@react-native-google-signin/google-signin` with `iosUrlScheme` derived from the Web Client ID, or from `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` if set.
-3. Run a **new native build** after changing env or `app.config.js` (config plugins are not applied by OTA update alone).
-4. In Google Cloud, ensure an **iOS** OAuth client exists for bundle ID `com.eklan.ai` if required by your console setup.
+1. In Google Cloud Console, create an **iOS** OAuth client for bundle ID `com.eklan.ai`.
+2. Set in EAS Secrets (or local `.env` for dev builds):
+   - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Web client — ID token audience + Android)
+   - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (iOS client — native sign-in + URL scheme)
+3. `app.config.js` adds `@react-native-google-signin/google-signin` with `iosUrlScheme` derived from the **iOS** Client ID, or from `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` if set.
+4. Run a **new EAS iOS build** after changing env or `app.config.js` (`eas update` cannot change `CFBundleURLTypes`):
+
+   ```bash
+   eas secret:create --name EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID --value <ios-client-id>
+   eas build --profile development --platform ios
+   ```
 
 ### Who owns it
 
@@ -223,7 +231,7 @@ Stale docs describe browser OAuth (`elkan://auth/callback`) instead of native ID
 
 1. Follow [NATIVE_OAUTH_SETUP.md](./NATIVE_OAUTH_SETUP.md) for OAuth setup.
 2. Use [DEBUG_LOGIN.md](./DEBUG_LOGIN.md) for email sign-in path `/api/v1/auth/sign-in/email`.
-3. Add or maintain `.env.example` with **names only**: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` (optional).
+3. Add or maintain `.env.example` with **names only**: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` (optional).
 
 ### Who owns it
 
@@ -281,7 +289,8 @@ Run after EAS secrets, native rebuild, Google SHA-1, and backend verify are in p
 | Android `DEVELOPER_ERROR` | Release SHA-1 not in Google Cloud | Add EAS/production SHA-1 to Android OAuth client (**C3**) |
 | Google works, then alert “Invalid response” | Backend verify missing or wrong `GOOGLE_CLIENT_ID` | Align backend with Web Client ID (**C4**) |
 | Google fails only with old session | Stale Bearer on verify (should be fixed) | Confirm `auth-store` clears tokens before OAuth (**C5**) |
-| iOS Google UI does not return to app | URL scheme / plugin not in binary | Rebuild with `app.config.js` + Web Client ID (**H1**) |
+| iOS Google UI does not return to app | URL scheme / plugin not in binary | Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`; rebuild iOS (**H1**) |
+| iOS “not properly configured” at startup (dev) | Missing iOS client ID in `.env` | Add `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`; rebuild iOS |
 | Apple unavailable on TestFlight | Old build without entitlement | `usesAppleSignIn: true`; new EAS build (**H2**) |
 | Logged in briefly, then splash | `GET /users/current` 401 | Fix JWT from verify-id-token (**H3**) |
 | Google fails in Expo Go Android | No native module | Use dev client (**M5**) |

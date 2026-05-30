@@ -5,22 +5,39 @@ import Constants from 'expo-constants';
 import apiClient from '@/lib/api';
 import { secureStorage } from '@/lib/secure-storage';
 import { logger } from "@/utils/logger";
+import {
+  GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_WEB_CLIENT_ID,
+  assertGoogleOAuthEnvForDev,
+} from '@/constants/google-oauth';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
-// Configure Google Sign-In
-// Note: webClientId should be your Google OAuth Web Client ID from Google Cloud Console
-const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+assertGoogleOAuthEnvForDev();
 
-if (!webClientId) {
-  logger.error('⚠️ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In will not work.');
+// After adding iOS OAuth client + iosUrlScheme in app.config.js, run a new EAS iOS build
+// (dev client / TestFlight). OTA updates alone cannot change Info.plist URL schemes.
+if (__DEV__ && !GOOGLE_IOS_CLIENT_ID) {
+  logger.warn(
+    'iOS Google Sign-In is not configured. Add EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID'
+  );
+}
+
+if (!GOOGLE_WEB_CLIENT_ID) {
+  logger.error(
+    '⚠️ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In will not work.'
+  );
 } else {
   GoogleSignin.configure({
-    webClientId: webClientId, // From Google Cloud Console
-    offlineAccess: false, // We only need ID token, not access token
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+    offlineAccess: false,
     forceCodeForRefreshToken: false,
   });
-  logger.log('✅ Google Sign-In configured with webClientId');
+  logger.log('✅ Google Sign-In configured', {
+    webClientId: 'set',
+    iosClientId: GOOGLE_IOS_CLIENT_ID ? 'set' : 'missing',
+  });
 }
 
 export interface OAuthResult {
@@ -89,13 +106,22 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
     }
 
     // Verify configuration
-    const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-    if (!webClientId) {
-      const errorMsg = 'Google OAuth is not configured. EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is missing.';
+    if (!GOOGLE_WEB_CLIENT_ID) {
+      const errorMsg =
+        'Google OAuth is not configured. EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is missing.';
       logger.error('❌ ' + errorMsg);
       throw new Error(errorMsg);
     }
-    
+
+    if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) {
+      const errorMsg =
+        'Google OAuth is not configured for iOS. EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID is missing.';
+      logger.error('❌ ' + errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const webClientId = GOOGLE_WEB_CLIENT_ID;
+
     // Verify webClientId format (should be a Google OAuth 2.0 Client ID)
     if (!webClientId.includes('.apps.googleusercontent.com')) {
       logger.warn('⚠️ webClientId does not appear to be a valid Google OAuth 2.0 Client ID format');
@@ -233,7 +259,8 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
             hasIdToken: !!signInData.idToken,
             hasAccessToken: !!signInData.serverAuthCode,
           },
-          webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ? 'configured' : 'missing',
+          webClientId: GOOGLE_WEB_CLIENT_ID ? 'configured' : 'missing',
+          iosClientId: GOOGLE_IOS_CLIENT_ID ? 'configured' : 'missing',
           suggestion: 'This usually means the webClientId is incorrect or the SHA-1 fingerprint is not registered in Google Cloud Console',
         });
         
@@ -317,7 +344,8 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
       logger.error('❌ Google OAuth configuration error:', {
         message: error.message,
         code: error.code,
-        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ? 'set' : 'missing',
+        webClientId: GOOGLE_WEB_CLIENT_ID ? 'configured' : 'missing',
+        iosClientId: GOOGLE_IOS_CLIENT_ID ? 'configured' : 'missing',
       });
       throw new Error('Google Sign-In is not properly configured. Please contact support.');
     }

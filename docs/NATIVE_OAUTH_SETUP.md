@@ -45,18 +45,37 @@ SecureStore → Auth store → Navigation
 4. Find or create an **OAuth 2.0 Client ID** of type **Web application**
 5. Copy the **Client ID** (it should end with `.apps.googleusercontent.com`)
 
-### Step 2: Configure Mobile App
+### Step 2: Create iOS OAuth Client (Google Cloud Console)
 
-Add to your mobile `.env` file:
+1. In **Credentials**, create an **OAuth 2.0 Client ID** of type **iOS**.
+2. Set bundle ID to `com.eklan.ai` (must match `app.json`).
+3. Copy the **iOS Client ID** (ends with `.apps.googleusercontent.com`).
+
+The reversed client ID becomes your URL scheme, e.g. `com.googleusercontent.apps.XXXX` — `app.config.js` derives this automatically from the iOS client ID unless you set `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` explicitly.
+
+### Step 3: Configure Mobile App
+
+Copy `.env.example` to `.env` and set:
 
 ```env
 EXPO_PUBLIC_API_URL=http://localhost:3000
-EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-client-id.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-ios-client-id.apps.googleusercontent.com
+# Optional override:
+# EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME=com.googleusercontent.apps.XXXX
 ```
 
-**Important**: Use the **Web Client ID**, not the Android/iOS client ID. The native SDK needs the Web Client ID to generate ID tokens.
+| Variable | Purpose |
+|----------|---------|
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | **Web application** client ID — Android runtime + backend ID token audience |
+| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | **iOS** client ID — native iOS Google Sign-In + URL scheme derivation |
+| `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` | Optional override for `CFBundleURLTypes` |
 
-### Step 3: Android Configuration
+**Important**: `webClientId` in the SDK must be the **Web** client ID (ID token audience). iOS also requires `iosClientId` and a matching URL scheme baked into the native binary.
+
+In `__DEV__`, the app throws at startup if either Google client ID is missing.
+
+### Step 4: Android Configuration
 
 For Android, you also need to configure the app in `app.json`:
 
@@ -74,9 +93,24 @@ Or configure the SHA-1 fingerprint in Google Cloud Console:
 1. Get your app's SHA-1 fingerprint: `keytool -list -v -keystore ~/.android/debug.keystore`
 2. Add it to your OAuth 2.0 Client ID in Google Cloud Console
 
-### Step 4: iOS Configuration
+### Step 5: iOS Configuration (native rebuild required)
 
-For iOS, no additional configuration needed if using Expo managed workflow.
+1. Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` in `.env` and EAS Secrets.
+2. `app.config.js` injects `@react-native-google-signin/google-signin` with `iosUrlScheme` derived from the **iOS** client ID (not the Web client ID).
+3. Run a **new EAS iOS build** after changing these values — OTA (`eas update`) cannot update `Info.plist` URL schemes:
+
+   ```bash
+   eas secret:create --name EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID --value <ios-client-id>
+   eas build --profile development --platform ios
+   ```
+
+4. Verify the plugin in generated config:
+
+   ```bash
+   npx expo config --type public
+   ```
+
+   Look for `@react-native-google-signin/google-signin` with `iosUrlScheme: com.googleusercontent.apps.<ios-prefix>`.
 
 ## 2. Apple OAuth Setup
 
@@ -135,6 +169,13 @@ YOUR_PRIVATE_KEY_CONTENT_HERE
 - Check that `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` is set correctly
 - Verify the Client ID is for a "Web application" type
 - Ensure Google Play Services are installed (Android)
+
+**Error: "Google Sign-In is not properly configured" (iOS)**
+- Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` to your **iOS** OAuth client ID (not the Web client ID)
+- Rebuild the iOS app after changing iOS OAuth env or `app.config.js` (OTA alone is not enough)
+- Confirm `npx expo config --type public` shows `@react-native-google-signin/google-signin` with `iosUrlScheme` matching `com.googleusercontent.apps.<ios-client-prefix>`
+- Ensure the iOS OAuth client in Google Cloud uses bundle ID `com.eklan.ai`
+- Optionally set `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` if automatic derivation fails
 
 **Error: "SIGN_IN_CANCELLED"**
 - User cancelled the sign-in - this is normal, not an error

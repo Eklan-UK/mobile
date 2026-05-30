@@ -1,25 +1,11 @@
 /**
  * Dynamic Expo config — extends app.json.
- * Google Sign-In iOS URL scheme: EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME or derived from Web Client ID.
+ *
+ * Changing EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID or EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
+ * requires a new native iOS EAS build; eas update cannot update CFBundleURLTypes.
  */
 const appJson = require('./app.json');
-
-const GOOGLE_CLIENT_ID_SUFFIX = '.apps.googleusercontent.com';
-
-function getGoogleIosUrlScheme() {
-  const explicit = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME?.trim();
-  if (explicit) {
-    return explicit;
-  }
-
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
-  if (!webClientId || !webClientId.endsWith(GOOGLE_CLIENT_ID_SUFFIX)) {
-    return null;
-  }
-
-  const idPart = webClientId.slice(0, -GOOGLE_CLIENT_ID_SUFFIX.length);
-  return `com.googleusercontent.apps.${idPart}`;
-}
+const { getGoogleIosUrlScheme } = require('./config/google-oauth.cjs');
 
 /** @param {{ config?: import('expo/config').ExpoConfig }} param0 */
 module.exports = ({ config }) => {
@@ -39,9 +25,9 @@ module.exports = ({ config }) => {
         { iosUrlScheme },
       ]);
     }
-  } else if (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
+  } else if (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID) {
     console.warn(
-      '[app.config.js] Could not derive iOS Google URL scheme. Set EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME or use a Web Client ID ending in .apps.googleusercontent.com'
+      '[app.config.js] Could not derive iOS Google URL scheme from EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID. Set EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME or use an iOS Client ID ending in .apps.googleusercontent.com'
     );
   }
 
