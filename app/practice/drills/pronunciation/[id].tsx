@@ -24,13 +24,18 @@ import {
   Platform,
 } from "react-native";
 import { Alert } from "@/utils/alert";
-import { setAudioModeSafely } from "@/utils/audio";
+import {
+  ensureMicrophonePermission,
+  isRecordingPermissionError,
+  prepareAudioForRecording,
+  showMicrophonePermissionAlert,
+} from "@/utils/microphone";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import { useActivityStore } from "@/store/activity-store";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
-import ConfettiCannon from "react-native-confetti-cannon";
+import { isDrillPerfectPass } from "@/utils/drillCompletion";
 import { logger } from "@/utils/logger";
 import apiClient from "@/lib/api";
 
@@ -68,7 +73,7 @@ export default function PronunciationDrill() {
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
   const startTimeRef = useRef(Date.now());
-  const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const scrollRef = useRef<ScrollView>(null);
 
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,10 +86,7 @@ export default function PronunciationDrill() {
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [permissionResponse, requestPermission] = Audio.usePermissions();
 
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [isDrillCompleted, setIsDrillCompleted] = useState(false);
@@ -154,8 +156,6 @@ export default function PronunciationDrill() {
     loadData();
     return () => {
       isMounted = false;
-      timeoutRefs.current.forEach(clearTimeout);
-      timeoutRefs.current = [];
     };
   }, [drillId]);
 
@@ -185,14 +185,13 @@ export default function PronunciationDrill() {
 
   async function startRecording() {
     try {
-      if (permissionResponse?.status !== "granted") {
-        await requestPermission();
+      const status = await ensureMicrophonePermission();
+      if (status !== "granted") {
+        showMicrophonePermissionAlert(status);
+        return;
       }
 
-      await setAudioModeSafely({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      await prepareAudioForRecording();
 
       const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
@@ -201,7 +200,14 @@ export default function PronunciationDrill() {
       setIsRecording(true);
     } catch (err) {
       logger.error("Failed to start recording:", err);
-      Alert.alert("Error", "Failed to start recording. Please check microphone permissions.");
+      if (isRecordingPermissionError(err)) {
+        showMicrophonePermissionAlert("blocked");
+      } else {
+        Alert.alert(
+          "Couldn't start recording",
+          "Another sound may still be playing. Wait a moment and try again."
+        );
+      }
     }
   }
 
@@ -286,7 +292,6 @@ export default function PronunciationDrill() {
 
         if (passed) {
           logPronunciationAttempt(referenceText, base64);
-          handleWordPassed();
         } else {
           Alert.alert(
             "Keep Trying",
@@ -306,7 +311,6 @@ export default function PronunciationDrill() {
 
         if (passed) {
           logPronunciationAttempt(referenceText, base64);
-          handleSentencePassed();
         } else {
           Alert.alert(
             "Keep Trying",
@@ -332,46 +336,36 @@ export default function PronunciationDrill() {
       .catch((err) => logger.warn("Failed to log pronunciation attempt (non-critical):", err));
   };
 
-  const handleWordPassed = () => {
-    setShowSuccess(true);
-    setShowConfetti(true);
-    const t = setTimeout(() => {
-      setShowConfetti(false);
-      setShowSuccess(false);
-    }, 2000);
-    timeoutRefs.current.push(t);
-  };
+  const handleMoveToNextItem = () => {
+    const progress = itemProgress[currentItemIndex];
+    if (!progress?.sentencePassed) {
+      Alert.alert(
+        "Sentence Step Required",
+        `Please pass the sentence pronunciation (${PASS_THRESHOLD}%+) before continuing.`
+      );
+      return;
+    }
 
-  const handleSentencePassed = () => {
-    setShowSuccess(true);
-    setShowConfetti(true);
+    const total = drill?.pronunciation_items?.length || 1;
+    const isLastItem = currentItemIndex >= total - 1;
 
-    const totalItems = drill?.pronunciation_items?.length || 1;
-    const isLastItem = currentItemIndex >= totalItems - 1;
-
-    const t = setTimeout(() => {
-      setShowConfetti(false);
-      setShowSuccess(false);
-
-      if (!isLastItem) {
-        setCurrentItemIndex((prev) => prev + 1);
-        setCurrentStep("word");
-        setIsBookmarked(false);
-      } else {
-        if (drill) {
-          const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
-          addRecentActivity({
-            id: drill._id,
-            title: drill.title,
-            type: drill.type,
-            durationSeconds,
-            score: 100,
-          });
-        }
-        setShowReview(true);
+    if (!isLastItem) {
+      setCurrentItemIndex((prev) => prev + 1);
+      setCurrentStep("word");
+      setIsBookmarked(false);
+    } else {
+      if (drill) {
+        const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
+        addRecentActivity({
+          id: drill._id,
+          title: drill.title,
+          type: drill.type,
+          durationSeconds,
+          score: 100,
+        });
       }
-    }, 2000);
-    timeoutRefs.current.push(t);
+      setShowReview(true);
+    }
   };
 
   const handleRecord = () => {
@@ -404,8 +398,6 @@ export default function PronunciationDrill() {
       };
       return updated;
     });
-    setShowSuccess(false);
-    setShowConfetti(false);
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "word"))
     );
@@ -421,8 +413,6 @@ export default function PronunciationDrill() {
       };
       return updated;
     });
-    setShowSuccess(false);
-    setShowConfetti(false);
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "sentence"))
     );
@@ -512,6 +502,18 @@ export default function PronunciationDrill() {
     (r) => r.itemIndex === currentItemIndex && r.step === "sentence"
   ).length;
 
+  useEffect(() => {
+    if (processing) return;
+    const hasFeedback =
+      currentStep === "word" ? !!currentWordResult : !!currentSentenceResult;
+    if (!hasFeedback) return;
+    const id = setTimeout(
+      () => scrollRef.current?.scrollToEnd({ animated: true }),
+      100
+    );
+    return () => clearTimeout(id);
+  }, [processing, currentStep, currentWordResult, currentSentenceResult]);
+
   // ── Screens ──────────────────────────────────────────────────────────────
 
   if (showReview && !isDrillCompleted && drill) {
@@ -527,8 +529,6 @@ export default function PronunciationDrill() {
           setShowReview(false);
           setCurrentItemIndex(0);
           setCurrentStep("word");
-          setShowSuccess(false);
-          setShowConfetti(false);
           setAnalysisResults([]);
           setIsBookmarked(false);
           startTimeRef.current = Date.now();
@@ -546,13 +546,23 @@ export default function PronunciationDrill() {
   }
 
   if (isDrillCompleted && drill) {
+    const passedItems = itemProgress.filter(
+      (p) => p.wordPassed && p.sentencePassed
+    ).length;
+    const passed = isDrillPerfectPass(passedItems, totalItems);
+
     return (
       <DrillCompletedScreen
         variant="progress"
-        completed={itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length}
+        completed={passedItems}
         total={totalItems}
-        title="Lesson completed"
-        message={`Great job! You've practiced pronunciation for all ${totalItems} item${totalItems > 1 ? "s" : ""}.`}
+        passed={passed}
+        title={passed ? "You passed!" : "Keep practicing"}
+        message={
+          passed
+            ? `Great job! You've practiced pronunciation for all ${totalItems} item${totalItems > 1 ? "s" : ""}.`
+            : `You completed ${passedItems} of ${totalItems} item${totalItems > 1 ? "s" : ""}. Keep going until you pass them all.`
+        }
         onContinue={() => router.back()}
         onClose={() => router.back()}
       />
@@ -609,6 +619,7 @@ export default function PronunciationDrill() {
           />
 
           <ScrollView
+            ref={scrollRef}
             style={tw`flex-1 px-5`}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={tw`pb-28`}
@@ -619,48 +630,8 @@ export default function PronunciationDrill() {
 
             <AITutorMessage message={tutorMessage} showAudio={true} />
 
-            {/* Word card */}
-            {currentItem && (
-              <View style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-4`}>
-                <View style={tw`flex-row items-center justify-between w-full mb-2`}>
-                  <View style={tw`flex-1`}>
-                    <AppText style={tw`text-pink-500 text-base font-semibold mb-1`}>
-                      {word}
-                    </AppText>
-                    {soundFocus ? (
-                      <AppText style={tw`text-sm text-gray-500`}>
-                        Sound focus: {soundFocus}
-                      </AppText>
-                    ) : null}
-                  </View>
-                  <AudioButton
-                    text={word}
-                    audioUri={currentItem.wordAudioUrl}
-                    size={20}
-                  />
-                </View>
-                {currentItem.sentence ? (
-                  <View style={tw`mt-3 pt-3 border-t border-gray-100`}>
-                    <AppText style={tw`text-sm text-gray-700 mb-1`}>
-                      {currentItem.sentence}
-                    </AppText>
-                    <View style={tw`mt-2`}>
-                      <AudioButton
-                        text={currentItem.sentence}
-                        audioUri={currentItem.sentenceAudioUrl}
-                        size={18}
-                      />
-                    </View>
-                  </View>
-                ) : null}
-              </View>
-            )}
-
             {/* Large word display */}
             <View style={tw`items-center my-8 relative`}>
-              {showConfetti && (
-                <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} />
-              )}
               <AppText style={tw`text-6xl font-bold text-gray-900 mb-2`}>{word}</AppText>
               {soundFocus ? (
                 <AppText style={tw`text-base text-indigo-600 mb-4`}>
@@ -712,7 +683,7 @@ export default function PronunciationDrill() {
                 activeOpacity={0.8}
               >
                 <AppText style={tw`text-white text-base font-semibold`}>
-                  Continue to Sentence
+                  Next
                 </AppText>
               </TouchableOpacity>
             )}
@@ -778,6 +749,7 @@ export default function PronunciationDrill() {
         />
 
         <ScrollView
+          ref={scrollRef}
           style={tw`flex-1 px-5`}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={tw`pb-28`}
@@ -811,9 +783,6 @@ export default function PronunciationDrill() {
 
           {/* Large sentence display */}
           <View style={tw`items-center my-8 relative`}>
-            {showConfetti && (
-              <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} />
-            )}
             <AppText
               style={tw`text-2xl font-bold text-gray-900 text-center mb-4 leading-8`}
             >
@@ -854,6 +823,18 @@ export default function PronunciationDrill() {
               passThreshold={PASS_THRESHOLD}
               attempts={sentenceAttempts}
             />
+          )}
+
+          {currentProgress.sentencePassed && (
+            <TouchableOpacity
+              onPress={handleMoveToNextItem}
+              style={tw`w-full bg-green-700 rounded-full py-4 items-center mb-3`}
+              activeOpacity={0.8}
+            >
+              <AppText style={tw`text-white text-base font-semibold`}>
+                {currentItemIndex >= totalItems - 1 ? "Review" : "Next Word"}
+              </AppText>
+            </TouchableOpacity>
           )}
 
           {/* Try Again in scroll (below feedback) */}

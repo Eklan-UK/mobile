@@ -639,7 +639,8 @@ export default function RoleplayDrill() {
         variant="progress"
         completed={totalTurns}
         total={totalTurns}
-        title="Lesson completed"
+        passed={true}
+        title="You passed!"
         message="Great job! You communicated clearly throughout the conversation."
         onContinue={() => router.back()}
         onClose={() => router.back()}

@@ -10,6 +10,7 @@ import { useEffect, useState, useRef } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useActivityStore } from "@/store/activity-store";
+import { isDrillPerfectPass } from "@/utils/drillCompletion";
 import { logger } from "@/utils/logger";
 
 interface BlankAnswer {
@@ -300,13 +301,20 @@ export default function FillBlankDrill() {
       ).length || 0);
     }, 0);
 
+    const passed = isDrillPerfectPass(correctBlanks, totalBlanks);
+
     return (
       <DrillCompletedScreen
         variant="progress"
         completed={correctBlanks}
         total={totalBlanks}
-        title="Lesson completed"
-        message={`Great job! You answered ${correctBlanks} out of ${totalBlanks} blanks correctly.`}
+        passed={passed}
+        title={passed ? "You passed!" : "Keep practicing"}
+        message={
+          passed
+            ? `Great job! You answered all ${totalBlanks} blanks correctly.`
+            : `You answered ${correctBlanks} out of ${totalBlanks} blanks correctly.`
+        }
         onContinue={() => router.back()}
         onClose={() => router.back()}
       />

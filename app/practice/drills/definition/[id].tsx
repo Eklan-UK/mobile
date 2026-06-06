@@ -186,6 +186,7 @@ export default function DefinitionDrill() {
     return (
       <DrillCompletedScreen
         variant="submitted"
+        passed={false}
         title="Definition submitted"
         message="Your definitions have been submitted for review. You'll be notified when they have been reviewed."
         onContinue={() => router.back()}

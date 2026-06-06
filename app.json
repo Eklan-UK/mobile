@@ -13,9 +13,7 @@
       "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.2.6",
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
@@ -27,10 +25,10 @@
         "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "9"
+      "buildNumber": "10"
     },
     "android": {
-      "versionCode": 9,
+      "versionCode": 12,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-foreground.png",
         "backgroundColor": "#E6F4FE"
@@ -76,6 +74,12 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to record videos for your future self messages and profile pictures.",
           "microphonePermission": "Allow $(PRODUCT_NAME) to analyze your pronunciation and give you real-time feedback on your speaking skills, we need access to your microphone. Your voice data is used solely to power your practice sessions.",
           "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to analyze your pronunciation and give you real-time feedback on your speaking skills. Your voice data is used solely to power your practice sessions."
         }
       ],
       "react-native-iap",

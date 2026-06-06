@@ -85,6 +85,7 @@ export default function KeyPhrasesDrillScreen() {
   const queryClient = useQueryClient();
   const { updateDrillProgress, clearDrillProgress } = useActivityStore();
   const startTimeRef = useRef(Date.now());
+  const scrollRef = useRef<ScrollView>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -438,6 +439,17 @@ export default function KeyPhrasesDrillScreen() {
 
   const latestAnalysis = analysisResults.find((r) => r.itemIndex === currentIndex);
   const correctItems = itemResults.filter((r) => r?.isCorrect).length;
+  const scored = hasScoredCurrent && currentResult != null;
+
+  useEffect(() => {
+    if (processing) return;
+    if (!scored || !latestAnalysis?.textScore) return;
+    const id = setTimeout(
+      () => scrollRef.current?.scrollToEnd({ animated: true }),
+      100
+    );
+    return () => clearTimeout(id);
+  }, [processing, scored, latestAnalysis, currentIndex]);
 
   if (showReview && drill) {
     return (
@@ -494,7 +506,6 @@ export default function KeyPhrasesDrillScreen() {
 
   const speakerLabel =
     currentItem.respondentName?.trim() || "Speaker";
-  const scored = hasScoredCurrent && currentResult != null;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
@@ -510,6 +521,7 @@ export default function KeyPhrasesDrillScreen() {
         />
 
         <ScrollView
+          ref={scrollRef}
           style={tw`flex-1`}
           contentContainerStyle={tw`px-5 pb-8`}
           keyboardShouldPersistTaps="handled"

@@ -15,6 +15,7 @@ import {
   takeAssignedPracticeFeed,
   type AssignedPracticeFeedItem,
 } from "@/utils/assignedPracticeFeed";
+import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
 import { usePrefetch } from "@/hooks/usePrefetch";
 import { usePronunciation } from "@/hooks/usePronunciation";
 import { useUserStreakCount } from "@/hooks/useUserStreakCount";
@@ -671,10 +672,8 @@ export default function HomeScreen() {
   );
 
   const assignedPracticeFeed = useMemo(() => {
-    const feed = buildAssignedPracticeFeed(
-      drillsData?.drills ?? [],
-      freeTalkScenarios
-    );
+    const { ongoing } = categorizeDrillsByPlanTab(drillsData?.drills ?? []);
+    const feed = buildAssignedPracticeFeed(ongoing, freeTalkScenarios);
     return takeAssignedPracticeFeed(feed, 4);
   }, [drillsData?.drills, freeTalkScenarios]);
 

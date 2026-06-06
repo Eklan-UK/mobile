@@ -16,6 +16,11 @@ export function useFreeTalkScenarios(enabled = true) {
     enabled,
     select: (data) => data ?? [],
     staleTime: 1000 * 60 * 5,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 404 || status === 402) return false;
+      return failureCount < 2;
+    },
     refetchOnMount: true,
     refetchOnReconnect: true,
   });

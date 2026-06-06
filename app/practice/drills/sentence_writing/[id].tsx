@@ -327,6 +327,7 @@ export default function SentenceWritingDrill() {
     return (
       <DrillCompletedScreen
         variant="submitted"
+        passed={false}
         title="Sentence submitted"
         message="Your submission has been submitted for review. You'll be notified when your sentences have been reviewed."
         onContinue={() => router.back()}

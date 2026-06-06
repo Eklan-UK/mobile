@@ -9,6 +9,7 @@ import { queryClient } from '@/lib/query-client';
 import { prefetchUserCurrent } from '@/lib/prefetch-user-current';
 import { USER_CURRENT_KEY } from '@/hooks/useSettings';
 import { isProSubscriber, mergeSubscriptionFields } from '@/utils/subscription';
+import { resolveEmailVerified, resolveHasProfile } from '@/utils/auth-profile';
 
 const PUSH_TOKEN_STORAGE_KEY = '@push_token';
 
@@ -98,11 +99,25 @@ function clearUserCurrentCache(): void {
   queryClient.removeQueries({ queryKey: USER_CURRENT_KEY });
 }
 
-/** Load `/users/current` so Pro gating matches server before first navigation. */
-async function syncUserSubscriptionFromServer<T extends User>(user: T): Promise<T> {
+/**
+ * Load `/users/current` so Pro gating and `hasProfile` match the server before navigation.
+ * OAuth verify-id-token payloads often omit `hasProfile`; this endpoint is authoritative.
+ */
+async function syncUserFromServer<T extends User>(user: T): Promise<T> {
   const current = await prefetchUserCurrent();
   if (!current?.user) return user;
-  return mergeSubscriptionFields(user, current.user);
+
+  const serverUser = current.user;
+  const merged = mergeSubscriptionFields(user, serverUser);
+
+  return {
+    ...merged,
+    hasProfile: resolveHasProfile(serverUser),
+    emailVerified:
+      resolveEmailVerified(serverUser) || resolveEmailVerified(merged),
+    isEmailVerified:
+      resolveEmailVerified(serverUser) || resolveEmailVerified(merged),
+  };
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -171,10 +186,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const userData = response.data?.user || response.data?.data?.user || response.data;
       
       if (userData && (userData.id || userData._id)) {
-        const hasProfile =
-          userData.hasProfile === true ||
-          userData.role === 'admin' ||
-          userData.role === 'tutor';
+        const hasProfile = resolveHasProfile(userData);
 
         logger.log('🔍 Extracted user data:', {
           userId: userData.id || userData._id,
@@ -308,26 +320,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       await persistRefreshTokenIfPresent(response.data);
       
-      // Extract hasProfile from user object
-      const hasProfile = user.hasProfile === true || 
-                         user.role === 'admin' || 
-                         user.role === 'tutor';
-      const emailVerified =
-        user.emailVerified === true ||
-        user.isEmailVerified === true;
-      
-      // Update user object with hasProfile
       clearUserCurrentCache();
 
       let userWithProfile = {
         ...user,
-        hasProfile,
-        emailVerified: emailVerified,
+        hasProfile: resolveHasProfile(user),
+        emailVerified: resolveEmailVerified(user),
         subscriptionPlan: user.subscriptionPlan ?? (user as { subscription_plan?: string }).subscription_plan ?? 'free',
         isSubscribed: isProSubscriber(user),
       };
 
-      userWithProfile = await syncUserSubscriptionFromServer(userWithProfile);
+      userWithProfile = await syncUserFromServer(userWithProfile);
+      const hasProfile = resolveHasProfile(userWithProfile);
+      const emailVerified = resolveEmailVerified(userWithProfile);
 
       await secureStorage.setUser(userWithProfile);
       logger.log('✅ Credentials stored successfully');
@@ -423,10 +428,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       await persistRefreshTokenIfPresent(response.data);
       
-      // New users always have hasProfile: false
-      const hasProfile = user.hasProfile === true || 
-                         user.role === 'admin' || 
-                         user.role === 'tutor';
+      const hasProfile = resolveHasProfile(user);
       
       const userWithProfile = {
         ...user,
@@ -516,16 +518,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { user: oauthUser, session, token, refreshToken } = await signInWithGoogle();
       const user = oauthUser as User;
 
-      // Extract hasProfile from user object
-      const hasProfile = user.hasProfile === true || 
-                         user.role === 'admin' || 
-                         user.role === 'tutor';
-      
       clearUserCurrentCache();
 
       let userWithProfile: User = {
         ...user,
-        hasProfile,
+        hasProfile: resolveHasProfile(user),
         subscriptionPlan:
           (user.subscriptionPlan ??
             (user as { subscription_plan?: string }).subscription_plan ??
@@ -533,7 +530,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isSubscribed: isProSubscriber(user),
       };
 
-      userWithProfile = await syncUserSubscriptionFromServer(userWithProfile);
+      userWithProfile = await syncUserFromServer(userWithProfile);
+      const hasProfile = resolveHasProfile(userWithProfile);
 
       // Store credentials
       await secureStorage.setToken(token || session?.token);
@@ -551,9 +549,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         error: null,
       });
 
-      // Use hasProfile from backend instead of local onboarding flag
-      logger.log('🔍 Checking profile status...', { hasProfile, role: user.role });
-      
+      logger.log('🔍 Google sign-in navigation:', {
+        hasProfileFromVerifyIdToken: resolveHasProfile(user),
+        hasProfileAfterUsersCurrent: hasProfile,
+        role: userWithProfile.role,
+      });
+
       if (!hasProfile) {
         router.replace('/(profile-setup)');
       } else {
@@ -590,16 +591,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { user: oauthUser, session, token, refreshToken } = await signInWithApple();
       const user = oauthUser as User;
 
-      // Extract hasProfile from user object
-      const hasProfile = user.hasProfile === true || 
-                         user.role === 'admin' || 
-                         user.role === 'tutor';
-
       clearUserCurrentCache();
       
       let userWithProfile: User = {
         ...user,
-        hasProfile,
+        hasProfile: resolveHasProfile(user),
         subscriptionPlan:
           (user.subscriptionPlan ??
             (user as { subscription_plan?: string }).subscription_plan ??
@@ -607,7 +603,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isSubscribed: isProSubscriber(user),
       };
 
-      userWithProfile = await syncUserSubscriptionFromServer(userWithProfile);
+      userWithProfile = await syncUserFromServer(userWithProfile);
+      const hasProfile = resolveHasProfile(userWithProfile);
 
       // Store credentials
       await secureStorage.setToken(token || session?.token);

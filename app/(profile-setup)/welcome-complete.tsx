@@ -11,6 +11,7 @@ import { logger } from "@/utils/logger";
 import apiClient from "@/lib/api";
 import { FormData } from "./steps/types";
 import { profileService } from "@/services/profile.service";
+import { resolveHasProfile } from "@/utils/auth-profile";
 
 function CloverIcon() {
   return (
@@ -188,9 +189,7 @@ export default function WelcomeCompleteScreen() {
       // Verify hasProfile is now true
       const refreshedUser = useAuthStore.getState().user;
       if (refreshedUser) {
-        const hasProfile = refreshedUser.hasProfile === true || 
-                          refreshedUser.role === 'admin' || 
-                          refreshedUser.role === 'tutor';
+        const hasProfile = resolveHasProfile(refreshedUser);
         
         logger.log('✅ User data refreshed:', { 
           hasProfile, 

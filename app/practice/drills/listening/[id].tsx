@@ -116,7 +116,8 @@ export default function ListeningDrill() {
         variant="progress"
         completed={1}
         total={1}
-        title="Lesson completed"
+        passed={true}
+        title="You passed!"
         message="Great job! You practiced shadowing and improved your listening skills."
         onContinue={() => router.back()}
         onClose={() => router.back()}

@@ -16,13 +16,18 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { View, ScrollView, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { Alert } from "@/utils/alert";
-import { setAudioModeSafely } from "@/utils/audio";
+import {
+  ensureMicrophonePermission,
+  isRecordingPermissionError,
+  prepareAudioForRecording,
+  showMicrophonePermissionAlert,
+} from "@/utils/microphone";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 import { useActivityStore } from "@/store/activity-store";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
-import ConfettiCannon from "react-native-confetti-cannon";
+import { isDrillPerfectPass } from "@/utils/drillCompletion";
 import { logger } from "@/utils/logger";
 import apiClient from "@/lib/api";
 
@@ -62,7 +67,7 @@ export default function VocabularyDrill() {
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
   const startTimeRef = useRef(Date.now());
-  const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const scrollRef = useRef<ScrollView>(null);
 
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,11 +83,8 @@ export default function VocabularyDrill() {
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [permissionResponse, requestPermission] = Audio.usePermissions();
 
   // UI states
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [isDrillCompleted, setIsDrillCompleted] = useState(false);
@@ -163,8 +165,6 @@ export default function VocabularyDrill() {
     loadData();
     return () => {
       isMounted = false;
-      timeoutRefs.current.forEach(clearTimeout);
-      timeoutRefs.current = [];
       if (recording) stopRecording();
     };
   }, [drillId]);
@@ -195,14 +195,13 @@ export default function VocabularyDrill() {
 
   async function startRecording() {
     try {
-      if (permissionResponse?.status !== "granted") {
-        await requestPermission();
+      const status = await ensureMicrophonePermission();
+      if (status !== "granted") {
+        showMicrophonePermissionAlert(status);
+        return;
       }
 
-      await setAudioModeSafely({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      await prepareAudioForRecording();
 
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
@@ -211,7 +210,14 @@ export default function VocabularyDrill() {
       setIsRecording(true);
     } catch (err) {
       logger.error("Failed to start recording:", err);
-      Alert.alert("Error", "Failed to start recording. Please check microphone permissions.");
+      if (isRecordingPermissionError(err)) {
+        showMicrophonePermissionAlert("blocked");
+      } else {
+        Alert.alert(
+          "Couldn't start recording",
+          "Another sound may still be playing. Wait a moment and try again."
+        );
+      }
     }
   }
 
@@ -299,7 +305,6 @@ export default function VocabularyDrill() {
         if (passed) {
           // Fire-and-forget pronunciation attempt log
           logPronunciationAttempt(referenceText, base64);
-          handleWordPassed(qualityScore);
         } else {
           Alert.alert(
             "Keep Trying",
@@ -320,7 +325,6 @@ export default function VocabularyDrill() {
 
         if (passed) {
           logPronunciationAttempt(referenceText, base64);
-          handleSentencePassed(qualityScore);
         } else {
           Alert.alert(
             "Keep Trying",
@@ -346,48 +350,36 @@ export default function VocabularyDrill() {
       .catch((err) => logger.warn("Failed to log pronunciation attempt (non-critical):", err));
   };
 
-  const handleWordPassed = (score: number) => {
-    setShowSuccess(true);
-    setShowConfetti(true);
-    const t = setTimeout(() => {
-      setShowConfetti(false);
-      setShowSuccess(false);
-    }, 2000);
-    timeoutRefs.current.push(t);
-  };
+  const handleMoveToNextItem = () => {
+    const progress = itemProgress[currentItemIndex];
+    if (!progress?.sentencePassed) {
+      Alert.alert(
+        "Sentence Step Required",
+        `Please pass the sentence pronunciation (${PASS_THRESHOLD}%+) before continuing.`
+      );
+      return;
+    }
 
-  const handleSentencePassed = (score: number) => {
-    setShowSuccess(true);
-    setShowConfetti(true);
+    const total = drill?.target_sentences?.length || 1;
+    const isLastItem = currentItemIndex >= total - 1;
 
-    const totalItems = drill?.target_sentences?.length || 1;
-    const isLastItem = currentItemIndex >= totalItems - 1;
-
-    const t = setTimeout(() => {
-      setShowConfetti(false);
-      setShowSuccess(false);
-
-      if (!isLastItem) {
-        // Move to next item
-        setCurrentItemIndex((prev) => prev + 1);
-        setCurrentStep("word");
-        setIsBookmarked(false);
-      } else {
-        // All done — go to review
-        if (drill) {
-          const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
-          addRecentActivity({
-            id: drill._id,
-            title: drill.title,
-            type: drill.type,
-            durationSeconds,
-            score: 100,
-          });
-        }
-        setShowReview(true);
+    if (!isLastItem) {
+      setCurrentItemIndex((prev) => prev + 1);
+      setCurrentStep("word");
+      setIsBookmarked(false);
+    } else {
+      if (drill) {
+        const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
+        addRecentActivity({
+          id: drill._id,
+          title: drill.title,
+          type: drill.type,
+          durationSeconds,
+          score: 100,
+        });
       }
-    }, 2000);
-    timeoutRefs.current.push(t);
+      setShowReview(true);
+    }
   };
 
   const handleRecord = () => {
@@ -420,8 +412,6 @@ export default function VocabularyDrill() {
       };
       return updated;
     });
-    setShowSuccess(false);
-    setShowConfetti(false);
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "word"))
     );
@@ -437,8 +427,6 @@ export default function VocabularyDrill() {
       };
       return updated;
     });
-    setShowSuccess(false);
-    setShowConfetti(false);
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "sentence"))
     );
@@ -545,6 +533,18 @@ export default function VocabularyDrill() {
     (r) => r.itemIndex === currentItemIndex && r.step === "sentence"
   ).length;
 
+  useEffect(() => {
+    if (processing) return;
+    const hasFeedback =
+      currentStep === "word" ? !!currentWordResult : !!currentSentenceResult;
+    if (!hasFeedback) return;
+    const id = setTimeout(
+      () => scrollRef.current?.scrollToEnd({ animated: true }),
+      100
+    );
+    return () => clearTimeout(id);
+  }, [processing, currentStep, currentWordResult, currentSentenceResult]);
+
   // ── Screens ──────────────────────────────────────────────────────────────
 
   if (showReview && !isDrillCompleted && drill) {
@@ -560,8 +560,6 @@ export default function VocabularyDrill() {
           setShowReview(false);
           setCurrentItemIndex(0);
           setCurrentStep("word");
-          setShowSuccess(false);
-          setShowConfetti(false);
           setAnalysisResults([]);
           setIsBookmarked(false);
           startTimeRef.current = Date.now();
@@ -580,13 +578,23 @@ export default function VocabularyDrill() {
   }
 
   if (isDrillCompleted && drill) {
+    const passedItems = itemProgress.filter(
+      (p) => p.wordPassed && p.sentencePassed
+    ).length;
+    const passed = isDrillPerfectPass(passedItems, totalItems);
+
     return (
       <DrillCompletedScreen
         variant="progress"
-        completed={itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length}
+        completed={passedItems}
         total={totalItems}
-        title="Lesson completed"
-        message={`Great job! You've practiced pronunciation for all ${totalItems} word${totalItems > 1 ? "s" : ""}.`}
+        passed={passed}
+        title={passed ? "You passed!" : "Keep practicing"}
+        message={
+          passed
+            ? `Great job! You've practiced pronunciation for all ${totalItems} word${totalItems > 1 ? "s" : ""}.`
+            : `You completed ${passedItems} of ${totalItems} word${totalItems > 1 ? "s" : ""}. Keep going until you pass them all.`
+        }
         onContinue={() => router.back()}
         onClose={() => router.back()}
       />
@@ -641,6 +649,7 @@ export default function VocabularyDrill() {
           />
 
           <ScrollView
+            ref={scrollRef}
             style={tw`flex-1 px-5`}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={tw`pb-28`}
@@ -651,48 +660,12 @@ export default function VocabularyDrill() {
 
             <AITutorMessage message={tutorMessage} showAudio={true} />
 
-            {/* Word card */}
-            {currentSentence && (
-              <View style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-4`}>
-                <View style={tw`flex-row items-center justify-between w-full mb-2`}>
-                  <View style={tw`flex-1`}>
-                    <AppText style={tw`text-pink-500 text-base font-semibold mb-1`}>
-                      {word}
-                    </AppText>
-                    {wordTranslation ? (
-                      <AppText style={tw`text-sm text-gray-500`}>{wordTranslation}</AppText>
-                    ) : null}
-                  </View>
-                  <AudioButton
-                    text={word}
-                    audioUri={currentSentence.wordAudioUrl}
-                    size={20}
-                  />
-                </View>
-                {sentence ? (
-                  <View style={tw`mt-3 pt-3 border-t border-gray-100`}>
-                    <AppText style={tw`text-sm text-gray-700 mb-1`}>{sentence}</AppText>
-                    {sentenceTranslation ? (
-                      <AppText style={tw`text-xs text-gray-500`}>{sentenceTranslation}</AppText>
-                    ) : null}
-                    <View style={tw`mt-2`}>
-                      <AudioButton
-                        text={sentence}
-                        audioUri={currentSentence.sentenceAudioUrl}
-                        size={18}
-                      />
-                    </View>
-                  </View>
-                ) : null}
-              </View>
-            )}
-
             {/* Large word display */}
             <View style={tw`items-center my-8 relative`}>
-              {showConfetti && (
-                <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} />
-              )}
               <AppText style={tw`text-6xl font-bold text-gray-900 mb-4`}>{word}</AppText>
+              {wordTranslation ? (
+                <AppText style={tw`text-base text-gray-500 mb-4`}>{wordTranslation}</AppText>
+              ) : null}
               <AudioButton
                 text={word}
                 audioUri={currentSentence?.wordAudioUrl}
@@ -704,14 +677,6 @@ export default function VocabularyDrill() {
               <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
                 <AppText style={tw`text-green-700 text-center font-semibold`}>
                   Word passed! Score: {Math.round(currentProgress.wordScore)}% 🎉
-                </AppText>
-              </View>
-            )}
-
-            {showSuccess && !currentProgress.wordPassed && (
-              <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
-                <AppText style={tw`text-green-700 text-center font-semibold`}>
-                  Great job!
                 </AppText>
               </View>
             )}
@@ -746,7 +711,7 @@ export default function VocabularyDrill() {
                 activeOpacity={0.8}
               >
                 <AppText style={tw`text-white text-base font-semibold`}>
-                  Continue to Sentence
+                  Next
                 </AppText>
               </TouchableOpacity>
             )}
@@ -809,6 +774,7 @@ export default function VocabularyDrill() {
         />
 
         <ScrollView
+          ref={scrollRef}
           style={tw`flex-1 px-5`}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={tw`pb-28`}
@@ -842,9 +808,6 @@ export default function VocabularyDrill() {
 
           {/* Large sentence display */}
           <View style={tw`items-center my-8 relative`}>
-            {showConfetti && (
-              <ConfettiCannon count={200} origin={{ x: -10, y: 0 }} />
-            )}
             <AppText
               style={tw`text-2xl font-bold text-gray-900 text-center mb-4 leading-8`}
             >
@@ -861,14 +824,6 @@ export default function VocabularyDrill() {
             <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
               <AppText style={tw`text-green-700 text-center font-semibold`}>
                 Sentence passed! Score: {Math.round(currentProgress.sentenceScore)}% 🎉
-              </AppText>
-            </View>
-          )}
-
-          {showSuccess && !currentProgress.sentencePassed && (
-            <View style={tw`bg-green-50 border border-green-200 rounded-2xl p-4 mb-4`}>
-              <AppText style={tw`text-green-700 text-center font-semibold`}>
-                Great job!
               </AppText>
             </View>
           )}
@@ -893,6 +848,18 @@ export default function VocabularyDrill() {
               passThreshold={PASS_THRESHOLD}
               attempts={sentenceAttempts}
             />
+          )}
+
+          {currentProgress.sentencePassed && (
+            <TouchableOpacity
+              onPress={handleMoveToNextItem}
+              style={tw`w-full bg-green-700 rounded-full py-4 items-center mb-3`}
+              activeOpacity={0.8}
+            >
+              <AppText style={tw`text-white text-base font-semibold`}>
+                {currentItemIndex >= totalItems - 1 ? "Review" : "Next Word"}
+              </AppText>
+            </TouchableOpacity>
           )}
 
           {/* Try Again in scroll (below feedback) */}

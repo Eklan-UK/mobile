@@ -5,7 +5,22 @@
  * requires a new native iOS EAS build; eas update cannot update CFBundleURLTypes.
  */
 const appJson = require('./app.json');
-const { getGoogleIosUrlScheme } = require('./config/google-oauth.cjs');
+const {
+  getGoogleIosUrlScheme,
+  isValidGoogleClientId,
+} = require('./config/google-oauth.cjs');
+
+/*
+ * Android Google Sign-In: no iosUrlScheme-style plugin option.
+ * Native auth uses the Web client ID as webClientId in the SDK; the Android OAuth
+ * client in Google Cloud (package com.eklan.ai + SHA-1) must match the signing key.
+ */
+const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim();
+if (androidClientId && !isValidGoogleClientId(androidClientId)) {
+  console.warn(
+    '[app.config.js] EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID is set but does not end with .apps.googleusercontent.com'
+  );
+}
 
 /** @param {{ config?: import('expo/config').ExpoConfig }} param0 */
 module.exports = ({ config }) => {
@@ -33,6 +48,8 @@ module.exports = ({ config }) => {
 
   return {
     ...expo,
+    // Bare workflow requires an explicit runtime version string (policies are not supported).
+    runtimeVersion: expo.version,
     plugins,
   };
 };

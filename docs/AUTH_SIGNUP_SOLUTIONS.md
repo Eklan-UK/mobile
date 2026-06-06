@@ -9,7 +9,7 @@ This document is the **actionable companion** to [AUTH_SIGNUP_AUDIT.md](./AUTH_S
 Do these before spending time on lower-priority items:
 
 1. **[C1] EAS secrets:** Set `EXPO_PUBLIC_API_URL` for `preview` and `production` builds → **rebuild** native binaries.
-2. **[C2] EAS secrets:** Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Web application client) and `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (iOS client) → **rebuild** (iOS URL scheme requires native build).
+2. **[C2] EAS secrets:** Set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Web application client), `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (iOS client), and `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` (Android client) → **rebuild** (iOS URL scheme and Android SHA-1 require native builds).
 3. **[C3] Google Cloud:** Register **debug and release** Android SHA-1 fingerprints on the Android OAuth client for `com.eklan.ai`.
 4. **[C4] Backend:** Deploy and configure `POST /api/v1/auth/verify-id-token` (`GOOGLE_CLIENT_ID` = same Web Client ID as mobile; Apple keys correct).
 5. **[H1] iOS Google:** Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` so `app.config.js` adds the correct `iosUrlScheme` → **new EAS iOS build** (OTA alone is not enough).
@@ -33,6 +33,7 @@ Production and preview builds bake `EXPO_PUBLIC_*` values at **build** time; mis
    - `EXPO_PUBLIC_API_URL` — production API origin only (e.g. `https://api.example.com`). **No** trailing `/api`; `lib/api.ts` normalizes the base URL.
    - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` — **Web application** OAuth client ID (`*.apps.googleusercontent.com`).
    - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` — **iOS** OAuth client ID for bundle `com.eklan.ai`.
+   - `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` — **Android** OAuth client ID for package `com.eklan.ai` (validation; SDK still uses Web client as `webClientId`).
    - `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` (optional) — e.g. `com.googleusercontent.apps.XXXX`; if omitted, `app.config.js` derives it from the iOS Client ID.
 3. Do **not** commit secret values in the repo or in `eas.json`.
 4. Trigger a **new** build for each profile you ship:
@@ -67,15 +68,22 @@ Google Sign-In fails on release Android (**DEVELOPER_ERROR** / no ID token) or i
    - **Debug:** `keytool -list -v -keystore ~/.android/debug.keystore` (default password `android`).
    - **EAS / release:** Expo dashboard → project → **Credentials** → Android → copy SHA-1 for the keystore used by `production` / `preview` builds.
 3. Ensure the **Web** Client ID (not the Android client ID) is in `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` at build time.
-4. **`google-services.json`:** The repo does not require it if SHA-1 + package name are correct on the Android OAuth client. Optional: add `android.googleServicesFile` in `app.json` and place `google-services.json` from Firebase/Google — only if you standardize on Firebase; native Google Sign-In works with SHA-1 alone for this flow.
-5. Rebuild and test on a **development client** or release APK — not Expo Go on Android.
+4. Set `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` to the **Android** OAuth client ID (dev validation and fail-fast; SDK `webClientId` remains the Web client).
+5. **`google-services.json`:** The repo does not require it if SHA-1 + package name are correct on the Android OAuth client. Optional: add `android.googleServicesFile` in `app.json` and place `google-services.json` from Firebase/Google — only if you standardize on Firebase; native Google Sign-In works with SHA-1 alone for this flow.
+6. Rebuild and test on a **development client** or release APK — not Expo Go on Android:
+
+   ```bash
+   eas secret:create --name EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID --value <android-client-id>
+   eas build --profile development --platform android
+   ```
 
 ### Solution steps — iOS
 
 1. In Google Cloud Console, create an **iOS** OAuth client for bundle ID `com.eklan.ai`.
 2. Set in EAS Secrets (or local `.env` for dev builds):
-   - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Web client — ID token audience + Android)
+   - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Web client — ID token audience + Android `webClientId`)
    - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` (iOS client — native sign-in + URL scheme)
+   - `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` (Android client — validation; SHA-1 on GCP Android client)
 3. `app.config.js` adds `@react-native-google-signin/google-signin` with `iosUrlScheme` derived from the **iOS** Client ID, or from `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` if set.
 4. Run a **new EAS iOS build** after changing env or `app.config.js` (`eas update` cannot change `CFBundleURLTypes`):
 
@@ -231,7 +239,7 @@ Stale docs describe browser OAuth (`elkan://auth/callback`) instead of native ID
 
 1. Follow [NATIVE_OAUTH_SETUP.md](./NATIVE_OAUTH_SETUP.md) for OAuth setup.
 2. Use [DEBUG_LOGIN.md](./DEBUG_LOGIN.md) for email sign-in path `/api/v1/auth/sign-in/email`.
-3. Add or maintain `.env.example` with **names only**: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` (optional).
+3. Add or maintain `.env.example` with **names only**: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` (optional).
 
 ### Who owns it
 

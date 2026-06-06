@@ -27,8 +27,6 @@ See [KEY_PHRASES_DRILL.md](./KEY_PHRASES_DRILL.md) for the full Key Phrases runn
 | `/account/drills/[id]` | `my-plan/drills/[id].tsx` | Drill runner (type-specific) |
 | `/account/drills/[id]/completed` | `my-plan/drills/[id]/completed.tsx` | Post-completion summary |
 
-**Expo app paths (this repo):** listing `app/(tabs)/plan.tsx`; per-type runners `app/practice/drills/{type}/[id].tsx` (e.g. `key_phrases/[id].tsx`); post-completion `app/practice/drills/results.tsx` (`drillId` + `assignmentId` params). Navigation: `utils/drillNavigation.ts` + `utils/drillPracticeType.ts`.
-
 ---
 
 ## 3. Auth

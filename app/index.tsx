@@ -6,6 +6,7 @@ import LottieView from "lottie-react-native";
 import tw from "@/lib/tw";
 import { useAuthStore } from "@/store/auth-store";
 import { logger } from "@/utils/logger";
+import { resolveHasProfile } from "@/utils/auth-profile";
 
 export default function RootSplashRouter() {
   const { isAuthenticated, hasHydrated, hydrate } = useAuthStore();
@@ -35,10 +36,7 @@ export default function RootSplashRouter() {
           const cachedUser = useAuthStore.getState().user;
 
           if (cachedUser) {
-            const hasProfile =
-              cachedUser.hasProfile === true ||
-              cachedUser.role === "admin" ||
-              cachedUser.role === "tutor";
+            const hasProfile = resolveHasProfile(cachedUser);
             const emailVerified =
               cachedUser.emailVerified === true ||
               cachedUser.isEmailVerified === true;

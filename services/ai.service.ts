@@ -1,4 +1,4 @@
-import apiClient from '@/lib/api';
+import apiClient, { isAxiosTimeout } from '@/lib/api';
 import { logger } from '@/utils/logger';
 import * as FileSystem from 'expo-file-system/legacy';
 import type {
@@ -543,6 +543,8 @@ export const aiService = {
       return Array.isArray(body.scenarios) ? body.scenarios : [];
     } catch (error: any) {
       if (error?.response?.status === 402) throw new Error('Subscription required');
+      // Backend may return 404 when the route is missing or no scenarios are assigned.
+      if (error?.response?.status === 404) return [];
       logger.error('❌ fetchFreeTalkScenarioSummaries:', error?.message ?? error);
       throw error;
     }
@@ -680,6 +682,10 @@ export const aiService = {
       return { attempts: body.attempts as FreeTalkAttempt[], nextCursor: body.nextCursor ?? null };
     } catch (error: any) {
       if (error?.response?.status === 402) throw new Error('Subscription required');
+      if (isAxiosTimeout(error)) {
+        logger.warn('⏱️ Free Talk attempts timed out; using empty server history');
+        return { attempts: [], nextCursor: null };
+      }
       logger.error('❌ fetchFreeTalkAttempts:', error?.message ?? error);
       throw error;
     }

@@ -6,6 +6,6 @@ export function useDailyFocusToday() {
     queryKey: ["daily-focus-today"],
     queryFn: () => dailyFocusService.getToday(),
     staleTime: 30_000,
-    retry: 1,
+    retry: false,
   });
 }

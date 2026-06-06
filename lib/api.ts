@@ -25,6 +25,16 @@ export const API_BASE_URL = normalizeApiBaseUrl(
   process.env.EXPO_PUBLIC_API_URL || 'http://app.elkan.ai'
 );
 
+/** True when axios aborted the request due to the configured timeout (no HTTP response). */
+export function isAxiosTimeout(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const axiosError = error as AxiosError;
+  return (
+    axiosError.code === 'ECONNABORTED' ||
+    (typeof axiosError.message === 'string' && axiosError.message.includes('timeout'))
+  );
+}
+
 const isDev = __DEV__;
 
 // ─── In-memory token cache (avoids SecureStore read on every request) ────────
@@ -220,7 +230,14 @@ apiClient.interceptors.response.use(
     
     // Skip logging auth errors - they're handled gracefully by auth store
     // This prevents cluttering logs with expected auth errors
-    if (!isAuthError) {
+    if (!isAuthError && isAxiosTimeout(error)) {
+      if (isDev) {
+        logger.warn('⏱️ API timeout:', {
+          url: error.config?.url,
+          message: error.message,
+        });
+      }
+    } else if (!isAuthError) {
       logger.error('❌ API Error:', {
         status: error.response?.status,
         url: error.config?.url,

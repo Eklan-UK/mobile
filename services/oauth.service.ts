@@ -6,10 +6,12 @@ import apiClient from '@/lib/api';
 import { secureStorage } from '@/lib/secure-storage';
 import { logger } from "@/utils/logger";
 import {
+  GOOGLE_ANDROID_CLIENT_ID,
   GOOGLE_IOS_CLIENT_ID,
   GOOGLE_WEB_CLIENT_ID,
   assertGoogleOAuthEnvForDev,
 } from '@/constants/google-oauth';
+import { resolveHasProfile } from '@/utils/auth-profile';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -17,9 +19,17 @@ assertGoogleOAuthEnvForDev();
 
 // After adding iOS OAuth client + iosUrlScheme in app.config.js, run a new EAS iOS build
 // (dev client / TestFlight). OTA updates alone cannot change Info.plist URL schemes.
-if (__DEV__ && !GOOGLE_IOS_CLIENT_ID) {
+if (__DEV__ && Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) {
   logger.warn(
     'iOS Google Sign-In is not configured. Add EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID'
+  );
+}
+
+// Android: register SHA-1 on the Android OAuth client (com.eklan.ai) in Google Cloud.
+// Rebuild the EAS Android binary after changing signing keys. SDK uses webClientId only.
+if (__DEV__ && Platform.OS === 'android' && !GOOGLE_ANDROID_CLIENT_ID) {
+  logger.warn(
+    'Android Google Sign-In is not configured. Add EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID'
   );
 }
 
@@ -37,6 +47,7 @@ if (!GOOGLE_WEB_CLIENT_ID) {
   logger.log('✅ Google Sign-In configured', {
     webClientId: 'set',
     iosClientId: GOOGLE_IOS_CLIENT_ID ? 'set' : 'missing',
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID ? 'configured' : 'missing',
   });
 }
 
@@ -116,6 +127,13 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
     if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) {
       const errorMsg =
         'Google OAuth is not configured for iOS. EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID is missing.';
+      logger.error('❌ ' + errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    if (Platform.OS === 'android' && !GOOGLE_ANDROID_CLIENT_ID) {
+      const errorMsg =
+        'Google OAuth is not configured for Android. EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID is missing.';
       logger.error('❌ ' + errorMsg);
       throw new Error(errorMsg);
     }
@@ -261,7 +279,8 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
           },
           webClientId: GOOGLE_WEB_CLIENT_ID ? 'configured' : 'missing',
           iosClientId: GOOGLE_IOS_CLIENT_ID ? 'configured' : 'missing',
-          suggestion: 'This usually means the webClientId is incorrect or the SHA-1 fingerprint is not registered in Google Cloud Console',
+          androidClientId: GOOGLE_ANDROID_CLIENT_ID ? 'configured' : 'missing',
+          suggestion: 'This usually means the webClientId is incorrect or the SHA-1 fingerprint is not registered on the Android OAuth client in Google Cloud Console',
         });
         
         throw new Error('No ID token received from Google. Please verify that EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is set correctly and matches your Google Cloud Console OAuth 2.0 Web Client ID. Also ensure your app\'s SHA-1 fingerprint is registered in Google Cloud Console.');
@@ -302,10 +321,14 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
     }
     await secureStorage.setUser(user);
 
-    // Extract hasProfile from user object
-    const hasProfile = user.hasProfile === true || 
-                       user.role === 'admin' || 
-                       user.role === 'tutor';
+    const hasProfile = resolveHasProfile(user);
+
+    logger.log('🔍 verify-id-token user profile flags:', {
+      hasProfile,
+      rawHasProfile: user.hasProfile,
+      rawHas_profile: (user as { has_profile?: boolean }).has_profile,
+      role: user.role,
+    });
 
     return {
       user: {
@@ -346,6 +369,7 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
         code: error.code,
         webClientId: GOOGLE_WEB_CLIENT_ID ? 'configured' : 'missing',
         iosClientId: GOOGLE_IOS_CLIENT_ID ? 'configured' : 'missing',
+        androidClientId: GOOGLE_ANDROID_CLIENT_ID ? 'configured' : 'missing',
       });
       throw new Error('Google Sign-In is not properly configured. Please contact support.');
     }
@@ -418,10 +442,7 @@ export async function signInWithApple(): Promise<OAuthResult> {
     }
     await secureStorage.setUser(user);
 
-    // Extract hasProfile from user object
-    const hasProfile = user.hasProfile === true || 
-                       user.role === 'admin' || 
-                       user.role === 'tutor';
+    const hasProfile = resolveHasProfile(user);
 
     return {
       user: {

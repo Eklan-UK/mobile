@@ -1,7 +1,11 @@
 const GOOGLE_CLIENT_ID_SUFFIX = '.apps.googleusercontent.com';
 
+function isValidGoogleClientId(id) {
+  return !!id?.endsWith(GOOGLE_CLIENT_ID_SUFFIX);
+}
+
 function clientIdToIosUrlScheme(clientId) {
-  if (!clientId?.endsWith(GOOGLE_CLIENT_ID_SUFFIX)) return null;
+  if (!isValidGoogleClientId(clientId)) return null;
   return `com.googleusercontent.apps.${clientId.slice(0, -GOOGLE_CLIENT_ID_SUFFIX.length)}`;
 }
 
@@ -17,4 +21,5 @@ module.exports = {
   clientIdToIosUrlScheme,
   getGoogleIosUrlScheme,
   GOOGLE_CLIENT_ID_SUFFIX,
+  isValidGoogleClientId,
 };

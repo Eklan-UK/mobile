@@ -9,6 +9,7 @@ import { useEffect, useState, useRef } from "react";
 import { ScrollView, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useActivityStore } from "@/store/activity-store";
+import { isDrillPerfectPass } from "@/utils/drillCompletion";
 import { logger } from "@/utils/logger";
 
 interface MatchPair {
@@ -180,7 +181,8 @@ export default function MatchingDrill() {
         variant="progress"
         completed={matchedPairs.size}
         total={pairs.length}
-        title="Lesson completed"
+        passed={isDrillPerfectPass(matchedPairs.size, pairs.length)}
+        title="You passed!"
         message={`Great job! You matched all ${pairs.length} pairs correctly.`}
         onContinue={() => router.back()}
         onClose={() => router.back()}

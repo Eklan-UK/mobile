@@ -61,37 +61,38 @@ Copy `.env.example` to `.env` and set:
 EXPO_PUBLIC_API_URL=http://localhost:3000
 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
 EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your-ios-client-id.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=your-android-client-id.apps.googleusercontent.com
 # Optional override:
 # EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME=com.googleusercontent.apps.XXXX
 ```
 
 | Variable | Purpose |
 |----------|---------|
-| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | **Web application** client ID — Android runtime + backend ID token audience |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | **Web application** client ID — SDK `webClientId` on Android + backend ID token audience |
 | `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | **iOS** client ID — native iOS Google Sign-In + URL scheme derivation |
+| `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` | **Android** client ID — dev validation/ops; SDK still uses Web client for `webClientId` |
 | `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME` | Optional override for `CFBundleURLTypes` |
 
-**Important**: `webClientId` in the SDK must be the **Web** client ID (ID token audience). iOS also requires `iosClientId` and a matching URL scheme baked into the native binary.
+**Important**: `webClientId` in the SDK must be the **Web** client ID (ID token audience). iOS also requires `iosClientId` and a matching URL scheme baked into the native binary. Android does **not** pass `androidClientId` to the SDK — the Android OAuth client in Google Cloud is validated via package name + SHA-1.
 
-In `__DEV__`, the app throws at startup if either Google client ID is missing.
+In `__DEV__`, the app throws at startup if the Web client ID is missing, and if the platform-specific client ID is missing for the current OS (iOS or Android).
 
 ### Step 4: Android Configuration
 
-For Android, you also need to configure the app in `app.json`:
+1. In Google Cloud Console, create an **Android** OAuth 2.0 client for package `com.eklan.ai`.
+2. Register **SHA-1** fingerprints for every keystore you sign with:
+   - **Debug:** `keytool -list -v -keystore ~/.android/debug.keystore` (default password `android`)
+   - **EAS / release:** Expo dashboard → project → **Credentials** → Android → copy SHA-1 for the profile you build
+3. Set `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` to the Android client ID (for dev validation; optional at build time but recommended).
+4. Keep `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` as the **Web** client ID — the SDK uses it as `webClientId` on Android.
+5. Run a **new EAS Android build** after changing SHA-1 or Android OAuth env:
 
-```json
-{
-  "expo": {
-    "android": {
-      "googleServicesFile": "./google-services.json"
-    }
-  }
-}
-```
+   ```bash
+   eas secret:create --name EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID --value <android-client-id>
+   eas build --profile development --platform android
+   ```
 
-Or configure the SHA-1 fingerprint in Google Cloud Console:
-1. Get your app's SHA-1 fingerprint: `keytool -list -v -keystore ~/.android/debug.keystore`
-2. Add it to your OAuth 2.0 Client ID in Google Cloud Console
+`google-services.json` is **not** required for this flow if SHA-1 + package name are correct on the Android OAuth client.
 
 ### Step 5: iOS Configuration (native rebuild required)
 
@@ -168,7 +169,12 @@ YOUR_PRIVATE_KEY_CONTENT_HERE
 **Error: "No ID token received from Google"**
 - Check that `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` is set correctly
 - Verify the Client ID is for a "Web application" type
+- On Android, ensure SHA-1 for your build keystore is on the **Android** OAuth client (`com.eklan.ai`), then rebuild
 - Ensure Google Play Services are installed (Android)
+
+**Error: "Google OAuth is not configured for Android"**
+- Set `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` to your **Android** OAuth client ID
+- Rebuild the Android dev client or release binary after adding EAS secrets
 
 **Error: "Google Sign-In is not properly configured" (iOS)**
 - Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` to your **iOS** OAuth client ID (not the Web client ID)

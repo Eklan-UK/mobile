@@ -197,6 +197,7 @@ export default function GrammarDrill() {
     return (
       <DrillCompletedScreen
         variant="submitted"
+        passed={false}
         title="Grammar submitted"
         message="Your grammar drill has been submitted for review. You'll be notified when your sentences have been reviewed."
         onContinue={() => router.back()}

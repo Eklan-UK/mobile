@@ -41,11 +41,13 @@ function CheckmarkIcon() {
 function ProgressRing({
   completed,
   total,
+  passed = true,
   size = 220,
   strokeWidth = 18,
 }: {
   completed: number;
   total: number;
+  passed?: boolean;
   size?: number;
   strokeWidth?: number;
 }) {
@@ -60,8 +62,7 @@ function ProgressRing({
 
   // Progress within the visible arc
   const progress = total > 0 ? Math.min(completed / total, 1) : 0;
-  const progressDashOffset =
-    visibleCircumference - progress * visibleCircumference;
+  const progressColor = passed ? "#3B883E" : "#F59E0B";
 
   // Rotate so gap is at the bottom center
   const rotateAngle = 90 + gapAngle / 2;
@@ -86,7 +87,7 @@ function ProgressRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="#3B883E"
+          stroke={progressColor}
           strokeWidth={strokeWidth}
           fill="transparent"
           strokeDasharray={`${progress * visibleCircumference} ${circumference - progress * visibleCircumference}`}
@@ -114,7 +115,9 @@ interface DrillCompletedProgressProps {
   completed: number;
   /** Total lessons / items */
   total: number;
-  /** Bold heading — defaults to "Lesson completed" */
+  /** Whether the drill was a perfect pass (100%) — gates confetti and celebration copy */
+  passed?: boolean;
+  /** Bold heading — defaults based on pass/fail */
   title?: string;
   /** Congratulatory body text */
   message?: string;
@@ -129,6 +132,8 @@ interface DrillCompletedProgressProps {
 interface DrillCompletedSubmittedProps {
   /** "submitted" variant: shows a green checkmark circle */
   variant: "submitted";
+  /** Whether the drill was a perfect pass — always false for submitted drills */
+  passed?: boolean;
   /** Bold heading — e.g. "Summary submitted" */
   title?: string;
   /** Body text */
@@ -147,7 +152,16 @@ type DrillCompletedScreenProps =
 
 // ─── Component ──────────────────────────────────────────────────
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const GREEN_CONFETTI_COLORS = [
+  "#3B883E",
+  "#D1FAE5",
+  "#86EFAC",
+  "#4ADE80",
+  "#22C55E",
+  "#166534",
+];
 
 export default function DrillCompletedScreen(
   props: DrillCompletedScreenProps
@@ -161,13 +175,16 @@ export default function DrillCompletedScreen(
     onClose,
   } = props;
 
+  const passed =
+    props.passed ?? (variant === "progress" ? true : false);
+
   const confettiRef = useRef<ConfettiCannon>(null);
 
   useEffect(() => {
-    // Small delay so the screen is fully visible before confetti fires
+    if (variant !== "progress" || !passed) return;
     const id = setTimeout(() => confettiRef.current?.start(), 300);
     return () => clearTimeout(id);
-  }, []);
+  }, [variant, passed]);
 
   const handleClose = () => {
     if (onClose) {
@@ -185,19 +202,31 @@ export default function DrillCompletedScreen(
     }
   };
 
+  const progressProps =
+    variant === "progress" ? (props as DrillCompletedProgressProps) : null;
+
+  const displayTitle =
+    title ??
+    (variant === "progress"
+      ? passed
+        ? "You passed!"
+        : "Keep practicing"
+      : "Drill submitted");
+
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
-      {/* Confetti — fires once on mount, rains from the top center */}
-      <ConfettiCannon
-        ref={confettiRef}
-        count={180}
-        origin={{ x: SCREEN_WIDTH / 2, y: -20 }}
-        autoStart={false}
-        fadeOut
-        fallSpeed={3000}
-        explosionSpeed={350}
-        colors={["#3B883E", "#FBD100", "#3B82F6", "#F472B6", "#F97316", "#A855F7"]}
-      />
+      {variant === "progress" && passed ? (
+        <ConfettiCannon
+          ref={confettiRef}
+          count={180}
+          origin={{ x: SCREEN_WIDTH / 2, y: -20 }}
+          autoStart={false}
+          fadeOut
+          fallSpeed={3000}
+          explosionSpeed={350}
+          colors={GREEN_CONFETTI_COLORS}
+        />
+      ) : null}
 
       {/* Close Button */}
       <View style={tw`px-6 pt-4 flex-row justify-end`}>
@@ -208,23 +237,24 @@ export default function DrillCompletedScreen(
 
       {/* Content */}
       <View style={tw`flex-1 px-6 items-center justify-center`}>
-        {variant === "progress" ? (
+        {variant === "progress" && progressProps ? (
           <>
-            {/* Progress Ring */}
             <ProgressRing
-              completed={(props as DrillCompletedProgressProps).completed}
-              total={(props as DrillCompletedProgressProps).total}
+              completed={progressProps.completed}
+              total={progressProps.total}
+              passed={passed}
               size={220}
               strokeWidth={18}
             />
 
-            {/* Celebration */}
             <View style={tw`items-center mt-8`}>
-              <AppText style={tw`text-4xl mb-2`}>🎉</AppText>
+              {passed ? (
+                <AppText style={tw`text-4xl mb-2`}>🎉</AppText>
+              ) : null}
               <AppText
                 style={tw`text-2xl font-bold text-neutral-900 mb-3 text-center`}
               >
-                {title || "Lesson completed"}
+                {displayTitle}
               </AppText>
               {message ? (
                 <AppText
@@ -248,11 +278,10 @@ export default function DrillCompletedScreen(
               </View>
             </View>
 
-            {/* Title & message */}
             <AppText
               style={tw`text-2xl font-bold text-neutral-900 mb-3 text-center`}
             >
-              {title || "Drill submitted"}
+              {displayTitle}
             </AppText>
             {message ? (
               <AppText
@@ -280,9 +309,3 @@ export default function DrillCompletedScreen(
     </SafeAreaView>
   );
 }
-
-
-
-
-
-

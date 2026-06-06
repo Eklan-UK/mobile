@@ -241,6 +241,7 @@ export default function SummaryDrill() {
     return (
       <DrillCompletedScreen
         variant="submitted"
+        passed={false}
         title="Summary submitted"
         message="Nice work putting the ideas into your own words. Expressing understanding clearly is a powerful skill."
         onContinue={handleSubmittedContinue}

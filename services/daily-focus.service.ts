@@ -1,4 +1,4 @@
-import apiClient from '@/lib/api';
+import apiClient, { isAxiosTimeout } from '@/lib/api';
 import { logger } from '@/utils/logger';
 
 export interface DailyFocus {
@@ -99,6 +99,11 @@ export const dailyFocusService = {
         error.response?.data?.code === 'NotFound'
       ) {
         logger.log('✅ No daily focus found for today (404)');
+        return null;
+      }
+      // Slow backend — degrade to "no focus" so home screen stays usable
+      if (isAxiosTimeout(error)) {
+        logger.warn('⏱️ Daily focus request timed out; treating as no focus for today');
         return null;
       }
       // Network error, 401, 5xx, etc. → let React Query handle retry/error state

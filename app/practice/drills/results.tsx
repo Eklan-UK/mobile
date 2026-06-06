@@ -9,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet } from "react-native";
 import { getDrillCategory, type KeyPhrasesResult } from "@/types/drill.types";
+import { isDrillPerfectScore } from "@/utils/drillCompletion";
 import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
 
 export default function DrillResultsScreen() {
@@ -76,6 +77,32 @@ export default function DrillResultsScreen() {
 
           {!isLoading && !isError && data && (
             <>
+              {isKeyPhrases && score !== undefined ? (
+                <View
+                  style={[
+                    styles.passBanner,
+                    isDrillPerfectScore(score)
+                      ? styles.passBannerSuccess
+                      : styles.passBannerFail,
+                  ]}
+                >
+                  <Ionicons
+                    name={isDrillPerfectScore(score) ? "checkmark-circle" : "alert-circle"}
+                    size={22}
+                    color={isDrillPerfectScore(score) ? "#166534" : "#B45309"}
+                  />
+                  <BoldText
+                    style={
+                      isDrillPerfectScore(score)
+                        ? styles.passBannerTextSuccess
+                        : styles.passBannerTextFail
+                    }
+                  >
+                    {isDrillPerfectScore(score) ? "You passed!" : "Keep practicing"}
+                  </BoldText>
+                </View>
+              ) : null}
+
               {/* Drill identity */}
               <View style={styles.card}>
                 <BoldText style={styles.drillTitle}>{drillTitle}</BoldText>
@@ -250,6 +277,32 @@ const styles = StyleSheet.create({
   centeredMsg: {
     paddingVertical: 48,
     alignItems: "center",
+  },
+  passBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  passBannerSuccess: {
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
+  passBannerFail: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  passBannerTextSuccess: {
+    fontSize: 16,
+    color: "#166534",
+  },
+  passBannerTextFail: {
+    fontSize: 16,
+    color: "#B45309",
   },
   card: {
     backgroundColor: "#F9FAFB",
