@@ -2,7 +2,7 @@
   "expo": {
     "name": "Eklan",
     "slug": "mobile",
-    "version": "1.2.6",
+    "version": "1.2.7",
     "orientation": "portrait",
     "icon": "./assets/images/splash-icon.png",
     "scheme": "elkan",
@@ -13,7 +13,7 @@
       "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0
     },
-    "runtimeVersion": "1.2.6",
+    "runtimeVersion": "1.2.7",
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
@@ -25,10 +25,10 @@
         "NSPhotoLibraryAddUsageDescription": "We need access to save images to your photo library.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "10"
+      "buildNumber": "11"
     },
     "android": {
-      "versionCode": 12,
+      "versionCode": 13,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-foreground.png",
         "backgroundColor": "#E6F4FE"
