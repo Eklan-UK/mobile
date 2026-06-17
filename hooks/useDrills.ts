@@ -1,7 +1,7 @@
 import { completeDrill, getDrillById, getMyDrills } from '@/services/drill.service';
 import { DrillStatus } from '@/types/drill.types';
 import { shouldFetchDrillDetail } from '@/utils/drillAssignment';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 
 /** Full-list page size for `my-drills` (My Plan, warm-up prefetch). docs/MOBILE_MY_PLAN.md §4 — high `limit` for main listing. */
@@ -69,6 +69,19 @@ export function useDrill(
 }
 
 /**
+ * Invalidates all drill-related caches after a drill is completed.
+ * Call this after every successful completeDrill() API call.
+ */
+export async function invalidateDrillCaches(queryClient: QueryClient) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: drillKeys.all }),
+    queryClient.invalidateQueries({ queryKey: ['home-progress'] }),
+    queryClient.invalidateQueries({ queryKey: ['learner-drills-profile'] }),
+    queryClient.invalidateQueries({ queryKey: ['confidence-metrics'] }),
+  ]);
+}
+
+/**
  * Hook to complete a drill
  * Invalidates drill queries on success
  */
@@ -81,15 +94,10 @@ export function useCompleteDrill() {
       data,
     }: {
       drillId: string;
-      data: {
-        score?: number;
-        timeSpent?: number;
-        answers?: any[];
-      };
+      data: Parameters<typeof completeDrill>[1];
     }) => completeDrill(drillId, data),
     onSuccess: () => {
-      // Invalidate all drill queries to refetch updated data
-      queryClient.invalidateQueries({ queryKey: drillKeys.all });
+      void invalidateDrillCaches(queryClient);
     },
   });
 }

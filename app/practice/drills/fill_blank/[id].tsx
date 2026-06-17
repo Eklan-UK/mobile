@@ -3,7 +3,9 @@ import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { Drill } from "@/types/drill.types";
+import { useQueryClient } from "@tanstack/react-query";
 import tw from "@/lib/tw";
 import { useLocalSearchParams, router } from "expo-router";
 import { useEffect, useState, useRef } from "react";
@@ -26,6 +28,7 @@ export default function FillBlankDrill() {
   const assignmentId = params.assignmentId as string | undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const queryClient = useQueryClient();
   const startTimeRef = useRef(Date.now());
 
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -186,6 +189,7 @@ export default function FillBlankDrill() {
           score,
         },
       });
+      await invalidateDrillCaches(queryClient);
 
       setIsCompleted(true);
       addRecentActivity({

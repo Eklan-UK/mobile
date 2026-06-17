@@ -227,17 +227,18 @@ apiClient.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const isAuthError = error.response?.status === 401 || error.response?.status === 403;
-    
+    const isNotFound = error.response?.status === 404;
+
     // Skip logging auth errors - they're handled gracefully by auth store
-    // This prevents cluttering logs with expected auth errors
-    if (!isAuthError && isAxiosTimeout(error)) {
+    // Skip logging 404s - callers (e.g. free-talk scenarios) handle them and return safe defaults
+    if (!isAuthError && !isNotFound && isAxiosTimeout(error)) {
       if (isDev) {
         logger.warn('⏱️ API timeout:', {
           url: error.config?.url,
           message: error.message,
         });
       }
-    } else if (!isAuthError) {
+    } else if (!isAuthError && !isNotFound) {
       logger.error('❌ API Error:', {
         status: error.response?.status,
         url: error.config?.url,

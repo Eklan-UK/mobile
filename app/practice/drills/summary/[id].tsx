@@ -5,7 +5,9 @@ import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { completeDrill, getAssignmentAttempts, getDrillById } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useActivityStore } from "@/store/activity-store";
+import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
 import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +22,7 @@ export default function SummaryDrill() {
   const assignmentId = params.assignmentId as string | undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const queryClient = useQueryClient();
   const startTimeRef = useRef(Date.now());
   const insets = useSafeAreaInsets();
 
@@ -170,6 +173,7 @@ export default function SummaryDrill() {
         answers: [],
         summaryResults,
       });
+      await invalidateDrillCaches(queryClient);
 
       // Mark drill as completed
       setIsCompleted(true);

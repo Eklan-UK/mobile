@@ -3,7 +3,9 @@ import DrillHeader from "@/components/drills/DrillHeader";
 import AudioButton from "@/components/drills/AudioButton";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
@@ -43,6 +45,7 @@ export default function SentenceWritingDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
+  const queryClient = useQueryClient();
   const startTimeRef = useRef(Date.now());
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
   const { user } = useAuth();
@@ -274,6 +277,7 @@ export default function SentenceWritingDrill() {
         answers: [],
         sentenceResults,
       });
+      await invalidateDrillCaches(queryClient);
 
       setShowSuccess(true);
 

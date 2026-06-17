@@ -1,7 +1,8 @@
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
-import { getDrillById } from "@/services/drill.service";
+import { getDrillById, completeDrill } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
 import { router, useLocalSearchParams } from "expo-router";
@@ -11,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useActivityStore } from "@/store/activity-store";
 import { isDrillPerfectPass } from "@/utils/drillCompletion";
 import { logger } from "@/utils/logger";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface MatchPair {
   id: string;
@@ -24,6 +26,7 @@ export default function MatchingDrill() {
   const assignmentId = params.assignmentId as string | undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const queryClient = useQueryClient();
   const startTimeRef = useRef(Date.now());
 
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -158,6 +161,22 @@ export default function MatchingDrill() {
             durationSeconds,
             score: 100,
           });
+          void (async () => {
+            try {
+              await completeDrill(drillId, {
+                drillAssignmentId: assignmentId,
+                score: 100,
+                timeSpent: Math.floor(durationSeconds),
+                matchingResults: {
+                  correctPairs: pairs.length,
+                  totalPairs: pairs.length,
+                },
+              });
+              await invalidateDrillCaches(queryClient);
+            } catch (err) {
+              logger.error('Failed to submit matching drill:', err);
+            }
+          })();
           clearDrillProgress(drillId);
         }
       }

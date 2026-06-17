@@ -8,7 +8,9 @@ import DrillHeader from "@/components/drills/DrillHeader";
 import RecordButton from "@/components/drills/RecordButton";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill, bookmarkWord } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
+import { useQueryClient } from "@tanstack/react-query";
 import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
@@ -66,6 +68,7 @@ export default function VocabularyDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
+  const queryClient = useQueryClient();
   const startTimeRef = useRef(Date.now());
   const scrollRef = useRef<ScrollView>(null);
 
@@ -491,6 +494,7 @@ export default function VocabularyDrill() {
         answers: [],
         vocabularyResults: { wordScores },
       });
+      await invalidateDrillCaches(queryClient);
       clearDrillProgress(drillId);
     } catch (error) {
       logger.error("Failed to submit vocabulary drill:", error);

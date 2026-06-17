@@ -5,6 +5,8 @@ import RecordButton from "@/components/drills/RecordButton";
 import AudioButton from "@/components/drills/AudioButton";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,6 +24,7 @@ export default function ListeningDrill() {
   const assignmentId = params.assignmentId as string | undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const queryClient = useQueryClient();
   const startTimeRef = useRef(Date.now());
 
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -82,7 +85,6 @@ export default function ListeningDrill() {
   const handleRecord = () => {
     if (isRecording) {
       setIsRecording(false);
-      // Complete drill
       if (drill) {
         const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
         addRecentActivity({
@@ -92,16 +94,20 @@ export default function ListeningDrill() {
           durationSeconds,
           score: 100,
         });
+        void (async () => {
+          try {
+            await completeDrill(drillId, {
+              drillAssignmentId: assignmentId,
+              score: 100,
+              timeSpent: durationSeconds,
+              answers: [],
+            });
+            await invalidateDrillCaches(queryClient);
+          } catch (err) {
+            logger.warn('Failed to submit listening completion', err);
+          }
+        })();
         clearDrillProgress(drillId);
-        
-        // Submit completion
-        completeDrill(drillId, {
-          drillAssignmentId: assignmentId,
-          score: 100,
-          timeSpent: durationSeconds,
-          answers: [],
-        }).catch(err => logger.warn('Failed to submit completion', err));
-
         setIsDrillCompleted(true);
       }
     } else {

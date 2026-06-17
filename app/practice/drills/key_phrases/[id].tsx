@@ -5,7 +5,7 @@ import RecordButton from "@/components/drills/RecordButton";
 import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import { AppText, Loader } from "@/components/ui";
-import { drillKeys } from "@/hooks/useDrills";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import tw from "@/lib/tw";
 import {
   completeDrill,
@@ -417,7 +417,7 @@ export default function KeyPhrasesDrillScreen() {
       });
 
       clearDrillProgress(drillId);
-      await queryClient.invalidateQueries({ queryKey: drillKeys.all });
+      await invalidateDrillCaches(queryClient);
 
       router.replace({
         pathname: "/practice/drills/results",

@@ -19,7 +19,7 @@ import { navigateToDrill } from "@/utils/drillNavigation";
 import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -176,10 +176,11 @@ export default function MyPlanScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void refetchDrills();
       if (isSubscribed) {
         void refetchFreeTalk();
       }
-    }, [isSubscribed, refetchFreeTalk])
+    }, [refetchDrills, isSubscribed, refetchFreeTalk])
   );
 
   const [refreshing, setRefreshing] = useState(false);
@@ -194,7 +195,7 @@ export default function MyPlanScreen() {
     setRefreshing(false);
   };
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!isSubscribed) {
       router.replace("/premium" as never);
     }

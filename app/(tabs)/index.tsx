@@ -655,7 +655,7 @@ export default function HomeScreen() {
     isError: isDailyFocusError,
   } = useDailyFocusToday();
 
-  const { data: drillsData, isLoading: isDrillsLoading } = useDrills(undefined, 50);
+  const { data: drillsData, isLoading: isDrillsLoading, refetch: refetchDrills } = useDrills(undefined, 50);
   const {
     data: freeTalkScenarios = [],
     isLoading: isFreeTalkLoading,
@@ -665,10 +665,11 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void refetchDrills();
       if (isSubscribed) {
         void refetchFreeTalk();
       }
-    }, [isSubscribed, refetchFreeTalk])
+    }, [refetchDrills, isSubscribed, refetchFreeTalk])
   );
 
   const assignedPracticeFeed = useMemo(() => {

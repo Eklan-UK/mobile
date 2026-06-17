@@ -14,6 +14,8 @@ import RoleplayYourLinesProgress from "@/components/drills/roleplay/RoleplayYour
 import { AppText, BoldText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useQueryClient } from "@tanstack/react-query";
 import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
 import { ttsService } from "@/services/tts.service";
 import { useActivityStore } from "@/store/activity-store";
@@ -108,6 +110,7 @@ export default function RoleplayDrill() {
   const insets = useSafeAreaInsets();
 
   const { addRecentActivity, clearDrillProgress } = useActivityStore();
+  const queryClient = useQueryClient();
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
 
   const startTimeRef = useRef(Date.now());
@@ -567,6 +570,7 @@ export default function RoleplayDrill() {
           })) ?? [],
         },
       });
+      await invalidateDrillCaches(queryClient);
       clearDrillProgress(drillId);
       addRecentActivity({ id: drill._id, title: drill.title, type: drill.type, durationSeconds, score });
     } catch (e) {

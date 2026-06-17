@@ -5,7 +5,9 @@ import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useActivityStore } from "@/store/activity-store";
+import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
 import { logger } from "@/utils/logger";
 import { router, useLocalSearchParams } from "expo-router";
@@ -24,6 +26,7 @@ export default function GrammarDrill() {
   const assignmentId = params.assignmentId as string | undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const queryClient = useQueryClient();
   const startTimeRef = useRef(Date.now());
   const insets = useSafeAreaInsets();
 
@@ -160,6 +163,7 @@ export default function GrammarDrill() {
         answers: [],
         grammarResults,
       });
+      await invalidateDrillCaches(queryClient);
 
       setIsCompleted(true);
       addRecentActivity({
