@@ -1,7 +1,9 @@
 import { AppText } from "@/components/ui";
+import { useBadges } from "@/hooks/useBadges";
 import { useStreak } from "@/hooks/useStreak";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
+import { useMemo } from "react";
 import { ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
@@ -87,10 +89,24 @@ function maskFutureDays(display: boolean[]): boolean[] {
 
 export default function StreakScreen() {
   const { data: streakData, weeklyDisplay } = useStreak();
+  const { data: badgeState } = useBadges();
 
   const currentStreak = streakData?.currentStreak ?? 0;
   const longestStreak = streakData?.longestStreak ?? 0;
   const maskedDisplay = maskFutureDays(weeklyDisplay);
+  const unlockedBadgeCount = badgeState?.badges.filter((b) => b.unlocked).length ?? 0;
+
+  const recentUnlockedIcons = useMemo(() => {
+    return (badgeState?.badges ?? [])
+      .filter((b) => b.unlocked)
+      .sort((a, b) => {
+        const aTime = a.unlockedAt ? new Date(a.unlockedAt).getTime() : 0;
+        const bTime = b.unlockedAt ? new Date(b.unlockedAt).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 3)
+      .map((b) => b.icon);
+  }, [badgeState?.badges]);
 
   const motivationText =
     currentStreak > 0 ? "Keep it going! 🔥" : "Start your streak today!";
@@ -190,15 +206,29 @@ export default function StreakScreen() {
           </View>
 
           {/* Badges */}
-          <View style={tw`flex-1 bg-white rounded-2xl p-5 border border-neutral-100 shadow-sm items-center`}>
+          <TouchableOpacity
+            style={tw`flex-1 bg-white rounded-2xl p-5 border border-neutral-100 shadow-sm items-center`}
+            onPress={() => router.push('/badges')}
+            accessibilityLabel="View all badges"
+            accessibilityRole="button"
+          >
             <CalendarIcon />
             <AppText style={tw`text-3xl font-bold text-neutral-900 mt-2`}>
-              0
+              {unlockedBadgeCount}
             </AppText>
             <AppText style={tw`text-xs text-blue-500 mt-0.5 font-medium`}>
               Badges
             </AppText>
-          </View>
+            {recentUnlockedIcons.length > 0 ? (
+              <View style={tw`flex-row gap-1 mt-2`}>
+                {recentUnlockedIcons.map((icon, idx) => (
+                  <AppText key={idx} style={tw`text-base`}>
+                    {icon}
+                  </AppText>
+                ))}
+              </View>
+            ) : null}
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

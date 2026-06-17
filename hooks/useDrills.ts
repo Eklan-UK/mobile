@@ -1,3 +1,4 @@
+import { invalidateLearnerActivityCaches } from '@/hooks/invalidateLearnerActivityCaches';
 import { completeDrill, getDrillById, getMyDrills } from '@/services/drill.service';
 import { DrillStatus } from '@/types/drill.types';
 import { shouldFetchDrillDetail } from '@/utils/drillAssignment';
@@ -78,6 +79,7 @@ export async function invalidateDrillCaches(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: ['home-progress'] }),
     queryClient.invalidateQueries({ queryKey: ['learner-drills-profile'] }),
     queryClient.invalidateQueries({ queryKey: ['confidence-metrics'] }),
+    invalidateLearnerActivityCaches(queryClient),
   ]);
 }
 

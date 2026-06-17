@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { getDrillById, getMyDrills } from '@/services/drill.service';
+import { fetchBadges, userBadgesQueryKey } from '@/services/badges.service';
 import { futureSelfService } from '@/services/future-self.service';
 import type { DrillAssignment } from '@/types/drill.types';
 import { shouldFetchDrillDetail } from '@/utils/drillAssignment';
@@ -91,6 +92,17 @@ export function usePrefetch() {
   );
 
   /**
+   * Prefetch learner badges for gallery / home header
+   */
+  const prefetchBadges = useCallback(() => {
+    queryClient.prefetchQuery({
+      queryKey: userBadgesQueryKey,
+      queryFn: fetchBadges,
+      staleTime: 1000 * 60 * 2,
+    });
+  }, [queryClient]);
+
+  /**
    * Prefetch all common data on app start
    * Call this in the root layout or home screen
    */
@@ -98,17 +110,21 @@ export function usePrefetch() {
     // Prefetch future self video
     prefetchFutureSelf();
 
+    // Prefetch learner badges
+    prefetchBadges();
+
     // Prefetch the full no-filter drill list that plan.tsx and home use.
     // Status-filtered prefetches created separate cache keys that were never
     // consumed by any screen and triggered unnecessary extra API calls.
     prefetchDrills(undefined);
-  }, [prefetchFutureSelf, prefetchDrills]);
+  }, [prefetchFutureSelf, prefetchBadges, prefetchDrills]);
 
   return {
     prefetchDrill,
     prefetchDrillAssignment,
     prefetchDrills,
     prefetchFutureSelf,
+    prefetchBadges,
     prefetchDrillsBatch,
     prefetchCommonData,
   };

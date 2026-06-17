@@ -9,6 +9,7 @@ import RecordButton from "@/components/drills/RecordButton";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill, bookmarkWord } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { invalidateLearnerActivityCaches } from "@/hooks/invalidateLearnerActivityCaches";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import { useQueryClient } from "@tanstack/react-query";
 import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
@@ -449,6 +450,7 @@ export default function VocabularyDrill() {
         context,
         type: "word",
       });
+      await invalidateLearnerActivityCaches(queryClient);
       setIsBookmarked(true);
       Alert.alert("Saved", `"${word}" has been bookmarked.`);
     } catch (error) {

@@ -257,6 +257,7 @@ export const queryKeys = {
   learnerDrills: (params?: object) => ['learner-drills', params] as const,
   drill: (id: string) => ['drill', id] as const,
   dailyFocus: ['daily-focus-today'] as const,
+  userBadges: ['user-badges'] as const,
   pronunciationProblems: (params?: object) => ['pronunciation-problems', params] as const,
   sessionSummaries: (params?: object) => ['session-summaries', params] as const,
   bookmarks: ['bookmarks'] as const,

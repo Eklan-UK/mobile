@@ -25,6 +25,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { AppText, BoldText } from '@/components/ui';
 import tw from '@/lib/tw';
 import { aiService } from '@/services/ai.service';
+import { invalidateLearnerActivityCaches } from '@/hooks/invalidateLearnerActivityCaches';
 import { useAuthStore } from '@/store/auth-store';
 import {
   appendFreeTalkHistoryEntry,
@@ -38,6 +39,7 @@ import {
   type FreeTalkAttemptGradeResult,
   type FreeTalkSessionPhase,
 } from '@/types/free-talk';
+import { useQueryClient } from '@tanstack/react-query';
 import { logger } from '@/utils/logger';
 import { setAudioModeSafely } from '@/utils/audio';
 
@@ -136,6 +138,7 @@ function Accordion({
 
 export default function FreeTalkSessionScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ scenarioId?: string }>();
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
@@ -556,6 +559,8 @@ export default function FreeTalkSessionScreen() {
         payload,
         audio ? { uri: audio.uri, mimeType: audio.mimeType } : null
       );
+      await invalidateLearnerActivityCaches(queryClient);
+      await queryClient.invalidateQueries({ queryKey: ['free-talk', 'completed-scenario-ids'] });
     } catch (err) {
       logger.warn('saveFreeTalkAttempt failed, saving locally', err);
       await appendFreeTalkHistoryEntry(user.id, {

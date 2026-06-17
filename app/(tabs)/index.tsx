@@ -31,13 +31,13 @@ import BellIcon from "@/assets/icons/bell.svg";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, memo, useMemo } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path, Circle } from "react-native-svg";
 import { useSemanticTheme } from "@/hooks/useSemanticTheme";
 import { brandColors } from "@/constants/theme-tokens";
+import { HomeBadgeButton } from "@/components/badges/HomeBadgeButton";
 
 /* ─── Category metadata ─────────────────────────────────── */
 
@@ -61,12 +61,6 @@ const CATEGORY_COLORS: Record<DrillType, string> = {
 
 const FlameIcon = () => (
   <Ionicons name="flame" size={14} color="#EA580C" />
-);
-
-const StarIcon = () => (
-  <Svg width={18} height={18} viewBox="0 0 24 24" fill="#FFFFFF">
-    <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-  </Svg>
 );
 
 const ChevronRightIcon = ({ size = 16, stroke = "#9CA3AF" }: { size?: number; stroke?: string }) => (
@@ -560,20 +554,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={tw`flex-row items-center gap-2 pt-1`}>
-            <TouchableOpacity
-              onPress={() => router.push("/(tabs)/profile")}
-              activeOpacity={0.85}
-              accessibilityLabel="Profile"
-            >
-              <LinearGradient
-                colors={["#FF9F43", "#FF6B35", "#E85D04"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={styles.starBtnGradient}
-              >
-                <StarIcon />
-              </LinearGradient>
-            </TouchableOpacity>
+            <HomeBadgeButton />
             <StreakPill count={streakCount} />
             <TouchableOpacity
               style={[
@@ -791,14 +772,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 0.5,
     borderColor: "rgba(231,234,237,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  starBtnGradient: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },

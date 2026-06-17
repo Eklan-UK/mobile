@@ -3,12 +3,15 @@ import { View, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { AppText, Loader, Button } from "@/components/ui";
+import { useNotificationToast } from "@/contexts/NotificationToastContext";
+import { invalidateLearnerActivityCaches } from "@/hooks/invalidateLearnerActivityCaches";
 import tw from "@/lib/tw";
 import { dailyFocusService, DailyFocus } from "@/services/daily-focus.service";
 import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
+import { useQueryClient } from "@tanstack/react-query";
 
 type QuestionType = "fillInBlank" | "matching" | "multipleChoice" | "vocabulary";
 
@@ -28,6 +31,8 @@ interface Question {
 export default function DailyFocusPracticeScreen() {
   const { id } = useLocalSearchParams();
   const focusId = id as string;
+  const queryClient = useQueryClient();
+  const { showToast } = useNotificationToast();
 
   const [dailyFocus, setDailyFocus] = useState<DailyFocus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -325,6 +330,8 @@ export default function DailyFocusPracticeScreen() {
         })),
       });
 
+      await invalidateLearnerActivityCaches(queryClient);
+
       if (result?.streakUpdated) {
         Alert.alert("Success", "Daily focus completed! Your streak has been updated! 🔥");
       } else {
@@ -333,11 +340,12 @@ export default function DailyFocusPracticeScreen() {
 
       if (result?.badgeUnlocked) {
         setBadgeUnlocked(result.badgeUnlocked);
-        Alert.alert(
-          "🎉 Badge Unlocked!",
-          `${result.badgeUnlocked.badgeName}!`,
-          [{ text: "OK" }]
-        );
+        showToast({
+          title: 'Badge unlocked!',
+          body: result.badgeUnlocked.badgeName,
+          variant: 'dark',
+          duration: 4000,
+        });
       }
 
       setIsCompleted(true);
