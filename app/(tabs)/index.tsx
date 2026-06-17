@@ -1,12 +1,12 @@
 import { AppText, BoldText } from "@/components/ui";
 import { ContinuePracticeCard } from "@/components/practice/continue-practice-card";
-import { ProgressCircle } from "@/components/ui/ProgressCircle";
+import { HomeProgressCard } from "@/components/progress/HomeProgressCard";
+import { useProgressScorecard } from "@/hooks/useProgressScorecard";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsSubscribed } from "@/hooks/useIsSubscribed";
-import { useConfidence } from "@/hooks/useConfidence";
 import { useDailyFocusToday } from "@/hooks/useDailyFocusToday";
-import { useHomeProgress } from "@/hooks/useHomeProgress";
 import { AssignedFreeTalkHomeCard } from "@/components/practice/AssignedFreeTalkHomeCard";
+import { DrillBookmarkToggle } from "@/components/practice/DrillBookmarkToggle";
 import { useDrills } from "@/hooks/useDrills";
 import { useFreeTalkCompletedScenarioIds } from "@/hooks/useFreeTalkCompletedScenarioIds";
 import { useFreeTalkScenarios } from "@/hooks/useFreeTalkScenarios";
@@ -17,7 +17,6 @@ import {
 } from "@/utils/assignedPracticeFeed";
 import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
 import { usePrefetch } from "@/hooks/usePrefetch";
-import { usePronunciation } from "@/hooks/usePronunciation";
 import { useUserStreakCount } from "@/hooks/useUserStreakCount";
 import {
   DrillAssignment,
@@ -34,7 +33,6 @@ import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, memo, useMemo } from "react";
-import type { ComponentProps } from "react";
 import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path, Circle } from "react-native-svg";
@@ -83,50 +81,6 @@ const ChevronRightIcon = ({ size = 16, stroke = "#9CA3AF" }: { size?: number; st
   </Svg>
 );
 
-const TrendingUpIcon = ({ color = "#4CAF50" }: { color?: string }) => (
-  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M3 17l5-5 4 4 8-8"
-      stroke={color}
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M14 9h5v5"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-const TrendingDownIcon = ({ color = "#EF4444" }: { color?: string }) => (
-  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M3 7l5 5 4-4 8 8"
-      stroke={color}
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M14 15h5v-5"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-/** Ring + accent colours aligned with product reference cards */
-const METRIC_CONFIDENCE_RING = "#E8A317";
-const METRIC_PRONUNCIATION_RING = "#34C759";
-const METRIC_ACCURATE_SENTENCE_RING = "#0EA5E9";
-const METRIC_RESPONSE_SPEED_RING = "#8B5CF6";
-
 const CalendarSessionsIcon = () => (
   <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
     <Path
@@ -146,72 +100,6 @@ const ClockIcon = () => (
   </Svg>
 );
 
-/* ─── Metric Row (full-width, Figma design) ───────────────── */
-
-interface MetricRowProps {
-  variant: "confidence" | "pronunciation" | "accurateSentence" | "responseSpeed";
-  label: string;
-  weeklyChange: number;
-  score: number;
-  circleColor: string;
-  /** Colour for the value inside the ring (reference: gold for confidence, black for others). */
-  valueColor: string;
-  displayValue: string;
-  isLoading: boolean;
-}
-
-const METRIC_VARIANT_STYLES_LIGHT: Record<
-  MetricRowProps["variant"],
-  { iconBoxBg: string; iconColor: string; icon: ComponentProps<typeof Ionicons>["name"] }
-> = {
-  confidence: {
-    iconBoxBg: "#FEF9C3",
-    iconColor: "#CA8A04",
-    icon: "trending-up",
-  },
-  pronunciation: {
-    iconBoxBg: "#F0FDF4",
-    iconColor: "#16A34A",
-    icon: "mic-outline",
-  },
-  accurateSentence: {
-    iconBoxBg: "#EFF6FF",
-    iconColor: "#2563EB",
-    icon: "chatbox-ellipses-outline",
-  },
-  responseSpeed: {
-    iconBoxBg: "#F5F3FF",
-    iconColor: "#7C3AED",
-    icon: "flash-outline",
-  },
-};
-
-const METRIC_VARIANT_STYLES_DARK: Record<
-  MetricRowProps["variant"],
-  { iconBoxBg: string; iconColor: string; icon: ComponentProps<typeof Ionicons>["name"] }
-> = {
-  confidence: {
-    iconBoxBg: "#3F3524",
-    iconColor: "#FACC15",
-    icon: "trending-up",
-  },
-  pronunciation: {
-    iconBoxBg: "#1A2E1F",
-    iconColor: "#4ADE80",
-    icon: "mic-outline",
-  },
-  accurateSentence: {
-    iconBoxBg: "#1E293B",
-    iconColor: "#60A5FA",
-    icon: "chatbox-ellipses-outline",
-  },
-  responseSpeed: {
-    iconBoxBg: "#2E1065",
-    iconColor: "#C4B5FD",
-    icon: "flash-outline",
-  },
-};
-
 type HomePalette = {
   isDark: boolean;
   pageBg: string;
@@ -226,11 +114,6 @@ type HomePalette = {
   viewSessionsBtnBorder: string;
   viewSessionsBtnText: string;
   sectionTitle: string;
-  metricRowBg: string;
-  metricRowBorder: string;
-  metricRowLabel: string;
-  metricRingTrack: string;
-  metricCircleNeutral: string;
   savedDrillsRowBg: string;
   savedDrillsRowBorder: string;
   savedDrillsText: string;
@@ -269,11 +152,6 @@ function useHomePalette(): HomePalette {
         : "rgba(59, 136, 62, 0.28)",
       viewSessionsBtnText: isDark ? brandColors.primaryLight : brandColors.primaryDark,
       sectionTitle: c.textPrimary,
-      metricRowBg: c.card,
-      metricRowBorder: c.border,
-      metricRowLabel: c.textPrimary,
-      metricRingTrack: c.progressBg,
-      metricCircleNeutral: c.textPrimary,
       savedDrillsRowBg: c.muted,
       savedDrillsRowBorder: c.border,
       savedDrillsText: c.textPrimary,
@@ -295,64 +173,6 @@ function useHomePalette(): HomePalette {
     [isDark, c]
   );
 }
-
-const MetricRow = memo(
-  ({
-    variant,
-    label,
-    weeklyChange,
-    score,
-    circleColor,
-    valueColor,
-    displayValue,
-    isLoading,
-  }: MetricRowProps) => {
-    const p = useHomePalette();
-    const vs = (p.isDark ? METRIC_VARIANT_STYLES_DARK : METRIC_VARIANT_STYLES_LIGHT)[variant];
-    const changeText = isLoading
-      ? "..."
-      : `${weeklyChange >= 0 ? "+" : ""}${weeklyChange}% this week`;
-    const changePositive = weeklyChange >= 0;
-    const changeColor = changePositive ? "#4CAF50" : "#DC2626";
-
-    return (
-      <View
-        style={[
-          styles.metricRow,
-          { backgroundColor: p.metricRowBg, borderColor: p.metricRowBorder },
-        ]}
-      >
-        <View style={[styles.metricIconBox, { backgroundColor: vs.iconBoxBg }]}>
-          <Ionicons name={vs.icon} size={20} color={vs.iconColor} />
-        </View>
-        <View style={styles.metricRowTextCol}>
-          <AppText style={[styles.metricRowLabel, { color: p.metricRowLabel }]}>{label}</AppText>
-          <View style={tw`flex-row items-center gap-1`}>
-            {changePositive ? (
-              <TrendingUpIcon color={changeColor} />
-            ) : (
-              <TrendingDownIcon color={changeColor} />
-            )}
-            <AppText style={[styles.metricRowChange, { color: changeColor }]}>
-              {changeText}
-            </AppText>
-          </View>
-        </View>
-        <ProgressCircle
-          progress={Math.max(0, Math.min(100, score))}
-          size={36}
-          strokeWidth={3}
-          color={circleColor}
-          backgroundColor={p.metricRingTrack}
-        >
-          <AppText style={[styles.metricCircleText, { color: valueColor }]}>
-            {isLoading ? "–" : displayValue}
-          </AppText>
-        </ProgressCircle>
-      </View>
-    );
-  }
-);
 
 const ViewSessionsButton = memo(() => {
   const p = useHomePalette();
@@ -487,7 +307,7 @@ const STATUS_BADGE: Record<
 > = {
   completed: { label: "Completed", bg: "#D1FAE5", color: "#065F46" },
   missed:    { label: "Missed",    bg: "#FEE2E2", color: "#991B1B" },
-  ongoing:   { label: "Ongoing",   bg: "#DBEAFE", color: "#1E40AF" },
+  ongoing:   { label: "In progress", bg: "#DBEAFE", color: "#1E40AF" },
   active:    { label: "Active",    bg: "#DBEAFE", color: "#1E40AF" },
 };
 
@@ -533,16 +353,22 @@ const DrillCard = memo(
           </View>
           <View style={tw`flex-1`}>
             <View style={tw`flex-row items-center justify-between gap-2`}>
-              <BoldText style={[styles.drillTitle, { color: p.drillTitle }]} numberOfLines={2}>
+              <BoldText style={[styles.drillTitle, { color: p.drillTitle, flex: 1 }]} numberOfLines={2}>
                 {drill.title}
               </BoldText>
-              <View style={[styles.drillBadge, { backgroundColor: badge.bg }]}>
-                {isCompleted && (
-                  <Ionicons name="checkmark-circle" size={11} color={badge.color} />
-                )}
-                <AppText style={[styles.drillBadgeText, { color: badge.color }]}>
-                  {badge.label}
-                </AppText>
+              <View style={tw`flex-row items-center gap-2 shrink-0`}>
+                <DrillBookmarkToggle
+                  drillId={drill._id}
+                  hasBookmarks={assignment.hasBookmarks}
+                />
+                <View style={[styles.drillBadge, { backgroundColor: badge.bg }]}>
+                  {isCompleted && (
+                    <Ionicons name="checkmark-circle" size={11} color={badge.color} />
+                  )}
+                  <AppText style={[styles.drillBadgeText, { color: badge.color }]}>
+                    {badge.label}
+                  </AppText>
+                </View>
               </View>
             </View>
 
@@ -642,11 +468,7 @@ export default function HomeScreen() {
   const { prefetchDrillAssignment } = usePrefetch();
   const { data: streakCount = 0 } = useUserStreakCount();
 
-  const { data: pronunciation, isLoading: pronunciationLoading, weeklyChange: weeklyPronunciation } =
-    usePronunciation();
-  const { data: confidence, isLoading: confidenceLoading, weeklyChange: weeklyConfidence } =
-    useConfidence();
-  const { data: homeProgress, isLoading: progressLoading } = useHomeProgress();
+  const { data: scorecard, isLoading: scorecardLoading } = useProgressScorecard();
 
   const {
     data: dailyFocus,
@@ -790,46 +612,41 @@ export default function HomeScreen() {
           {/* ── YOUR PROGRESS ──────────────────────────────── */}
           <View>
             <AppText style={[styles.sectionTitle, { color: p.sectionTitle }]}>Your Progress</AppText>
-            <View style={tw`gap-2 mt-2`}>
-              <MetricRow
-                variant="confidence"
-                label="Confidence"
-                weeklyChange={weeklyConfidence}
-                score={confidence?.confidenceScore ?? 0}
-                circleColor={METRIC_CONFIDENCE_RING}
-                valueColor={METRIC_CONFIDENCE_RING}
-                displayValue={`${Math.round(confidence?.confidenceScore ?? 0)}%`}
-                isLoading={confidenceLoading}
-              />
-              <MetricRow
-                variant="pronunciation"
+            <View style={tw`gap-3 mt-2`}>
+              <HomeProgressCard
                 label="Pronunciation"
-                weeklyChange={weeklyPronunciation}
-                score={pronunciation?.overallScore ?? 0}
-                circleColor={METRIC_PRONUNCIATION_RING}
-                valueColor={p.metricCircleNeutral}
-                displayValue={`${Math.round(pronunciation?.overallScore ?? 0)}`}
-                isLoading={pronunciationLoading}
+                score={scorecard?.pronunciation ?? 0}
+                weeklyChange={scorecard?.pronunciationWeeklyChange ?? 0}
+                ringColor="#22c55e"
+                icon={<Ionicons name="mic" size={24} color="#22c55e" />}
+                isLoading={scorecardLoading}
+                noData={scorecard?.sampleCounts?.pronunciationDrills === 0}
               />
-              <MetricRow
-                variant="accurateSentence"
-                label="Accurate Sentence Usage"
-                weeklyChange={homeProgress?.sentenceWeeklyChange ?? 0}
-                score={homeProgress?.accurateSentenceUsage ?? 0}
-                circleColor={METRIC_ACCURATE_SENTENCE_RING}
-                valueColor={p.metricCircleNeutral}
-                displayValue={`${Math.round(homeProgress?.accurateSentenceUsage ?? 0)}`}
-                isLoading={progressLoading}
+              <HomeProgressCard
+                label="Accuracy"
+                score={scorecard?.accuracy ?? 0}
+                weeklyChange={scorecard?.accuracyWeeklyChange ?? 0}
+                ringColor="#0284c7"
+                icon={<Ionicons name="checkmark-circle-outline" size={24} color="#0284c7" />}
+                isLoading={scorecardLoading}
+                noData={scorecard?.sampleCounts?.accuracyDrills === 0}
               />
-              <MetricRow
-                variant="responseSpeed"
-                label="Response Speed"
-                weeklyChange={homeProgress?.speedWeeklyChange ?? 0}
-                score={homeProgress?.responseSpeed ?? 0}
-                circleColor={METRIC_RESPONSE_SPEED_RING}
-                valueColor={p.metricCircleNeutral}
-                displayValue={`${Math.round(homeProgress?.responseSpeed ?? 0)}`}
-                isLoading={progressLoading}
+              <HomeProgressCard
+                label="Fluency"
+                score={scorecard?.fluency ?? 0}
+                weeklyChange={scorecard?.fluencyWeeklyChange ?? 0}
+                ringColor="#7c3aed"
+                icon={<Ionicons name="chatbubble-outline" size={24} color="#7c3aed" />}
+                isLoading={scorecardLoading}
+                noData={scorecard?.sampleCounts?.fluencyScenarios === 0}
+              />
+              <HomeProgressCard
+                label="Confidence"
+                score={scorecard?.confidence ?? 0}
+                weeklyChange={scorecard?.confidenceWeeklyChange ?? 0}
+                ringColor="#eab308"
+                icon={<Ionicons name="trending-up" size={24} color="#eab308" />}
+                isLoading={scorecardLoading}
               />
             </View>
           </View>
@@ -1009,51 +826,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1b1b1b",
     lineHeight: 24,
-  },
-
-  // Metric rows
-  metricRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#FFFFFF",
-    borderWidth: 0.5,
-    borderColor: "rgba(231,234,237,0.5)",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    minHeight: 64,
-    boxShadow: "0px 1px 2px rgba(0,0,0,0.04)",
-  },
-  metricIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  metricRowTextCol: {
-    flex: 1,
-    flexDirection: "column",
-    gap: 4,
-    minWidth: 0,
-    marginRight: 4,
-  },
-  metricRowLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#1b1b1b",
-    lineHeight: 20,
-  },
-  metricRowChange: {
-    fontSize: 12,
-    fontWeight: "400",
-    lineHeight: 16,
-  },
-  metricCircleText: {
-    fontSize: 9,
-    fontWeight: "600",
   },
 
   // Saved drills row

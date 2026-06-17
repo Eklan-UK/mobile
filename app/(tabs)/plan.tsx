@@ -25,7 +25,7 @@ import { ActivityIndicator, RefreshControl, ScrollView, TouchableOpacity, View }
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Types
-type TabType = "ongoing" | "reviewed" | "completed";
+type TabType = "ongoing" | "completed" | "bookmarked";
 
 // Tab Button Component
 function TabButton({
@@ -81,16 +81,15 @@ function EmptyState({ tab }: { tab: TabType }) {
       title: "No ongoing drills",
       subtitle: "Your assigned drills will appear here",
     },
-    reviewed: {
-      emoji: "✍️",
-      title: "No reviewed drills yet",
-      subtitle:
-        "When your tutor marks a completed drill as reviewed, it shows up here (see docs/MOBILE_MY_PLAN.md §7).",
-    },
     completed: {
       emoji: "🎉",
       title: "No completed drills yet",
       subtitle: "Complete drills to see them here",
+    },
+    bookmarked: {
+      emoji: "🔖",
+      title: "No bookmarked drills yet",
+      subtitle: "Tap the bookmark icon on a drill to save it here",
     },
   };
 
@@ -148,10 +147,9 @@ export default function MyPlanScreen() {
   // Fetch learner classes for Next Session card
   const { nextSession } = useLearnerClasses();
 
-  // Categorize drills — docs/MOBILE_MY_PLAN.md §7: Reviewed = completed + latestAttempt.reviewStatus === 'reviewed' (see utils/drillPlanTab.ts)
   const categorizedDrills = useMemo(() => {
     if (!data?.drills) {
-      return { ongoing: [], reviewed: [], completed: [] };
+      return { ongoing: [], completed: [], bookmarked: [] };
     }
     return categorizeDrillsByPlanTab(data.drills);
   }, [data?.drills]);
@@ -246,16 +244,16 @@ export default function MyPlanScreen() {
               onPress={() => setActiveTab("ongoing")}
             />
             <TabButton
-              label="Reviewed"
-              count={categorizedDrills.reviewed.length}
-              isActive={activeTab === "reviewed"}
-              onPress={() => setActiveTab("reviewed")}
-            />
-            <TabButton
               label="Completed"
               count={categorizedDrills.completed.length}
               isActive={activeTab === "completed"}
               onPress={() => setActiveTab("completed")}
+            />
+            <TabButton
+              label="Bookmarked"
+              count={categorizedDrills.bookmarked.length}
+              isActive={activeTab === "bookmarked"}
+              onPress={() => setActiveTab("bookmarked")}
             />
           </ScrollView>
         </View>
@@ -288,6 +286,10 @@ export default function MyPlanScreen() {
                 <DrillCard
                   key={item.assignment.assignmentId}
                   drill={item.assignment.drill}
+                  drillId={item.assignment.drill._id}
+                  hasBookmarks={item.assignment.hasBookmarks}
+                  isInProgress={item.assignment.status === "in_progress"}
+                  showBookmark
                   onPress={() => handleDrillPress(item.assignment)}
                   locked={false}
                   isCompleted={false}
@@ -310,6 +312,10 @@ export default function MyPlanScreen() {
             <DrillCard
               key={assignment.assignmentId}
               drill={assignment.drill}
+              drillId={assignment.drill._id}
+              hasBookmarks={assignment.hasBookmarks}
+              isInProgress={assignment.status === "in_progress"}
+              showBookmark
               onPress={() => handleDrillPress(assignment)}
               locked={false}
               isCompleted={activeTab === "completed"}

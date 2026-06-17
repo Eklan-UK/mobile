@@ -98,9 +98,10 @@ export function usePrefetch() {
     // Prefetch future self video
     prefetchFutureSelf();
 
-    // Prefetch pending and in-progress drills (most commonly accessed)
-    prefetchDrills('pending');
-    prefetchDrills('in_progress');
+    // Prefetch the full no-filter drill list that plan.tsx and home use.
+    // Status-filtered prefetches created separate cache keys that were never
+    // consumed by any screen and triggered unnecessary extra API calls.
+    prefetchDrills(undefined);
   }, [prefetchFutureSelf, prefetchDrills]);
 
   return {

@@ -6,6 +6,10 @@ import {
   KeyPhrasesResult,
   PerformanceReviewSnapshot,
 } from '@/types/drill.types';
+import type {
+  RoleplayCheckpoint,
+  SaveRoleplayProgressBody,
+} from '@/types/roleplay-progress.types';
 import { normalizeDrillAssignments, shouldFetchDrillDetail } from '@/utils/drillAssignment';
 import { logger } from "@/utils/logger";
 import { isAxiosError } from 'axios';
@@ -22,7 +26,24 @@ interface GetMyDrillsParams {
 }
 
 /**
- * Fetch user's assigned drills
+ * Fetch bookmarked drill IDs from GET /api/v1/bookmarks?type=drill.
+ * Returns a Set of drill IDs. Fails silently — callers fall back to
+ * whatever hasBookmarks the my-drills response returned.
+ */
+export async function getDrillBookmarkStatus(): Promise<Set<string>> {
+  const response = await apiClient.get('/api/v1/bookmarks?type=drill');
+  const data = response.data?.data ?? response.data;
+  const bookmarks: unknown[] = Array.isArray(data?.bookmarks) ? data.bookmarks : (Array.isArray(data) ? data : []);
+  const ids = (bookmarks as any[]).filter((b: any) => b.type === 'drill' && b.drillId).map((b: any) => String(b.drillId));
+  return new Set(ids);
+}
+
+/**
+ * Fetch user's assigned drills.
+ * Bookmark state is resolved authoritatively: a parallel call to
+ * GET /api/v1/bookmarks?type=drill overrides the `hasBookmarks` field
+ * returned by my-drills so that toggling a bookmark and refetching
+ * always reflects the real state in MongoDB.
  */
 export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsResponse> {
   logger.log('🎯 Fetching drills with params:', params);
@@ -34,19 +55,34 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
   if (params?.status) queryParams.append('status', params.status);
 
   const url = `/api/v1/drills/learner/my-drills${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-  const response = await apiClient.get(url);
+
+  // Fetch drills and bookmark status in parallel. Bookmark status is non-critical
+  // — if it fails we keep whatever hasBookmarks the drill list returned.
+  const [response, bookmarkedIds] = await Promise.all([
+    apiClient.get(url),
+    getDrillBookmarkStatus().catch(() => null),
+  ]);
 
   // Handle the nested response structure from backend
   // Backend returns: { code, message, data: { drills: [...], pagination: {...} } }
   const data = response.data.data || response.data;
 
   const rawDrills = Array.isArray(data.drills) ? data.drills : [];
+  const normalized = normalizeDrillAssignments(rawDrills);
+
+  // Override hasBookmarks with the authoritative set from the dedicated endpoint
+  if (bookmarkedIds !== null) {
+    for (const assignment of normalized) {
+      assignment.hasBookmarks = bookmarkedIds.has(assignment.drill._id);
+    }
+  }
+
   const result = {
-    drills: normalizeDrillAssignments(rawDrills),
+    drills: normalized,
     pagination: data.pagination || {
-      total: data.drills?.length || 0,
+      total: rawDrills.length,
       page: params?.page || 1,
-      limit: params?.limit ?? data.drills?.length ?? 0,
+      limit: params?.limit ?? rawDrills.length,
     },
   };
 
@@ -142,6 +178,49 @@ export async function completeDrill(
   await apiClient.post(`/api/v1/drills/${drillId}/complete`, data);
 }
 
+function roleplayProgressQueryString(query: Record<string, string>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.append(key, value);
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+/**
+ * GET saved roleplay checkpoint for assignment or weekly challenge.
+ */
+export async function getRoleplayProgress(
+  drillId: string,
+  query: Record<string, string>
+): Promise<RoleplayCheckpoint | null> {
+  const url = `/api/v1/drills/${drillId}/roleplay-progress${roleplayProgressQueryString(query)}`;
+  const response = await apiClient.get(url);
+  const data = response.data?.data ?? response.data;
+  return (data?.progress as RoleplayCheckpoint | null) ?? null;
+}
+
+/**
+ * POST roleplay checkpoint (Continue Later).
+ */
+export async function saveRoleplayProgress(
+  drillId: string,
+  body: SaveRoleplayProgressBody
+): Promise<void> {
+  await apiClient.post(`/api/v1/drills/${drillId}/roleplay-progress`, body);
+}
+
+/**
+ * DELETE roleplay checkpoint (submit, restart, stale progress).
+ */
+export async function clearRoleplayProgress(
+  drillId: string,
+  query: Record<string, string>
+): Promise<void> {
+  const url = `/api/v1/drills/${drillId}/roleplay-progress${roleplayProgressQueryString(query)}`;
+  await apiClient.delete(url);
+}
+
 /**
  * Start a drill attempt (optional - attempts are created on completion)
  * This is a no-op if the endpoint doesn't exist (404)
@@ -223,11 +302,22 @@ export async function saveDrill(drillId: string): Promise<any> {
       drillId,
       type: 'drill',
       content: drillId,
-      context: 'saved-drill'
     });
     return response.data;
   } catch (error: any) {
     logger.error('Failed to save drill:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Remove a drill-level bookmark by drillId (web parity).
+ */
+export async function unsaveDrillByDrillId(drillId: string): Promise<void> {
+  try {
+    await apiClient.delete(`/api/v1/bookmarks/by-drill/${drillId}`);
+  } catch (error: any) {
+    logger.error('Failed to remove drill bookmark:', error.message);
     throw error;
   }
 }

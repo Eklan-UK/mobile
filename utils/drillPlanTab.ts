@@ -1,29 +1,15 @@
-import type { DrillAssignment, DrillAttempt } from '@/types/drill.types';
+import type { DrillAssignment } from '@/types/drill.types';
 
 /**
- * Plan tabs — **docs/MOBILE_MY_PLAN.md §7** (client-side):
- * - `ongoing`: assignment not completed
- * - `reviewed`: completed **and** `latestAttempt.reviewStatus === 'reviewed'` (tutor has reviewed)
- * - `completed`: completed but not in the reviewed bucket
- *
- * Listing may use `latest_attempt` (snake_case); we normalize when reading the attempt.
+ * Plan tabs — client-side:
+ * - `ongoing`: not completed and not bookmarked
+ * - `completed`: completed and not bookmarked
+ * - `bookmarked`: hasBookmarks (any completion status)
  */
 
-/** my-drills may expose `latest_attempt` (snake) without camelCase normalization. */
-function resolveLatestAttempt(assignment: DrillAssignment): DrillAttempt | undefined {
+function readHasBookmarks(assignment: DrillAssignment): boolean {
   const r = assignment as Record<string, unknown>;
-  const la = assignment.latestAttempt ?? r.latest_attempt;
-  if (!la || typeof la !== 'object' || Array.isArray(la)) return undefined;
-  return la as DrillAttempt;
-}
-
-/** Root `latestAttempt` / `latest_attempt` only — matches handoff `LearnerDrill.latestAttempt`. */
-function readAttemptRootReviewStatus(assignment: DrillAssignment): string | undefined {
-  const att = resolveLatestAttempt(assignment);
-  if (!att || typeof att !== 'object' || Array.isArray(att)) return undefined;
-  const o = att as Record<string, unknown>;
-  const rs = o.reviewStatus ?? o.review_status;
-  return typeof rs === 'string' ? rs.trim() : undefined;
+  return Boolean(assignment.hasBookmarks ?? r.has_bookmarks);
 }
 
 function assignmentIsCompleted(assignment: DrillAssignment): boolean {
@@ -34,41 +20,29 @@ function assignmentIsCompleted(assignment: DrillAssignment): boolean {
   return normalized === 'completed';
 }
 
-function attemptHasKeyPhrasesResults(assignment: DrillAssignment): boolean {
-  const att = resolveLatestAttempt(assignment);
-  return !!att?.keyPhrasesResults?.items?.length;
-}
+export type DrillPlanTab = 'ongoing' | 'completed' | 'bookmarked';
 
-function rootReviewStatusIsReviewed(assignment: DrillAssignment): boolean {
-  const s = readAttemptRootReviewStatus(assignment)?.toLowerCase();
-  if (s === 'reviewed') return true;
-  return attemptHasKeyPhrasesResults(assignment);
-}
-
-/**
- * @see docs/MOBILE_MY_PLAN.md §7
- */
-export function getDrillPlanTab(assignment: DrillAssignment): 'ongoing' | 'reviewed' | 'completed' {
+export function getDrillPlanTab(assignment: DrillAssignment): DrillPlanTab {
+  if (readHasBookmarks(assignment)) {
+    return 'bookmarked';
+  }
   if (!assignmentIsCompleted(assignment)) {
     return 'ongoing';
-  }
-  if (rootReviewStatusIsReviewed(assignment)) {
-    return 'reviewed';
   }
   return 'completed';
 }
 
 export function categorizeDrillsByPlanTab(drills: DrillAssignment[]) {
   const ongoing: DrillAssignment[] = [];
-  const reviewed: DrillAssignment[] = [];
   const completed: DrillAssignment[] = [];
+  const bookmarked: DrillAssignment[] = [];
 
   for (const d of drills) {
     const tab = getDrillPlanTab(d);
-    if (tab === 'ongoing') ongoing.push(d);
-    else if (tab === 'reviewed') reviewed.push(d);
+    if (tab === 'bookmarked') bookmarked.push(d);
+    else if (tab === 'ongoing') ongoing.push(d);
     else completed.push(d);
   }
 
-  return { ongoing, reviewed, completed };
+  return { ongoing, completed, bookmarked };
 }

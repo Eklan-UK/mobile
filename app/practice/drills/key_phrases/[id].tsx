@@ -13,6 +13,9 @@ import {
   getDrillById,
   getMyDrills,
 } from "@/services/drill.service";
+import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
+import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
+import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 import {
   extractQualityScore,
   extractTextScore,
@@ -82,6 +85,15 @@ export default function KeyPhrasesDrillScreen() {
   const drillId = params.id as string;
   const paramAssignmentId = params.assignmentId as string | undefined;
 
+  // Weekly challenge mode params
+  const wcSource = params.source as string | undefined;
+  const isWeeklyChallenge = wcSource === "weekly_challenge";
+  const wcItemId = params.wcItemId as string | undefined;
+  const wcWeekStartDateRaw = params.weekStartDate as string | undefined;
+  const wcWeekStartDate = wcWeekStartDateRaw
+    ? decodeWeekStartDate(wcWeekStartDateRaw)
+    : undefined;
+
   const queryClient = useQueryClient();
   const { updateDrillProgress, clearDrillProgress } = useActivityStore();
   const startTimeRef = useRef(Date.now());
@@ -126,6 +138,22 @@ export default function KeyPhrasesDrillScreen() {
       try {
         setLoading(true);
         setLoadError(null);
+
+        // WC mode: load pre-adapted drill from cache
+        if (isWeeklyChallenge) {
+          const cached = getCachedWCDrill(drillId);
+          if (cached) {
+            if (mounted) {
+              setDrill(drillForUi(cached));
+              setItemResults([]);
+            }
+            return;
+          }
+          logger.warn("[KeyPhrasesDrill] WC drill not in cache:", drillId);
+          router.back();
+          return;
+        }
+
         const { drillId: resolvedDrillId, assignmentId: aid } =
           await resolveDrillAndAssignmentIds(drillId, paramAssignmentId);
         if (mounted) setResolvedAssignmentId(aid);
@@ -372,18 +400,6 @@ export default function KeyPhrasesDrillScreen() {
   const handleSubmitAfterReview = async () => {
     if (!drill || totalItems === 0) return;
 
-    const { assignmentId } = await resolveDrillAndAssignmentIds(
-      drillId,
-      resolvedAssignmentId
-    );
-    if (!assignmentId) {
-      Alert.alert(
-        "Cannot submit",
-        "Assignment ID is missing. Open this drill from My Plan and try again."
-      );
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const filledResults: KeyPhraseItemResult[] = items.map((item, idx) => {
@@ -400,12 +416,38 @@ export default function KeyPhrasesDrillScreen() {
         );
       });
       const keyPhrasesResults = buildKeyPhrasesResults(items, filledResults);
+      const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
+
+      if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
+        await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {
+          score: keyPhrasesResults.score,
+          weekStartDate: wcWeekStartDate,
+        });
+        clearDrillProgress(drillId);
+        router.replace(
+          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
+        );
+        return;
+      }
+
+      const { assignmentId } = await resolveDrillAndAssignmentIds(
+        drillId,
+        resolvedAssignmentId
+      );
+      if (!assignmentId) {
+        Alert.alert(
+          "Cannot submit",
+          "Assignment ID is missing. Open this drill from My Plan and try again."
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
       const performanceReviewSnapshot = buildPerformanceReviewSnapshot({
         analytics: sessionReviewAnalytics,
         items,
         itemResults: filledResults,
       });
-      const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
       await completeDrill(drill._id, {
         drillAssignmentId: assignmentId,

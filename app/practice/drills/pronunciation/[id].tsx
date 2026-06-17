@@ -10,6 +10,9 @@ import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
+import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
+import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
+import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 import { useQueryClient } from "@tanstack/react-query";
 import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
 import type { PronunciationItem } from "@/types/drill.types";
@@ -71,6 +74,15 @@ export default function PronunciationDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+
+  // Weekly challenge mode params
+  const wcSource = params.source as string | undefined;
+  const isWeeklyChallenge = wcSource === "weekly_challenge";
+  const wcItemId = params.wcItemId as string | undefined;
+  const wcWeekStartDateRaw = params.weekStartDate as string | undefined;
+  const wcWeekStartDate = wcWeekStartDateRaw
+    ? decodeWeekStartDate(wcWeekStartDateRaw)
+    : undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
@@ -165,6 +177,28 @@ export default function PronunciationDrill() {
   const loadDrill = async () => {
     try {
       setLoading(true);
+
+      // WC mode: load pre-adapted drill from cache
+      if (isWeeklyChallenge) {
+        const cached = getCachedWCDrill(drillId);
+        if (cached) {
+          setDrill(cached);
+          const totalItems = cached.pronunciation_items?.length || 0;
+          setItemProgress(
+            Array.from({ length: totalItems }, () => ({
+              wordPassed: false,
+              wordScore: 0,
+              sentencePassed: false,
+              sentenceScore: 0,
+            }))
+          );
+          return;
+        }
+        logger.warn("[PronunciationDrill] WC drill not in cache:", drillId);
+        router.back();
+        return;
+      }
+
       const drillData = await getDrillById(drillId, assignmentId);
       setDrill(drillData);
 
@@ -328,6 +362,8 @@ export default function PronunciationDrill() {
   };
 
   const logPronunciationAttempt = (text: string, audioBase64: string) => {
+    // Skip PronunciationAttempt logging for weekly challenge drills (synthetic IDs)
+    if (isWeeklyChallenge) return;
     apiClient
       .post("/api/v1/pronunciations/drill-attempt", {
         text,
@@ -460,15 +496,23 @@ export default function PronunciationDrill() {
     });
 
     try {
-      await completeDrill(drillId, {
-        drillAssignmentId: assignmentId,
-        score,
-        timeSpent,
-        answers: [],
-        pronunciationResults: { wordScores },
-      });
-      await invalidateDrillCaches(queryClient);
-      clearDrillProgress(drillId);
+      if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
+        await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {
+          score,
+          weekStartDate: wcWeekStartDate,
+        });
+        clearDrillProgress(drillId);
+      } else {
+        await completeDrill(drillId, {
+          drillAssignmentId: assignmentId,
+          score,
+          timeSpent,
+          answers: [],
+          pronunciationResults: { wordScores },
+        });
+        await invalidateDrillCaches(queryClient);
+        clearDrillProgress(drillId);
+      }
     } catch (error) {
       logger.error("Failed to submit pronunciation drill:", error);
       Alert.alert("Error", "Failed to submit results. Please try again.");
@@ -555,6 +599,16 @@ export default function PronunciationDrill() {
     ).length;
     const passed = isDrillPerfectPass(passedItems, totalItems);
 
+    const handleContinue = () => {
+      if (isWeeklyChallenge && wcWeekStartDate) {
+        router.replace(
+          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
+        );
+      } else {
+        router.back();
+      }
+    };
+
     return (
       <DrillCompletedScreen
         variant="progress"
@@ -567,8 +621,9 @@ export default function PronunciationDrill() {
             ? `Great job! You've practiced pronunciation for all ${totalItems} item${totalItems > 1 ? "s" : ""}.`
             : `You completed ${passedItems} of ${totalItems} item${totalItems > 1 ? "s" : ""}. Keep going until you pass them all.`
         }
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        buttonLabel={isWeeklyChallenge ? "Back to Challenge" : "Continue"}
+        onContinue={handleContinue}
+        onClose={handleContinue}
       />
     );
   }

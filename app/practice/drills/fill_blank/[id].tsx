@@ -14,6 +14,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useActivityStore } from "@/store/activity-store";
 import { isDrillPerfectPass } from "@/utils/drillCompletion";
 import { logger } from "@/utils/logger";
+import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
+import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
+import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 
 interface BlankAnswer {
   position: number;
@@ -26,6 +29,18 @@ export default function FillBlankDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+
+  // Weekly challenge mode params
+  const wcSource = params.source as string | undefined;
+  const isWeeklyChallenge = wcSource === "weekly_challenge";
+  const wcChallengeId = params.challengeId as string | undefined;
+  const wcItemIndex = params.challengeItemIndex
+    ? parseInt(params.challengeItemIndex as string, 10)
+    : undefined;
+  const wcItemId = params.wcItemId as string | undefined;
+  const wcWeekStartDate = params.weekStartDate
+    ? decodeWeekStartDate(params.weekStartDate as string)
+    : undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
@@ -98,6 +113,18 @@ export default function FillBlankDrill() {
   const loadDrill = async () => {
     try {
       setLoading(true);
+      // In WC mode, load the pre-adapted drill from the module-level cache
+      if (isWeeklyChallenge) {
+        const cached = getCachedWCDrill(drillId);
+        if (cached) {
+          setDrill(cached);
+          return;
+        }
+        // Cache miss — the adapter screen should have populated it; go back
+        logger.warn('[FillBlankDrill] WC drill not in cache:', drillId);
+        router.back();
+        return;
+      }
       const drillData = await getDrillById(drillId, assignmentId);
       setDrill(drillData);
     } catch (error) {
@@ -177,19 +204,26 @@ export default function FillBlankDrill() {
       const score = totalBlanks > 0 ? Math.round((correctBlanks / totalBlanks) * 100) : 0;
       const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
-      await completeDrill(drillId, {
-        drillAssignmentId: assignmentId,
-        score,
-        timeSpent,
-        answers: [],
-        fillBlankResults: {
-          ...fillBlankResults,
-          totalBlanks,
-          correctBlanks,
+      if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
+        await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {
           score,
-        },
-      });
-      await invalidateDrillCaches(queryClient);
+          weekStartDate: wcWeekStartDate,
+        });
+      } else {
+        await completeDrill(drillId, {
+          drillAssignmentId: assignmentId,
+          score,
+          timeSpent,
+          answers: [],
+          fillBlankResults: {
+            ...fillBlankResults,
+            totalBlanks,
+            correctBlanks,
+            score,
+          },
+        });
+        await invalidateDrillCaches(queryClient);
+      }
 
       setIsCompleted(true);
       addRecentActivity({
@@ -307,6 +341,16 @@ export default function FillBlankDrill() {
 
     const passed = isDrillPerfectPass(correctBlanks, totalBlanks);
 
+    const handleContinue = () => {
+      if (isWeeklyChallenge && wcWeekStartDate) {
+        router.replace(
+          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
+        );
+      } else {
+        router.back();
+      }
+    };
+
     return (
       <DrillCompletedScreen
         variant="progress"
@@ -319,8 +363,9 @@ export default function FillBlankDrill() {
             ? `Great job! You answered all ${totalBlanks} blanks correctly.`
             : `You answered ${correctBlanks} out of ${totalBlanks} blanks correctly.`
         }
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        buttonLabel={isWeeklyChallenge ? "Back to Challenge" : "Continue"}
+        onContinue={handleContinue}
+        onClose={handleContinue}
       />
     );
   }

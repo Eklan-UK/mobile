@@ -11,6 +11,9 @@ export default function PracticeLayout() {
       <Stack.Screen name="pronunciation/result" options={{ headerShown: false }} />
       <Stack.Screen name="pronunciation/complete" options={{ headerShown: false }} />
       <Stack.Screen name="bookmark/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="weekly-challenge/index" options={{ headerShown: false }} />
+      <Stack.Screen name="weekly-challenge/[weekStartDate]" options={{ headerShown: false }} />
+      <Stack.Screen name="weekly-challenge/[weekStartDate]/[index]" options={{ headerShown: false }} />
     </Stack>
   );
 }

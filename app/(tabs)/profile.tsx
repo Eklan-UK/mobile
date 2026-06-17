@@ -11,8 +11,8 @@ import { useSemanticTheme } from "@/hooks/useSemanticTheme";
 import { brandColors } from "@/constants/theme-tokens";
 import { useUserCurrent } from "@/hooks/useSettings";
 import { usePronunciation } from "@/hooks/usePronunciation";
-import { useConfidence } from "@/hooks/useConfidence";
 import { useStreak } from "@/hooks/useStreak";
+import { useProgressScorecard, getConfidenceLabelColor } from "@/hooks/useProgressScorecard";
 import { getMyDrills } from "@/services/drill.service";
 import { DrillAssignment } from "@/types/drill.types";
 import { getPlanLabel, getPlanTagline } from "@/utils/plan";
@@ -196,7 +196,7 @@ export default function ProfileScreen() {
   const { isDark, colors: c } = useSemanticTheme();
   const { data: currentData, isLoading: userLoading } = useUserCurrent();
   const { data: pronData } = usePronunciation();
-  const { data: confData } = useConfidence();
+  const { data: scorecard, isLoading: scorecardLoading, isError: scorecardError } = useProgressScorecard();
   const { data: streakData, weeklyDisplay } = useStreak();
 
   // Fetch drills to compute total time studied — limit 200 matches web app
@@ -237,10 +237,11 @@ export default function ProfileScreen() {
 
   const studyTimeLabel = drillsPending ? "—" : formatStudyTime(totalStudySeconds);
 
-  const pronScore = Math.round(pronData?.overallScore ?? 0);
-  const confScore = Math.round(confData?.confidenceScore ?? 0);
-  const confLabel = confData?.label ?? "—";
-  const confTrend = confData?.trend;
+  const pronScore = Math.max(0, Math.min(100, Math.round(scorecard?.pronunciation ?? pronData?.overallScore ?? 0)));
+  const confScore = Math.max(0, Math.min(100, Math.round(scorecard?.confidence ?? 0)));
+  const confLabel = scorecard?.confidenceLabel;
+  const confTrend = scorecard?.confidenceTrend;
+  const confLabelColor = getConfidenceLabelColor(confLabel);
   const trendLabel = getTrendLabel(confTrend);
   const trendColor = getTrendColor(confTrend);
 
@@ -429,7 +430,23 @@ export default function ProfileScreen() {
           </View>
 
           {/* ── CONFIDENCE SCORE CARD ────────────────────────────────── */}
-          {confData && (
+          {scorecardLoading ? (
+            <View style={[tw`rounded-2xl p-5 shadow-sm`, cardSurface]}>
+              <View style={tw`flex-row items-center gap-2 mb-4`}>
+                <View style={[tw`w-4 h-4 rounded`, { backgroundColor: c.muted }]} />
+                <View style={[tw`h-3 w-32 rounded`, { backgroundColor: c.muted }]} />
+              </View>
+              <View style={tw`flex-row items-start gap-5`}>
+                <View style={[tw`w-24 h-24 rounded-full`, { backgroundColor: c.muted }]} />
+                <View style={tw`flex-1 gap-3`}>
+                  <View style={[tw`h-4 w-24 rounded`, { backgroundColor: c.muted }]} />
+                  <View style={[tw`h-2.5 rounded`, { backgroundColor: c.muted }]} />
+                  <View style={[tw`h-2.5 rounded`, { backgroundColor: c.muted }]} />
+                  <View style={[tw`h-2.5 rounded`, { backgroundColor: c.muted }]} />
+                </View>
+              </View>
+            </View>
+          ) : !scorecardError && scorecard ? (
             <View style={[tw`rounded-2xl p-5 shadow-sm`, cardSurface]}>
               {/* Header */}
               <View style={tw`flex-row items-center gap-2 mb-4`}>
@@ -450,8 +467,8 @@ export default function ProfileScreen() {
                   progress={confScore}
                   size={90}
                   strokeWidth={9}
-                  color="#f59e0b"
-                  backgroundColor={isDark ? "#422006" : "#fef3c7"}
+                  color={confLabelColor}
+                  backgroundColor={isDark ? "#1c1c1c" : "#f3f4f6"}
                 >
                   <View style={tw`items-center`}>
                     <AppText style={[tw`text-xl font-bold`, { color: c.textPrimary }]}>
@@ -465,57 +482,64 @@ export default function ProfileScreen() {
 
                 <View style={tw`flex-1`}>
                   {/* Status label + trend pill */}
-                  <View style={tw`flex-row items-center gap-2 mb-1`}>
-                    <AppText style={[tw`text-base font-semibold`, { color: "#ea580c" }]}>
-                      {confLabel}
+                  <View style={tw`flex-row items-center gap-2 mb-3 flex-wrap`}>
+                    <AppText style={[tw`text-base font-semibold`, { color: confLabelColor }]}>
+                      {confLabel ?? "—"}
                     </AppText>
                     <View
                       style={[
-                        tw`px-2 py-0.5 rounded-full`,
-                        { backgroundColor: c.muted },
+                        tw`px-2 py-0.5 rounded-full flex-row items-center gap-1`,
+                        {
+                          backgroundColor:
+                            confTrend === "improving"
+                              ? "#dcfce7"
+                              : confTrend === "declining"
+                              ? "#fee2e2"
+                              : c.muted,
+                        },
                       ]}
                     >
                       <AppText
-                        style={[tw`text-[10px] font-semibold`, { color: c.textSecondary }]}
+                        style={[
+                          tw`text-[10px] font-semibold`,
+                          { color: trendColor },
+                        ]}
                       >
-                        — {trendLabel}
+                        {confTrend === "improving" ? "↑" : confTrend === "declining" ? "↓" : "→"} {trendLabel}
                       </AppText>
                     </View>
                   </View>
 
-                  <AppText style={[tw`text-xs mb-3`, { color: c.textSecondary }]}>
-                    {confData.drillsCompleted ?? 0} of {confData.drillsAssigned ?? 0} Drills Completed
-                  </AppText>
-
                   <InlineBar
                     label="Pronunciation"
-                    value={confData.qualityScore ?? 0}
-                    color="#16a34a"
-                    decimalPlaces={1}
+                    value={scorecard.pronunciation}
+                    color="#22c55e"
                   />
                   <InlineBar
-                    label="Completion"
-                    value={(confData.completionRate ?? 0) * 100}
-                    color="#3B82F6"
+                    label="Accuracy"
+                    value={scorecard.accuracy}
+                    color="#0284c7"
+                  />
+                  <InlineBar
+                    label="Fluency"
+                    value={scorecard.fluency}
+                    color="#7c3aed"
                   />
                 </View>
               </View>
 
               <View
                 style={[
-                  tw`pt-3 flex-row justify-between items-center border-t`,
+                  tw`pt-3 border-t`,
                   { borderTopColor: c.border },
                 ]}
               >
                 <AppText style={[tw`text-[11px]`, { color: c.textSecondary }]}>
-                  Completion 40% + Quality 60%
-                </AppText>
-                <AppText style={[tw`text-[11px]`, { color: c.textSecondary }]}>
-                  Based on Speechace Scores
+                  Average of Pronunciation, Accuracy, and Fluency
                 </AppText>
               </View>
             </View>
-          )}
+          ) : null}
 
           {/* ── PRONUNCIATION PERFORMANCE CARD ──────────────────────── */}
           {pronData && (

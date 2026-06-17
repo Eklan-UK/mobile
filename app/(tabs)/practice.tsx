@@ -59,6 +59,39 @@ export default function PracticeScreen() {
               </View>
               <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
             </TouchableOpacity>
+
+            {/* Eklan Weekly Challenge */}
+            <TouchableOpacity
+              style={tw`bg-white dark:bg-neutral-800 border border-[rgba(231,234,237,0.5)] dark:border-neutral-700 rounded-2xl p-3 flex-row items-center gap-3`}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (!isSubscribed) {
+                  router.push("/premium");
+                  return;
+                }
+                router.push("/practice/weekly-challenge");
+              }}
+            >
+              <View
+                style={tw`h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#047857]`}
+              >
+                <Ionicons name="trophy" size={22} color="#fff" />
+              </View>
+              <View style={tw`flex-1`}>
+                <View style={tw`flex-row items-center gap-2 mb-0.5`}>
+                  <AppText style={tw`text-sm font-bold text-[#171717] dark:text-white`}>
+                    Eklan Weekly Challenge
+                  </AppText>
+                  {!isSubscribed && (
+                    <Ionicons name="lock-closed" size={12} color="#9CA3AF" />
+                  )}
+                </View>
+                <AppText style={tw`text-xs text-[#777] dark:text-neutral-400`}>
+                  Personalized to address your weakest areas
+                </AppText>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#D1D5DB" />
+            </TouchableOpacity>
           </View>
         </View>
 

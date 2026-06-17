@@ -4,9 +4,11 @@ import { useUserCurrent } from "@/hooks/useSettings";
 import tw from "@/lib/tw";
 import {
   getProSubscriptionProduct,
+  IAP_UNAVAILABLE_MESSAGE,
   initAppleIap,
   teardownAppleIap,
 } from "@/services/apple-iap.service";
+import { isExpoGo } from "@/utils/expo-runtime";
 import {
   iapErrorMessage,
   manageSubscription,
@@ -364,8 +366,9 @@ export default function PremiumScreen() {
 
             {IS_IOS && !isPro ? (
               <AppText style={tw`text-xs text-neutral-500 dark:text-neutral-400 text-center mt-3 leading-4 px-2`}>
-                Pro access works across devices when you sign in with the same account. Payment is handled by Apple on
-                iOS and may differ on Android or web.
+                {isExpoGo()
+                  ? IAP_UNAVAILABLE_MESSAGE
+                  : "Pro access works across devices when you sign in with the same account. Payment is handled by Apple on iOS and may differ on Android or web."}
               </AppText>
             ) : null}
 

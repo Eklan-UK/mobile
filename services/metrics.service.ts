@@ -1,4 +1,5 @@
 import apiClient from '@/lib/api';
+import type { ProgressScorecardMetrics } from '@/types/progress-scorecard.types';
 
 // ── Pronunciation ─────────────────────────────────────────────
 
@@ -91,4 +92,11 @@ export interface StreakData {
 export async function fetchUserStreak(): Promise<StreakData> {
   const response = await apiClient.get('/api/v1/users/streak');
   return response.data?.data ?? response.data;
+}
+
+// ── Progress Scorecard ────────────────────────────────────────
+
+export async function getProgressScorecard(): Promise<ProgressScorecardMetrics> {
+  const response = await apiClient.get('/api/v1/progress/scorecard');
+  return response.data?.data?.scorecard;
 }

@@ -1,27 +1,22 @@
 import { APPLE_PRO_MONTHLY_PRODUCT_ID, APPLE_VERIFY_PATH } from '@/constants/apple-iap';
 import apiClient from '@/lib/api';
 import type { AppleVerifyRequest, AppleVerifyResponse } from '@/types/apple-iap';
+import { isExpoGo } from '@/utils/expo-runtime';
 import { logger } from '@/utils/logger';
 import axios from 'axios';
 import { Platform } from 'react-native';
-import {
-  endConnection,
-  finishTransaction,
-  fetchProducts,
-  getAvailablePurchases,
-  getTransactionJwsIOS,
-  initConnection,
-  isUserCancelledError,
-  purchaseErrorListener,
-  purchaseUpdatedListener,
-  requestPurchase,
-  restorePurchases,
-  showManageSubscriptionsIOS,
-  type ProductSubscription,
-  type Purchase,
-  type PurchaseIOS,
+import type {
+  ProductSubscription,
+  Purchase,
+  PurchaseIOS,
 } from 'react-native-iap';
 
+export const IAP_UNAVAILABLE_MESSAGE =
+  'In-app purchases require a development build. Expo Go does not support Apple IAP. Run a dev client with `npx expo run:ios` or an EAS build.';
+
+type IapModule = typeof import('react-native-iap');
+
+let iapModule: IapModule | null = null;
 let connectionReady = false;
 let listenersRegistered = false;
 
@@ -32,30 +27,43 @@ type PurchaseWaiter = {
 
 let purchaseWaiter: PurchaseWaiter | null = null;
 
-function assertIos(): void {
+function assertIapAvailable(): void {
+  if (isExpoGo()) {
+    throw new Error(IAP_UNAVAILABLE_MESSAGE);
+  }
   if (Platform.OS !== 'ios') {
     throw new Error('Apple IAP is only available on iOS.');
   }
+}
+
+async function getIap(): Promise<IapModule> {
+  assertIapAvailable();
+  if (!iapModule) {
+    iapModule = await import('react-native-iap');
+  }
+  return iapModule;
 }
 
 function clearPurchaseWaiter(): void {
   purchaseWaiter = null;
 }
 
-function registerListenersOnce(): void {
+async function registerListenersOnce(): Promise<void> {
   if (listenersRegistered) return;
   listenersRegistered = true;
 
-  purchaseUpdatedListener((purchase) => {
+  const iap = await getIap();
+
+  iap.purchaseUpdatedListener((purchase) => {
     if (purchaseWaiter) {
       purchaseWaiter.resolve(purchase);
       clearPurchaseWaiter();
     }
   });
 
-  purchaseErrorListener((error) => {
+  iap.purchaseErrorListener((error) => {
     if (!purchaseWaiter) return;
-    if (isUserCancelledError(error)) {
+    if (iap.isUserCancelledError(error)) {
       purchaseWaiter.reject(new Error('Purchase cancelled.'));
     } else {
       purchaseWaiter.reject(new Error(error.message || 'Purchase failed.'));
@@ -65,25 +73,27 @@ function registerListenersOnce(): void {
 }
 
 export async function initAppleIap(): Promise<void> {
-  assertIos();
+  assertIapAvailable();
   if (connectionReady) return;
 
-  registerListenersOnce();
-  await initConnection();
+  const iap = await getIap();
+  await registerListenersOnce();
+  await iap.initConnection();
   connectionReady = true;
   logger.log('Apple IAP connection initialized');
 }
 
 export async function teardownAppleIap(): Promise<void> {
-  if (!connectionReady) return;
+  if (!connectionReady || !iapModule) return;
   clearPurchaseWaiter();
-  await endConnection();
+  await iapModule.endConnection();
   connectionReady = false;
 }
 
 export async function getProSubscriptionProduct(): Promise<ProductSubscription | null> {
   await initAppleIap();
-  const products = await fetchProducts({
+  const iap = await getIap();
+  const products = await iap.fetchProducts({
     skus: [APPLE_PRO_MONTHLY_PRODUCT_ID],
     type: 'subs',
   });
@@ -135,7 +145,8 @@ async function enrichSignedTransactionInfo(
   if (Platform.OS !== 'ios') return payload;
 
   try {
-    const jws = await getTransactionJwsIOS(purchase.productId);
+    const iap = await getIap();
+    const jws = await iap.getTransactionJwsIOS(purchase.productId);
     if (jws) {
       return { ...payload, signedTransactionInfo: jws };
     }
@@ -152,7 +163,8 @@ export async function verifyAndFinishPurchase(purchase: Purchase): Promise<Apple
   const result = await verifyApplePurchase(payload);
 
   try {
-    await finishTransaction({ purchase, isConsumable: false });
+    const iap = await getIap();
+    await iap.finishTransaction({ purchase, isConsumable: false });
   } catch (e) {
     logger.warn('finishTransaction failed (non-fatal):', e);
   }
@@ -168,11 +180,12 @@ function waitForPurchase(): Promise<Purchase> {
 
 export async function requestProSubscription(): Promise<Purchase> {
   await initAppleIap();
+  const iap = await getIap();
 
   const purchasePromise = waitForPurchase();
 
   try {
-    await requestPurchase({
+    await iap.requestPurchase({
       type: 'subs',
       request: {
         apple: { sku: APPLE_PRO_MONTHLY_PRODUCT_ID },
@@ -180,7 +193,7 @@ export async function requestProSubscription(): Promise<Purchase> {
     });
   } catch (e) {
     clearPurchaseWaiter();
-    if (isUserCancelledError(e)) {
+    if (iap.isUserCancelledError(e)) {
       throw new Error('Purchase cancelled.');
     }
     throw e instanceof Error ? e : new Error('Could not start purchase.');
@@ -191,9 +204,10 @@ export async function requestProSubscription(): Promise<Purchase> {
 
 export async function restorePurchasesAndVerify(): Promise<boolean> {
   await initAppleIap();
-  await restorePurchases();
+  const iap = await getIap();
+  await iap.restorePurchases();
 
-  const purchases = await getAvailablePurchases({
+  const purchases = await iap.getAvailablePurchases({
     onlyIncludeActiveItemsIOS: true,
   });
 
@@ -218,15 +232,13 @@ export async function restorePurchasesAndVerify(): Promise<boolean> {
 }
 
 export async function showManageSubscriptions(): Promise<void> {
-  assertIos();
+  assertIapAvailable();
   await initAppleIap();
-  await showManageSubscriptionsIOS();
+  const iap = await getIap();
+  await iap.showManageSubscriptionsIOS();
 }
 
 export function iapErrorMessage(error: unknown): string {
-  if (isUserCancelledError(error)) {
-    return 'Purchase cancelled.';
-  }
   if (error instanceof Error) {
     return error.message;
   }

@@ -304,6 +304,8 @@ export interface DrillAssignment {
   status: 'pending' | 'in_progress' | 'completed';
   completedAt?: string;
   latestAttempt?: DrillAttempt;
+  /** Server-computed: learner has a type:'drill' bookmark for this drill. */
+  hasBookmarks?: boolean;
 }
 
 export interface DrillsResponse {

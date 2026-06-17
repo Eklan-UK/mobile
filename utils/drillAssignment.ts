@@ -31,6 +31,7 @@ export function normalizeDrillAssignment(entry: unknown): DrillAssignment | null
       status: normalizeAssignmentStatus(row.status),
       completedAt: (row.completedAt ?? row.completed_at) as string | undefined,
       latestAttempt: (row.latestAttempt ?? row.latest_attempt) as DrillAssignment['latestAttempt'],
+      hasBookmarks: Boolean(row.hasBookmarks ?? row.has_bookmarks),
     };
   }
 
@@ -63,6 +64,7 @@ export function normalizeDrillAssignment(entry: unknown): DrillAssignment | null
     status: normalizeAssignmentStatus(status),
     completedAt: (completedAt ?? completed_at) as string | undefined,
     latestAttempt: (latestAttempt ?? latest_attempt) as DrillAssignment['latestAttempt'],
+    hasBookmarks: Boolean(row.hasBookmarks ?? row.has_bookmarks),
     drill: {
       ...(drillFields as Drill),
       _id: drillId,
