@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { logger } from "@/utils/logger";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import Svg, {
   Circle,
   Defs,
@@ -281,9 +282,10 @@ function NotificationIllustration() {
 }
 
 export default function NotificationsPermissionScreen() {
+  const { registerForPushNotifications } = usePushNotifications();
+
   const handleEnableNotifications = async () => {
-    // TODO: Request notification permissions
-    logger.log("Enable notifications");
+    await registerForPushNotifications();
     router.back();
   };
 

@@ -13,6 +13,7 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { AlertProvider } from "@/contexts/AlertContext";
 import { NotificationToastProvider } from "@/contexts/NotificationToastContext";
 import { BackgroundPrefetcher } from "@/components/BackgroundPrefetcher";
+import { PushNotificationManager } from "@/components/PushNotificationManager";
 import { ProfileThemeSync } from "@/components/ProfileThemeSync";
 import { SubscriptionDeepLinkHandler } from "@/components/subscription/SubscriptionDeepLinkHandler";
 import { OtaUpdateCoordinator } from "@/components/OtaUpdateCoordinator";
@@ -107,6 +108,7 @@ export default function RootLayout() {
               <OtaUpdateCoordinator appShellReady={appShellReady} />
               <SubscriptionDeepLinkHandler />
               <BackgroundPrefetcher />
+              <PushNotificationManager />
               <ProfileThemeSync />
               <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
                 <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0c0e0d' : '#2E7D32'} />

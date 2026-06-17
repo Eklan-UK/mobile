@@ -46,6 +46,8 @@ module.exports = ({ config }) => {
     );
   }
 
+  plugins.push('./plugins/withIosModularHeaders');
+
   return {
     ...expo,
     // Bare workflow requires an explicit runtime version string (policies are not supported).

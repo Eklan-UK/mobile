@@ -15,6 +15,11 @@ import { useThemeStore } from "@/store/theme-store";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import { Ionicons } from "@expo/vector-icons";
+import { useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuthStore } from "@/store/auth-store";
+
+const NOTIF_PROMPT_SHOWN_KEY = '@notif_prompt_shown';
 
 function TabIcon({
   icon: Icon,
@@ -65,6 +70,18 @@ export default function TabLayout() {
   const router = useRouter();
   const isSubscribed = useIsSubscribed();
   const planLocked = !isSubscribed;
+  const { isAuthenticated } = useAuthStore();
+
+  // Show the notification permission prompt once, on first authenticated tab visit
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    AsyncStorage.getItem(NOTIF_PROMPT_SHOWN_KEY).then((seen) => {
+      if (!seen) {
+        AsyncStorage.setItem(NOTIF_PROMPT_SHOWN_KEY, 'true');
+        router.push('/notifications-permission');
+      }
+    });
+  }, [isAuthenticated]);
 
   // Calculate effective theme (reactive - will cause re-render when theme changes)
   const isDark = (theme === "system" ? systemColorScheme : theme) === "dark";

@@ -120,6 +120,19 @@ export function usePushNotifications() {
         return null;
       }
 
+      // Android 8+ requires a notification channel
+      if (Platform.OS === 'android' && Notifications.setNotificationChannelAsync) {
+        try {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'Eklan Notifications',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+          });
+        } catch (channelError) {
+          logger.warn('⚠️ Failed to set Android notification channel:', channelError);
+        }
+      }
+
       // Get Expo push token
       // Use project ID from app.json or environment variable
       const projectId = process.env.EXPO_PUBLIC_PROJECT_ID || 
