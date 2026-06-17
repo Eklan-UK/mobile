@@ -23,9 +23,8 @@ import {
   DrillAssignment,
   DrillType,
   getDrillCategory,
-  isFreeTalkDrillType,
 } from "@/types/drill.types";
-import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
+import { pickNextPracticeDrill } from "@/utils/learnerAssignedPlan";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { format } from "date-fns";
 import tw from "@/lib/tw";
@@ -687,17 +686,10 @@ export default function HomeScreen() {
     });
   }, []);
 
-  const continuePracticeAssignment = useMemo(() => {
-    const list = drillsData?.drills ?? [];
-    const open = list.filter((d) => {
-      if (d.status === "completed") return false;
-      const practiceType = resolveDrillPracticeType(d.drill);
-      return !isFreeTalkDrillType(practiceType ?? undefined);
-    });
-    const inProgress = open.find((d) => d.status === "in_progress");
-    if (inProgress) return inProgress;
-    return open.find((d) => d.status === "pending") ?? null;
-  }, [drillsData]);
+  const continuePracticeAssignment = useMemo(
+    () => pickNextPracticeDrill(drillsData?.drills ?? []),
+    [drillsData]
+  );
 
   const showContinuePracticeCard =
     !isDailyFocusPending &&

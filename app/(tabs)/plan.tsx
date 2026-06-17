@@ -17,6 +17,7 @@ import tw from "@/lib/tw";
 import { DrillAssignment } from "@/types/drill.types";
 import { navigateToDrill } from "@/utils/drillNavigation";
 import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
+import { sortAssignedPlanItems } from "@/utils/learnerAssignedPlan";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -155,7 +156,10 @@ export default function MyPlanScreen() {
     return categorizeDrillsByPlanTab(data.drills);
   }, [data?.drills]);
 
-  const currentDrills = categorizedDrills[activeTab];
+  const currentDrills = useMemo(
+    () => sortAssignedPlanItems(categorizedDrills[activeTab]),
+    [categorizedDrills, activeTab]
+  );
 
   const ongoingPracticeFeed = useMemo(() => {
     return buildAssignedPracticeFeed(categorizedDrills.ongoing, freeTalkScenarios);

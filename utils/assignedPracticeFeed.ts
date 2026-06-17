@@ -22,7 +22,7 @@ function feedItemTitle(item: AssignedPracticeFeedItem): string {
   return item.scenario.title ?? '';
 }
 
-/** Merge drills and Free Talk scenarios, newest first. */
+/** Merge drills and Free Talk scenarios, oldest first (tutor assignment order). */
 export function buildAssignedPracticeFeed(
   drills: DrillAssignment[],
   scenarios: FreeTalkScenarioSummary[] | null | undefined
@@ -50,7 +50,7 @@ export function buildAssignedPracticeFeed(
   ];
 
   return items.sort((a, b) => {
-    const cmp = b.sortKey.localeCompare(a.sortKey);
+    const cmp = a.sortKey.localeCompare(b.sortKey);
     if (cmp !== 0) return cmp;
     return feedItemTitle(a).localeCompare(feedItemTitle(b));
   });
