@@ -47,18 +47,12 @@ function BadgeButtonContent({
 }
 
 export const HomeBadgeButton = memo(function HomeBadgeButton() {
-  const { data, isLoading, isError, isFetching, fetchStatus } = useBadges();
+  const { data, isLoading, isError } = useBadges();
   const featured = data?.featuredBadge;
 
   const handlePress = () => {
     router.push('/badges');
   };
-
-  // #region agent log
-  if (typeof fetch !== 'undefined') {
-    fetch('http://127.0.0.1:7624/ingest/74037ddc-a470-40c1-9b13-02763f9ac390',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'bf648a'},body:JSON.stringify({sessionId:'bf648a',location:'HomeBadgeButton.tsx:render',message:'home badge button render',data:{isLoading,isFetching,isError,fetchStatus,hasFeatured:!!featured,featuredId:featured?.badgeId??null,featuredIcon:featured?.icon??null,willShowFallback:!isLoading&&!featured},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
-  }
-  // #endregion
 
   if (isLoading) {
     return <BadgeButtonSkeleton />;

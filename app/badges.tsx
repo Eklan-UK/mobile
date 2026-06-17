@@ -32,30 +32,6 @@ export default function BadgesScreen() {
   const totalCount = badges.length;
   const isNotFound = isAxiosError(error) && error.response?.status === 404;
 
-  // #region agent log
-  if (!isLoading && typeof fetch !== 'undefined') {
-    fetch('http://127.0.0.1:7624/ingest/74037ddc-a470-40c1-9b13-02763f9ac390', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'bf648a' },
-      body: JSON.stringify({
-        sessionId: 'bf648a',
-        location: 'badges.tsx:screen',
-        message: 'badges gallery render',
-        data: {
-          isError,
-          isNotFound,
-          totalCount,
-          unlockedCount,
-          badgeIds: badges.map((b) => b.badgeId),
-        },
-        timestamp: Date.now(),
-        hypothesisId: 'C',
-        runId: 'post-fix',
-      }),
-    }).catch(() => {});
-  }
-  // #endregion
-
   return (
     <SafeAreaView style={[tw`flex-1`, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
       <View style={tw`px-5 pt-4 pb-4 flex-row items-center`}>
