@@ -7,6 +7,7 @@ import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import { AppText, Loader } from "@/components/ui";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import {
   completeDrill,
   DrillNotFoundError,
@@ -325,6 +326,8 @@ export default function KeyPhrasesDrillScreen() {
         next[currentIndex] = resultEntry;
         return next;
       });
+
+      void playPracticeFeedback(passed ? "success" : "failure");
 
       if (!isCorrect) {
         Alert.alert(

@@ -4,6 +4,47 @@ import { resolveDrillPracticeType } from '@/utils/drillPracticeType';
 
 const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
 
+function coerceJourneyPart(raw: unknown): 1 | 2 | 3 | 4 | undefined {
+  if (raw == null || raw === '') return undefined;
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+  if (n >= 1 && n <= 4) return n as 1 | 2 | 3 | 4;
+  return undefined;
+}
+
+function readJourneyTopic(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** Read learning journey fields from snake_case or camelCase API keys. */
+export function readJourneyFields(source: Record<string, unknown> | null | undefined): {
+  part?: 1 | 2 | 3 | 4;
+  topic?: string;
+} {
+  if (!source) return {};
+  const part = coerceJourneyPart(
+    source.learning_journey_part ?? source.learningJourneyPart
+  );
+  const topic = readJourneyTopic(
+    source.learning_journey_topic ?? source.learningJourneyTopic
+  );
+  return { part, topic };
+}
+
+/** Merge journey fields from assignment row and drill onto the normalized drill object. */
+function applyJourneyFieldsToDrill(
+  drill: Drill,
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): Drill {
+  for (const source of sources) {
+    const { part, topic } = readJourneyFields(source);
+    if (part != null) drill.learning_journey_part = part;
+    if (topic != null) drill.learning_journey_topic = topic;
+  }
+  return drill;
+}
+
 function normalizeAssignmentStatus(raw: unknown): DrillStatus {
   if (typeof raw !== 'string') return 'pending';
   const normalized = raw.trim().toLowerCase().replace(/-/g, '_');
@@ -22,16 +63,22 @@ export function normalizeDrillAssignment(entry: unknown): DrillAssignment | null
   if (row.drill && typeof row.drill === 'object' && !Array.isArray(row.drill)) {
     const assignmentId = String(row.assignmentId ?? row.assignment_id ?? '').trim();
     if (!assignmentId) return null;
+    const drill = applyJourneyFieldsToDrill(
+      { ...(row.drill as Drill) },
+      row,
+      row.drill as Record<string, unknown>
+    );
     return {
       assignmentId,
-      drill: row.drill as Drill,
+      drill,
       assignedBy: row.assignedBy as DrillAssignment['assignedBy'],
-      assignedAt: (row.assignedAt ?? row.assigned_at) as string | undefined,
+      assignedAt: (row.assignedAt ?? row.assigned_at ?? '') as string,
       dueDate: (row.dueDate ?? row.due_date) as string | undefined,
       status: normalizeAssignmentStatus(row.status),
       completedAt: (row.completedAt ?? row.completed_at) as string | undefined,
       latestAttempt: (row.latestAttempt ?? row.latest_attempt) as DrillAssignment['latestAttempt'],
       hasBookmarks: Boolean(row.hasBookmarks ?? row.has_bookmarks),
+      itemType: row.itemType === 'free_talk_scenario' ? 'free_talk_scenario' : undefined,
     };
   }
 
@@ -59,18 +106,23 @@ export function normalizeDrillAssignment(entry: unknown): DrillAssignment | null
   return {
     assignmentId,
     assignedBy: (assignedBy ?? assigned_by) as DrillAssignment['assignedBy'],
-    assignedAt: (assignedAt ?? assigned_at) as string | undefined,
+    assignedAt: (assignedAt ?? assigned_at ?? '') as string,
     dueDate: (dueDate ?? due_date) as string | undefined,
     status: normalizeAssignmentStatus(status),
     completedAt: (completedAt ?? completed_at) as string | undefined,
     latestAttempt: (latestAttempt ?? latest_attempt) as DrillAssignment['latestAttempt'],
     hasBookmarks: Boolean(row.hasBookmarks ?? row.has_bookmarks),
-    drill: {
-      ...(drillFields as Drill),
-      _id: drillId,
-      title: String(row.title ?? (drillFields as Drill).title ?? ''),
-      type: (row.type ?? (drillFields as Drill).type) as Drill['type'],
-    },
+    itemType: row.itemType === 'free_talk_scenario' ? 'free_talk_scenario' : undefined,
+    drill: applyJourneyFieldsToDrill(
+      {
+        ...(drillFields as Drill),
+        _id: drillId,
+        title: String(row.title ?? (drillFields as Drill).title ?? ''),
+        type: (row.type ?? (drillFields as Drill).type) as Drill['type'],
+      },
+      row,
+      drillFields as Record<string, unknown>
+    ),
   };
 }
 

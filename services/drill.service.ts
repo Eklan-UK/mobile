@@ -11,6 +11,7 @@ import type {
   SaveRoleplayProgressBody,
 } from '@/types/roleplay-progress.types';
 import { normalizeDrillAssignments, shouldFetchDrillDetail } from '@/utils/drillAssignment';
+import { enrichAssignmentsWithJourneyFields } from '@/utils/enrichJourneyFields';
 import { logger } from "@/utils/logger";
 import { isAxiosError } from 'axios';
 
@@ -69,16 +70,17 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
 
   const rawDrills = Array.isArray(data.drills) ? data.drills : [];
   const normalized = normalizeDrillAssignments(rawDrills);
+  const enriched = await enrichAssignmentsWithJourneyFields(normalized);
 
   // Override hasBookmarks with the authoritative set from the dedicated endpoint
   if (bookmarkedIds !== null) {
-    for (const assignment of normalized) {
+    for (const assignment of enriched) {
       assignment.hasBookmarks = bookmarkedIds.has(assignment.drill._id);
     }
   }
 
   const result = {
-    drills: normalized,
+    drills: enriched,
     pagination: data.pagination || {
       total: rawDrills.length,
       page: params?.page || 1,

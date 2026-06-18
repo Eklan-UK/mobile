@@ -20,6 +20,7 @@ import RoleplayYourLinesProgress from "@/components/drills/roleplay/RoleplayYour
 import { AppText, BoldText, Loader } from "@/components/ui";
 import { useNotificationToast } from "@/contexts/NotificationToastContext";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import {
   clearRoleplayProgress,
   completeDrill,
@@ -720,6 +721,7 @@ export default function RoleplayDrill() {
       } else {
         setPhase("score_fail");
       }
+      void playPracticeFeedback(qualityScore >= PASS_THRESHOLD ? "success" : "failure");
     } catch (e) {
       logger.error("Error processing audio:", e);
       setPhase("your_turn");

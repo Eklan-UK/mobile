@@ -1,5 +1,6 @@
 import { AppText, BoldText } from "@/components/ui";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState, useEffect, useRef } from "react";
@@ -202,6 +203,9 @@ export default function PronunciationPracticeScreen() {
             setScore(geminiResult.accuracy);
             setShowFeedback(true);
             setIsAnalyzing(false);
+            void playPracticeFeedback(
+              geminiResult.accuracy >= PASS_THRESHOLD ? "success" : "failure"
+            );
 
             if (geminiResult.accuracy >= PASS_THRESHOLD) {
               setShowConfetti(true);
@@ -259,6 +263,12 @@ export default function PronunciationPracticeScreen() {
               setScore(pronunciationScore);
               setShowFeedback(true);
               setIsAnalyzing(false);
+
+              const passed =
+                typeof attempt?.passed === "boolean"
+                  ? attempt.passed
+                  : pronunciationScore >= PASS_THRESHOLD;
+              void playPracticeFeedback(passed ? "success" : "failure");
 
               if (pronunciationScore >= PASS_THRESHOLD) {
                 setShowConfetti(true);

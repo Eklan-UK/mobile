@@ -33,6 +33,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { isDrillPerfectPass } from "@/utils/drillCompletion";
 import { logger } from "@/utils/logger";
 import apiClient from "@/lib/api";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 
 // Pass threshold per spec
 const PASS_THRESHOLD = 65;
@@ -294,6 +295,7 @@ export default function VocabularyDrill() {
       ]);
 
       const passed = qualityScore >= PASS_THRESHOLD;
+      void playPracticeFeedback(passed ? "success" : "failure");
 
       if (currentStep === "word") {
         setItemProgress((prev) => {

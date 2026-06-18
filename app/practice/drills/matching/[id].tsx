@@ -5,6 +5,7 @@ import { getDrillById, completeDrill } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState, useRef } from "react";
 import { ScrollView, TouchableOpacity, View, ActivityIndicator } from "react-native";
@@ -144,6 +145,7 @@ export default function MatchingDrill() {
 
   const checkMatch = (leftId: string, rightId: string) => {
     if (leftId === rightId) {
+      void playPracticeFeedback("success");
       // Match found!
       const newMatched = new Set([...matchedPairs, leftId]);
       setMatchedPairs(newMatched);
@@ -182,6 +184,7 @@ export default function MatchingDrill() {
       }
 
     } else {
+      void playPracticeFeedback("failure");
       // No match, deselect after delay
       // Note: Short timeout, component likely still mounted
       setTimeout(() => {

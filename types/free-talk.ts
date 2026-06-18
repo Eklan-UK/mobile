@@ -12,18 +12,30 @@ export const FREE_TALK_SCENARIO_TYPES = [
 
 export type FreeTalkScenarioType = typeof FREE_TALK_SCENARIO_TYPES[number];
 
-export const SCENARIO_TYPE_LABELS: Record<FreeTalkScenarioType, string> = {
+export const SCENARIO_TYPE_LABELS: Record<string, string> = {
   icu_emergency: 'ICU Emergency',
+  cpr: 'CPR',
+  patient_follow_up: 'Patient Follow-up',
   admission: 'Admission',
   small_talk_patient: 'Small Talk — Patient',
+  handover_receive: 'Receiving Handover',
   handover: 'Handover',
   decline_request: 'Decline Request',
   phone_doctor: 'Phone the Doctor',
+  doctor_rounds: 'Doctor Rounds',
+  family_questions: 'Family Questions',
   small_talk_colleague: 'Small Talk — Colleague',
+  phone_colleague: 'Phone — Colleague',
+  phone_department: 'Phone — Department',
+  phone_family: 'Phone — Family',
 };
 
 export function formatScenarioType(type: string): string {
-  return SCENARIO_TYPE_LABELS[type as FreeTalkScenarioType] ?? type;
+  return SCENARIO_TYPE_LABELS[type] ?? type.replace(/_/g, ' ');
+}
+
+export function freeTalkScenarioTypeLabel(type: string): string {
+  return formatScenarioType(type);
 }
 
 // ─── Scenario models ────────────────────────────────────────────────────────

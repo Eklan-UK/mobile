@@ -24,6 +24,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { AppText, BoldText } from '@/components/ui';
 import tw from '@/lib/tw';
+import { playPracticeFeedback } from '@/lib/practice-feedback';
 import { aiService } from '@/services/ai.service';
 import { invalidateLearnerActivityCaches } from '@/hooks/invalidateLearnerActivityCaches';
 import { useAuthStore } from '@/store/auth-store';
@@ -181,6 +182,7 @@ export default function FreeTalkSessionScreen() {
 
   // Abort controller
   const abortRef = useRef<AbortController | null>(null);
+  const feedbackPlayedRef = useRef(false);
 
   // ─── Progress bar ──────────────────────────────────────────────────────────
 
@@ -220,6 +222,7 @@ export default function FreeTalkSessionScreen() {
     setScenario(null);
     setFeedbackText('');
     setGradeResult(null);
+    feedbackPlayedRef.current = false;
     setLoadError(null);
     setShowTextInput(false);
     setUserTextInput('');
@@ -498,6 +501,7 @@ export default function FreeTalkSessionScreen() {
     setPhase('grading');
     setFeedbackText('');
     setGradeResult(null);
+    feedbackPlayedRef.current = false;
     scrollRef.current?.scrollTo({ y: 0, animated: true });
 
     let finalFeedback = '';
@@ -518,6 +522,12 @@ export default function FreeTalkSessionScreen() {
             setFeedbackText(chunk.data.fullText);
             setGradeResult(chunk.data.grade);
             setPhase('result');
+            if (!feedbackPlayedRef.current && chunk.data.grade) {
+              feedbackPlayedRef.current = true;
+              void playPracticeFeedback(
+                chunk.data.grade.overallScore >= 60 ? 'success' : 'failure'
+              );
+            }
           } else if (chunk.type === 'error') {
             throw new Error((chunk.data as any).message ?? 'Grading error');
           }

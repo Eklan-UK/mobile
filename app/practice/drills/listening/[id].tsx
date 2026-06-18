@@ -9,6 +9,7 @@ import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router } from "expo-router";
 import { useEffect, useState, useRef } from "react";
@@ -108,6 +109,7 @@ export default function ListeningDrill() {
           }
         })();
         clearDrillProgress(drillId);
+        void playPracticeFeedback("success");
         setIsDrillCompleted(true);
       }
     } else {

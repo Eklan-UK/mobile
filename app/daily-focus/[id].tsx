@@ -6,6 +6,7 @@ import { AppText, Loader, Button } from "@/components/ui";
 import { useNotificationToast } from "@/contexts/NotificationToastContext";
 import { invalidateLearnerActivityCaches } from "@/hooks/invalidateLearnerActivityCaches";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { dailyFocusService, DailyFocus } from "@/services/daily-focus.service";
 import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
@@ -238,6 +239,8 @@ export default function DailyFocusPracticeScreen() {
       answer: type === "multipleChoice" ? selectedMultipleChoice! : (selectedMatching || currentAnswer),
       isCorrect,
     };
+
+    void playPracticeFeedback(isCorrect ? "success" : "failure");
 
     // Remove existing answer if any
     const filteredAnswers = answers.filter((a) => !(a.index === index && a.type === type));

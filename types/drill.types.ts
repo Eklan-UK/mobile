@@ -199,6 +199,12 @@ export interface Drill {
   updated_date: string;
   is_active: boolean;
 
+  // Learning journey
+  learning_journey_part?: 1 | 2 | 3 | 4;
+  learning_journey_topic?: string;
+  scenarioType?: string;
+  completionDate?: string | null;
+
   // Analytics
   totalAssignments?: number;
   totalCompletions?: number;
@@ -306,6 +312,8 @@ export interface DrillAssignment {
   latestAttempt?: DrillAttempt;
   /** Server-computed: learner has a type:'drill' bookmark for this drill. */
   hasBookmarks?: boolean;
+  /** Present on Free Talk items from my-drills. */
+  itemType?: 'free_talk_scenario';
 }
 
 export interface DrillsResponse {

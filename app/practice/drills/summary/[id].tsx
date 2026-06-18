@@ -4,6 +4,7 @@ import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { completeDrill, getAssignmentAttempts, getDrillById } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useActivityStore } from "@/store/activity-store";
@@ -175,6 +176,7 @@ export default function SummaryDrill() {
       });
       await invalidateDrillCaches(queryClient);
 
+      void playPracticeFeedback("success");
       // Mark drill as completed
       setIsCompleted(true);
 

@@ -7,6 +7,7 @@ import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { Drill } from "@/types/drill.types";
 import { useQueryClient } from "@tanstack/react-query";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { useLocalSearchParams, router } from "expo-router";
 import { useEffect, useState, useRef } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, View } from "react-native";
@@ -203,6 +204,7 @@ export default function FillBlankDrill() {
       );
       const score = totalBlanks > 0 ? Math.round((correctBlanks / totalBlanks) * 100) : 0;
       const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      void playPracticeFeedback(score >= 70 ? "success" : "failure");
 
       if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
         await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {

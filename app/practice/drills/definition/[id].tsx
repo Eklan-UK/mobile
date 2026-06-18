@@ -3,6 +3,7 @@ import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useActivityStore } from "@/store/activity-store";
@@ -154,6 +155,7 @@ export default function DefinitionDrill() {
       });
       await invalidateDrillCaches(queryClient);
 
+      void playPracticeFeedback("success");
       setIsCompleted(true);
       addRecentActivity({
         id: drill._id,

@@ -1,4 +1,3 @@
-import { brandColors } from '@/constants/theme-tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, TouchableOpacity } from 'react-native';
 
@@ -24,15 +23,15 @@ export function DrillBookmarkButton({
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={hasBookmarks ? 'Remove bookmark' : 'Add bookmark'}
+      accessibilityLabel={hasBookmarks ? 'Remove from bookmarks' : 'Save to bookmarks'}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={brandColors.primaryDark} />
+        <ActivityIndicator size="small" color="#22c55e" />
       ) : (
         <Ionicons
           name={hasBookmarks ? 'bookmark' : 'bookmark-outline'}
-          size={22}
-          color={hasBookmarks ? brandColors.primaryDark : '#9CA3AF'}
+          size={20}
+          color={hasBookmarks ? '#22c55e' : '#9CA3AF'}
         />
       )}
     </TouchableOpacity>

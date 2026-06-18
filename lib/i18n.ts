@@ -67,6 +67,13 @@ const translations = {
       startStreak: 'Start a Streak',
       streakTip: 'Complete daily focus and lessons on consecutive days to grow your streak. Open the streak page for a full view.',
     },
+    account: {
+      savedDrills: 'Saved Drills',
+      assignedDrills: 'Assigned Drills',
+      seeAll: 'See all',
+      yourProgress: 'Your Progress',
+      noDrillsYet: 'No drills assigned yet',
+    },
     language: {
       screenTitle: 'What language should the app use?',
     },
