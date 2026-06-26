@@ -1,10 +1,17 @@
 import { AppText } from "@/components/ui";
+import {
+  playDrillEndCelebration,
+  registerDrillConfettiTrigger,
+  unregisterDrillConfettiTrigger,
+  unloadDrillCelebrationSound,
+} from "@/lib/drill-celebration";
 import tw from "@/lib/tw";
+import type { DrillCompletionEffects } from "@/types/drill.types";
 import { router } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Dimensions, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import ConfettiCannon from "react-native-confetti-cannon";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 
 // ─── Close icon (X) ────────────────────────────────────────────
@@ -108,15 +115,13 @@ function ProgressRing({
 
 // ─── Props ───────────────────────────────────────────────────────
 
-interface DrillCompletedProgressProps {
-  /** "progress" variant: shows a circular progress ring */
-  variant: "progress";
-  /** Number of lessons / items completed */
-  completed: number;
-  /** Total lessons / items */
-  total: number;
-  /** Whether the drill was a perfect pass (100%) — gates confetti and celebration copy */
+interface DrillCompletedBaseProps {
+  /** Whether the drill was a perfect pass — gates ring color and default copy */
   passed?: boolean;
+  /** Play end celebration (confetti + haptics + sound). Defaults to `passed`. */
+  celebrate?: boolean;
+  /** Server-driven celebration effects from complete API (Pattern B). */
+  celebrationEffects?: DrillCompletionEffects;
   /** Bold heading — defaults based on pass/fail */
   title?: string;
   /** Congratulatory body text */
@@ -129,21 +134,18 @@ interface DrillCompletedProgressProps {
   onClose?: () => void;
 }
 
-interface DrillCompletedSubmittedProps {
+interface DrillCompletedProgressProps extends DrillCompletedBaseProps {
+  /** "progress" variant: shows a circular progress ring */
+  variant: "progress";
+  /** Number of lessons / items completed */
+  completed: number;
+  /** Total lessons / items */
+  total: number;
+}
+
+interface DrillCompletedSubmittedProps extends DrillCompletedBaseProps {
   /** "submitted" variant: shows a green checkmark circle */
   variant: "submitted";
-  /** Whether the drill was a perfect pass — always false for submitted drills */
-  passed?: boolean;
-  /** Bold heading — e.g. "Summary submitted" */
-  title?: string;
-  /** Body text */
-  message?: string;
-  /** Button label — defaults to "Continue" */
-  buttonLabel?: string;
-  /** Called when the main button is pressed */
-  onContinue?: () => void;
-  /** Called when the close (X) icon is pressed */
-  onClose?: () => void;
 }
 
 type DrillCompletedScreenProps =
@@ -152,7 +154,7 @@ type DrillCompletedScreenProps =
 
 // ─── Component ──────────────────────────────────────────────────
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const GREEN_CONFETTI_COLORS = [
   "#3B883E",
@@ -173,18 +175,32 @@ export default function DrillCompletedScreen(
     buttonLabel = "Continue",
     onContinue,
     onClose,
+    celebrate,
+    celebrationEffects,
   } = props;
 
   const passed =
     props.passed ?? (variant === "progress" ? true : false);
 
+  const shouldCelebrate = celebrate ?? passed;
+
   const confettiRef = useRef<ConfettiCannon>(null);
+  const celebrationPlayedRef = useRef(false);
 
   useEffect(() => {
-    if (variant !== "progress" || !passed) return;
-    const id = setTimeout(() => confettiRef.current?.start(), 300);
-    return () => clearTimeout(id);
-  }, [variant, passed]);
+    registerDrillConfettiTrigger(() => confettiRef.current?.start());
+    return () => {
+      unregisterDrillConfettiTrigger();
+      void unloadDrillCelebrationSound();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (variant !== "progress" || !shouldCelebrate) return;
+    if (celebrationPlayedRef.current) return;
+    celebrationPlayedRef.current = true;
+    void playDrillEndCelebration(celebrationEffects);
+  }, [variant, shouldCelebrate, celebrationEffects]);
 
   const handleClose = () => {
     if (onClose) {
@@ -215,11 +231,11 @@ export default function DrillCompletedScreen(
 
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
-      {variant === "progress" && passed ? (
+      {variant === "progress" && shouldCelebrate ? (
         <ConfettiCannon
           ref={confettiRef}
-          count={180}
-          origin={{ x: SCREEN_WIDTH / 2, y: -20 }}
+          count={150}
+          origin={{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.55 }}
           autoStart={false}
           fadeOut
           fallSpeed={3000}

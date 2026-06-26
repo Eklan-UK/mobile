@@ -170,7 +170,11 @@ export default function HomeScreen() {
   const { prefetchDrillAssignment } = usePrefetch();
   const { data: streakCount = 0 } = useUserStreakCount();
 
-  const { data: scorecard, isLoading: scorecardLoading } = useProgressScorecard();
+  const {
+    data: scorecard,
+    isLoading: scorecardLoading,
+    refetch: refetchScorecard,
+  } = useProgressScorecard();
 
   const {
     data: dailyFocus,
@@ -188,11 +192,12 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void refetchScorecard();
       void refetchDrills();
       if (isSubscribed) {
         void refetchFreeTalk();
       }
-    }, [refetchDrills, isSubscribed, refetchFreeTalk])
+    }, [refetchScorecard, refetchDrills, isSubscribed, refetchFreeTalk])
   );
 
   const assignedPracticeFeed = useMemo(() => {
@@ -395,6 +400,7 @@ export default function HomeScreen() {
                       dueDate={item.assignment.dueDate}
                       completedAt={item.assignment.completedAt}
                       status={item.assignment.status}
+                      locked={!isSubscribed}
                       onPress={() => handleDrillPress(item.assignment)}
                       onPressIn={() => prefetchDrillAssignment(item.assignment)}
                     />

@@ -1,23 +1,31 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import CheckpointScreen from "@/components/drills/CheckpointScreen";
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
-import { getDrillById, completeDrill } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
-import { Drill } from "@/types/drill.types";
-import { useQueryClient } from "@tanstack/react-query";
+import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillScoreCelebration } from "@/hooks/useDrillScoreCelebration";
+import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
+import {
+  registerDrillConfettiTrigger,
+  unregisterDrillConfettiTrigger,
+  unloadDrillCelebrationSound,
+} from "@/lib/drill-celebration";
 import tw from "@/lib/tw";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
-import { useLocalSearchParams, router } from "expo-router";
-import { useEffect, useState, useRef } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { completeDrill, getDrillById } from "@/services/drill.service";
 import { useActivityStore } from "@/store/activity-store";
-import { isDrillPerfectPass } from "@/utils/drillCompletion";
+import { Drill } from "@/types/drill.types";
+import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
+import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 import { logger } from "@/utils/logger";
 import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
-import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
-import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
+import { useQueryClient } from "@tanstack/react-query";
+import { router, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, View } from "react-native";
+import ConfettiCannon from "react-native-confetti-cannon";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface BlankAnswer {
   position: number;
@@ -26,10 +34,138 @@ interface BlankAnswer {
   isCorrect: boolean;
 }
 
+function countSubmittedFillBlankItems(
+  items: NonNullable<Drill['fill_blank_items']>,
+  answerMap: Record<number, Record<number, string>>
+): number {
+  return items.filter((item, itemIndex) => {
+    const itemAnswers = answerMap[itemIndex] || {};
+    return item.blanks?.every(
+      (_, blankIndex) => (itemAnswers[blankIndex] ?? '').trim() !== ''
+    );
+  }).length;
+}
+
+function computeFillBlankScore(
+  items: NonNullable<Drill['fill_blank_items']>,
+  answerMap: Record<number, Record<number, string>>
+): { totalBlanks: number; correctBlanks: number; score: number } {
+  const totalBlanks = items.reduce((sum, item) => sum + (item.blanks?.length || 0), 0);
+  const correctBlanks = items.reduce((sum, item, itemIndex) => {
+    const itemAnswers = answerMap[itemIndex] || {};
+    return (
+      sum +
+      (item.blanks?.filter((blank, blankIndex) =>
+        itemAnswers[blankIndex] === blank.correctAnswer
+      ).length || 0)
+    );
+  }, 0);
+  const score = totalBlanks > 0 ? Math.round((correctBlanks / totalBlanks) * 100) : 0;
+  return { totalBlanks, correctBlanks, score };
+}
+
+function buildFillBlankResults(
+  items: NonNullable<Drill['fill_blank_items']>,
+  answerMap: Record<number, Record<number, string>>
+) {
+  return {
+    items: items.map((item, itemIndex) => {
+      const itemAnswers = answerMap[itemIndex] || {};
+      return {
+        sentence: item.sentence,
+        blanks: item.blanks.map((blank, blankIndex) => {
+          const selectedAnswer = itemAnswers[blankIndex] || "";
+          return {
+            position: blank.position,
+            selectedAnswer,
+            correctAnswer: blank.correctAnswer,
+            isCorrect: selectedAnswer === blank.correctAnswer,
+          };
+        }),
+      };
+    }),
+  };
+}
+
+const { width: FILL_BLANK_SCREEN_WIDTH, height: FILL_BLANK_SCREEN_HEIGHT } =
+  Dimensions.get("window");
+
+const FILL_BLANK_CONFETTI_COLORS = [
+  "#3B883E",
+  "#D1FAE5",
+  "#86EFAC",
+  "#4ADE80",
+  "#22C55E",
+  "#166534",
+];
+
+function FillBlankResultsView({
+  passed,
+  correctBlanks,
+  totalBlanks,
+  isWeeklyChallenge,
+  onContinue,
+}: {
+  passed: boolean;
+  correctBlanks: number;
+  totalBlanks: number;
+  isWeeklyChallenge: boolean;
+  onContinue: () => void;
+}) {
+  const confettiRef = useRef<ConfettiCannon>(null);
+
+  useEffect(() => {
+    registerDrillConfettiTrigger(() => confettiRef.current?.start());
+    return () => {
+      unregisterDrillConfettiTrigger();
+      void unloadDrillCelebrationSound();
+    };
+  }, []);
+
+  useDrillScoreCelebration(passed);
+
+  return (
+    <>
+      {passed ? (
+        <ConfettiCannon
+          ref={confettiRef}
+          count={150}
+          origin={{
+            x: FILL_BLANK_SCREEN_WIDTH / 2,
+            y: FILL_BLANK_SCREEN_HEIGHT * 0.55,
+          }}
+          autoStart={false}
+          fadeOut
+          fallSpeed={3000}
+          explosionSpeed={350}
+          colors={FILL_BLANK_CONFETTI_COLORS}
+        />
+      ) : null}
+      <DrillCompletedScreen
+        variant="progress"
+        completed={correctBlanks}
+        total={totalBlanks}
+        passed={passed}
+        celebrate={false}
+        title={passed ? "You passed!" : "Keep practicing"}
+        message={
+          passed
+            ? `Great job! You answered all ${totalBlanks} blanks correctly.`
+            : `You answered ${correctBlanks} out of ${totalBlanks} blanks correctly.`
+        }
+        buttonLabel={isWeeklyChallenge ? "Back to Challenge" : "Continue"}
+        onContinue={onContinue}
+        onClose={onContinue}
+      />
+    </>
+  );
+}
+
 export default function FillBlankDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const isRedo = params.redo === "true";
 
   // Weekly challenge mode params
   const wcSource = params.source as string | undefined;
@@ -53,9 +189,52 @@ export default function FillBlankDrill() {
   const [answers, setAnswers] = useState<Record<number, Record<number, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const totalItems = drill?.fill_blank_items?.length ?? 0;
+
+  const initFreshState = useCallback(() => {
+    setCurrentIndex(0);
+    setAnswers({});
+  }, []);
+
+  const hydrateFromCheckpoint = useCallback(
+    (checkpoint: {
+      resumeFromIndex: number;
+      partialResults: {
+        answers: Record<number, Record<number, string>>;
+        submittedCount: number;
+      };
+    }) => {
+      setAnswers(checkpoint.partialResults.answers ?? {});
+      setCurrentIndex(checkpoint.resumeFromIndex);
+    },
+    []
+  );
+
+  const {
+    isLoadingCheckpoint,
+    showCheckpointScreen,
+    checkpointCompletedCount,
+    dismissCheckpoint,
+    saveCheckpointAtBoundary,
+    clearCheckpoint,
+    skipLocalRestore,
+  } = useDrillCheckpoint({
+    drillId,
+    assignmentId,
+    drillType: DrillCheckpointType.fill_blank,
+    isRedo,
+    isWeeklyChallenge,
+    isDrillReady: !!drill && totalItems > 0,
+    totalItems,
+    onHydrate: hydrateFromCheckpoint,
+    onFreshStart: initFreshState,
+  });
 
   // Restore progress
   useEffect(() => {
+    if (skipLocalRestore) return;
     if (drillId && drillProgress[drillId]) {
       const saved = drillProgress[drillId];
       if (saved.data?.currentIndex !== undefined) {
@@ -65,7 +244,7 @@ export default function FillBlankDrill() {
         setAnswers(saved.data.answers);
       }
     }
-  }, [drillId]);
+  }, [drillId, skipLocalRestore]);
 
   // Track activity on unmount
   useEffect(() => {
@@ -165,46 +344,37 @@ export default function FillBlankDrill() {
       return;
     }
     if (!isLast) {
+      const completedCount = currentIndex + 1;
+      void saveCheckpointAtBoundary(
+        {
+          answers,
+          submittedCount: countSubmittedFillBlankItems(items, answers),
+        },
+        completedCount,
+        currentIndex
+      );
       setCurrentIndex(currentIndex + 1);
     } else {
       handleSubmit();
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!drill) return;
-
     setIsSubmitting(true);
-    try {
-      const fillBlankResults = {
-        items: items.map((item, itemIndex) => {
-          const itemAnswers = answers[itemIndex] || {};
-          return {
-            sentence: item.sentence,
-            blanks: item.blanks.map((blank, blankIndex) => {
-              const selectedAnswer = itemAnswers[blankIndex] || "";
-              return {
-                position: blank.position,
-                selectedAnswer,
-                correctAnswer: blank.correctAnswer,
-                isCorrect: selectedAnswer === blank.correctAnswer,
-              };
-            }),
-          };
-        }),
-      };
+    setIsCompleted(true);
+    setIsSubmitting(false);
+  };
 
-      const totalBlanks = fillBlankResults.items.reduce(
-        (sum, item) => sum + item.blanks.length,
-        0
-      );
-      const correctBlanks = fillBlankResults.items.reduce(
-        (sum, item) => sum + item.blanks.filter((b) => b.isCorrect).length,
-        0
-      );
-      const score = totalBlanks > 0 ? Math.round((correctBlanks / totalBlanks) * 100) : 0;
+  const handleCompleteAndContinue = async () => {
+    if (!drill || isCompleting) return;
+
+    setIsCompleting(true);
+    try {
+      const itemsList = drill.fill_blank_items ?? [];
+      const fillBlankResults = buildFillBlankResults(itemsList, answers);
+      const { totalBlanks, correctBlanks, score } = computeFillBlankScore(itemsList, answers);
       const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
-      void playPracticeFeedback(score >= 70 ? "success" : "failure");
 
       if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
         await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {
@@ -224,10 +394,10 @@ export default function FillBlankDrill() {
             score,
           },
         });
+        clearCheckpoint();
         await invalidateDrillCaches(queryClient);
       }
 
-      setIsCompleted(true);
       addRecentActivity({
         id: drill._id,
         title: drill.title,
@@ -236,12 +406,30 @@ export default function FillBlankDrill() {
         score,
       });
       clearDrillProgress(drillId);
-    } catch (error: any) {
+
+      if (isWeeklyChallenge && wcWeekStartDate) {
+        router.replace(
+          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
+        );
+      } else {
+        router.back();
+      }
+    } catch (error: unknown) {
       logger.error('Failed to submit drill:', error);
     } finally {
-      setIsSubmitting(false);
+      setIsCompleting(false);
     }
   };
+
+  if (showCheckpointScreen && drill) {
+    return (
+      <CheckpointScreen
+        completedCount={checkpointCompletedCount}
+        totalItems={totalItems}
+        onContinue={dismissCheckpoint}
+      />
+    );
+  }
 
   // Render sentence with blanks as selectable buttons
   const renderSentence = () => {
@@ -315,7 +503,7 @@ export default function FillBlankDrill() {
     );
   };
 
-  if (loading) {
+  if (loading || isLoadingCheckpoint) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
         <Loader />
@@ -331,43 +519,18 @@ export default function FillBlankDrill() {
     );
   }
 
-  if (isCompleted) {
-    // Calculate score for display
-    const totalBlanks = items.reduce((sum, item) => sum + (item.blanks?.length || 0), 0);
-    const correctBlanks = items.reduce((sum, item, itemIndex) => {
-      const itemAnswers = answers[itemIndex] || {};
-      return sum + (item.blanks?.filter((blank, blankIndex) =>
-        itemAnswers[blankIndex] === blank.correctAnswer
-      ).length || 0);
-    }, 0);
-
-    const passed = isDrillPerfectPass(correctBlanks, totalBlanks);
-
-    const handleContinue = () => {
-      if (isWeeklyChallenge && wcWeekStartDate) {
-        router.replace(
-          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
-        );
-      } else {
-        router.back();
-      }
-    };
+  if (isCompleted && drill) {
+    const itemsList = drill.fill_blank_items ?? [];
+    const { totalBlanks, correctBlanks, score } = computeFillBlankScore(itemsList, answers);
+    const passed = score >= 70;
 
     return (
-      <DrillCompletedScreen
-        variant="progress"
-        completed={correctBlanks}
-        total={totalBlanks}
+      <FillBlankResultsView
         passed={passed}
-        title={passed ? "You passed!" : "Keep practicing"}
-        message={
-          passed
-            ? `Great job! You answered all ${totalBlanks} blanks correctly.`
-            : `You answered ${correctBlanks} out of ${totalBlanks} blanks correctly.`
-        }
-        buttonLabel={isWeeklyChallenge ? "Back to Challenge" : "Continue"}
-        onContinue={handleContinue}
-        onClose={handleContinue}
+        correctBlanks={correctBlanks}
+        totalBlanks={totalBlanks}
+        isWeeklyChallenge={isWeeklyChallenge}
+        onContinue={() => { void handleCompleteAndContinue(); }}
       />
     );
   }

@@ -1,19 +1,12 @@
+import { HomeBadgeButton } from '@/components/badges/HomeBadgeButton';
 import { AppText, BoldText } from '@/components/ui';
 import BellIcon from '@/assets/icons/bell.svg';
 import tw from '@/lib/tw';
 import { useUserStreakCount } from '@/hooks/useUserStreakCount';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { memo } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
-
-const StarIcon = () => (
-  <Svg width={18} height={18} viewBox="0 0 24 24" fill="white">
-    <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-  </Svg>
-);
+import { TouchableOpacity, View } from 'react-native';
 
 const FlameOutlineIcon = () => <Ionicons name="flame-outline" size={18} color="#EA580C" />;
 
@@ -34,8 +27,8 @@ const StreakPill = memo(({ count }: { count: number }) => (
 ));
 
 /**
- * My Plan screen header — title/subtitle left; gradient star (profile), streak pill, bell right.
- * Streak count comes from GET /api/v1/users/current (same as Home).
+ * My Plan screen header — title/subtitle left; featured badge, streak pill, bell right.
+ * Badge and streak use the same hooks as Home (useBadges, useUserStreakCount).
  */
 export function MyPlanHeader() {
   const { data: streakCount = 0 } = useUserStreakCount();
@@ -53,20 +46,7 @@ export function MyPlanHeader() {
         </View>
 
         <View style={tw`flex-row items-center gap-2`}>
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/profile')}
-            activeOpacity={0.85}
-            accessibilityLabel="Profile"
-          >
-            <LinearGradient
-              colors={['#FF9F43', '#FF6B35', '#E85D04']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.starBtnGradient}
-            >
-              <StarIcon />
-            </LinearGradient>
-          </TouchableOpacity>
+          <HomeBadgeButton />
 
           <TouchableOpacity
             onPress={() => router.push('/streak')}
@@ -88,13 +68,3 @@ export function MyPlanHeader() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  starBtnGradient: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

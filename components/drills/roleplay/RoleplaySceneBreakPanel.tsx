@@ -6,6 +6,7 @@ export interface RoleplaySceneBreakPanelProps {
   completedSceneName: string;
   nextSceneName: string;
   saving?: boolean;
+  showContinueLater?: boolean;
   bottomInset?: number;
   onContinueNextScene: () => void;
   onContinueLater: () => void;
@@ -15,6 +16,7 @@ export default function RoleplaySceneBreakPanel({
   completedSceneName,
   nextSceneName,
   saving = false,
+  showContinueLater = true,
   bottomInset = 0,
   onContinueNextScene,
   onContinueLater,
@@ -41,14 +43,16 @@ export default function RoleplaySceneBreakPanel({
           Continue to Next Scene
         </Button>
 
-        <Button
-          variant="outline"
-          onPress={onContinueLater}
-          disabled={saving}
-          loading={saving}
-        >
-          Continue Later
-        </Button>
+        {showContinueLater ? (
+          <Button
+            variant="outline"
+            onPress={onContinueLater}
+            disabled={saving}
+            loading={saving}
+          >
+            Continue Later
+          </Button>
+        ) : null}
       </View>
     </View>
   );

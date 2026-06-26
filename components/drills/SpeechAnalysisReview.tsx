@@ -1,20 +1,30 @@
-import { useState, useMemo } from "react";
+import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
+import { useDrillScoreCelebration } from "@/hooks/useDrillScoreCelebration";
 import {
-  ScrollView,
-  TouchableOpacity,
-  View,
+  registerDrillConfettiTrigger,
+  unregisterDrillConfettiTrigger,
+  unloadDrillCelebrationSound,
+} from "@/lib/drill-celebration";
+import tw from "@/lib/tw";
+import type { DrillCompletionEffects } from "@/types/drill.types";
+import type {
+    PhoneScore,
+    SyllableScore,
+    TextScore,
+    WordScore,
+} from "@/services/speechace.service";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    ActivityIndicator,
+    Dimensions,
+    ScrollView,
+    TouchableOpacity,
+    View,
 } from "react-native";
+import ConfettiCannon from "react-native-confetti-cannon";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
-import tw from "@/lib/tw";
 import { AppText } from "../ui/AppText";
-import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
-import type {
-  TextScore,
-  WordScore,
-  PhoneScore,
-  SyllableScore,
-} from "@/services/speechace.service";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -39,6 +49,12 @@ interface SpeechAnalysisReviewProps {
   statsLine?: string;
   /** Prefix for accordion group titles, e.g. "Question" or "Item" (default). */
   groupItemLabel?: string;
+  /** True while the drill completion API call is still in flight */
+  submitting?: boolean;
+  /** Whether the learner passed — drives end-of-drill celebration (Pattern A). */
+  passed?: boolean | null;
+  /** Optional API effects (e.g. roleplay after complete). Defaults to celebration MP3. */
+  celebrationEffects?: DrillCompletionEffects | null;
 }
 
 // ─── Shared icons ────────────────────────────────────────────────
@@ -279,6 +295,44 @@ function deriveHighlights(phonemes: PhoneScore[]) {
   return { strengths, focus };
 }
 
+// ─── Confetti (Pattern A review screens) ─────────────────────────
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+const GREEN_CONFETTI_COLORS = [
+  "#3B883E",
+  "#D1FAE5",
+  "#86EFAC",
+  "#4ADE80",
+  "#22C55E",
+  "#166534",
+];
+
+function ReviewConfettiLayer() {
+  const confettiRef = useRef<ConfettiCannon>(null);
+
+  useEffect(() => {
+    registerDrillConfettiTrigger(() => confettiRef.current?.start());
+    return () => {
+      unregisterDrillConfettiTrigger();
+      void unloadDrillCelebrationSound();
+    };
+  }, []);
+
+  return (
+    <ConfettiCannon
+      ref={confettiRef}
+      count={150}
+      origin={{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.55 }}
+      autoStart={false}
+      fadeOut
+      fallSpeed={3000}
+      explosionSpeed={350}
+      colors={GREEN_CONFETTI_COLORS}
+    />
+  );
+}
+
 // ─── Review Performance UI (vocabulary / pronunciation) ──────────
 
 const PASS_THRESHOLD = 65;
@@ -299,6 +353,9 @@ function ReviewPerformanceUI({
   sectionHeading = "Item-by-Item Analysis",
   statsLine: statsLineProp,
   groupItemLabel = "Item",
+  submitting = false,
+  passed: passedProp,
+  celebrationEffects,
 }: {
   analysisResults: AnalysisResult[];
   totalItems: number;
@@ -309,10 +366,16 @@ function ReviewPerformanceUI({
   sectionHeading?: string;
   statsLine?: string;
   groupItemLabel?: string;
+  submitting?: boolean;
+  passed?: boolean | null;
+  celebrationEffects?: DrillCompletionEffects | null;
 }) {
   const [expandedGroupIndex, setExpandedGroupIndex] = useState<number | null>(null);
 
   const avgScore = useMemo(() => getAverageScore(analysisResults), [analysisResults]);
+  const passed = passedProp ?? avgScore >= PASS_THRESHOLD;
+
+  useDrillScoreCelebration(passed, celebrationEffects);
 
   const groups = useMemo<ReviewGroup[]>(() => {
     const map = new Map<number, AnalysisResult[]>();
@@ -341,12 +404,13 @@ function ReviewPerformanceUI({
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`} edges={["top", "bottom"]}>
+      {passed ? <ReviewConfettiLayer /> : null}
       {/* Header */}
       <View style={tw`px-5 pt-3 pb-2 flex-row items-center justify-between border-b border-gray-100`}>
         <AppText style={tw`text-xl font-bold text-neutral-900`}>
           Review Performance
         </AppText>
-        <TouchableOpacity onPress={onDone} hitSlop={8}>
+        <TouchableOpacity onPress={onDone} hitSlop={8} disabled={submitting}>
           <CloseIcon />
         </TouchableOpacity>
       </View>
@@ -433,17 +497,29 @@ function ReviewPerformanceUI({
       <View style={tw`px-5 pb-4 border-t border-gray-100 pt-3`}>
         <TouchableOpacity
           onPress={onDone}
-          style={tw`w-full bg-primary-500 rounded-full py-4 items-center mb-3`}
+          disabled={submitting}
+          style={[
+            tw`w-full bg-primary-500 rounded-full py-4 items-center mb-3`,
+            submitting && tw`opacity-70`,
+          ]}
           activeOpacity={0.8}
         >
-          <AppText style={tw`text-white text-base font-semibold`}>
-            Done for today
-          </AppText>
+          {submitting ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <AppText style={tw`text-white text-base font-semibold`}>
+              Done for today
+            </AppText>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={onPracticeAgain}
-          style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`}
+          disabled={submitting}
+          style={[
+            tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`,
+            submitting && tw`opacity-50`,
+          ]}
           activeOpacity={0.8}
         >
           <AppText style={tw`text-primary-500 text-base font-semibold`}>
@@ -478,12 +554,19 @@ function RoleplayReviewUI({
   analysisResults,
   onDone,
   onPracticeAgain,
+  passed: passedProp,
+  celebrationEffects,
 }: {
   analysisResults: AnalysisResult[];
   onDone: () => void;
   onPracticeAgain: () => void;
+  passed?: boolean | null;
+  celebrationEffects?: DrillCompletionEffects | null;
 }) {
   const avgScore = useMemo(() => getAverageScore(analysisResults), [analysisResults]);
+  const passed = passedProp ?? avgScore >= PASS_THRESHOLD;
+
+  useDrillScoreCelebration(passed, celebrationEffects);
   const allPhonemes = useMemo(() => getAllPhonemes(analysisResults), [analysisResults]);
   const allSyllables = useMemo(() => getAllSyllables(analysisResults), [analysisResults]);
   const allWords = useMemo(() => getAllWordScores(analysisResults), [analysisResults]);
@@ -496,6 +579,7 @@ function RoleplayReviewUI({
 
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
+      {passed ? <ReviewConfettiLayer /> : null}
       {/* Header: back arrow + "Review Performance" title (Figma 186588) */}
       <View style={tw`px-5 pt-3 flex-row items-center`}>
         <TouchableOpacity onPress={onDone} hitSlop={12} style={tw`mr-3`}>
@@ -617,6 +701,9 @@ export default function SpeechAnalysisReview({
   sectionHeading,
   statsLine,
   groupItemLabel,
+  submitting = false,
+  passed,
+  celebrationEffects,
 }: SpeechAnalysisReviewProps) {
   if (
     drillType === "vocabulary" ||
@@ -640,6 +727,9 @@ export default function SpeechAnalysisReview({
         groupItemLabel={
           groupItemLabel ?? (drillType === "key_phrases" ? "Question" : "Item")
         }
+        submitting={submitting}
+        passed={passed}
+        celebrationEffects={celebrationEffects}
       />
     );
   }
@@ -649,6 +739,8 @@ export default function SpeechAnalysisReview({
       analysisResults={analysisResults}
       onDone={onDone}
       onPracticeAgain={onPracticeAgain}
+      passed={passed}
+      celebrationEffects={celebrationEffects}
     />
   );
 }

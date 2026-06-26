@@ -1,17 +1,19 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import CheckpointScreen from "@/components/drills/CheckpointScreen";
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
-import tw from "@/lib/tw";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
-import { completeDrill, getDrillById } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import tw from "@/lib/tw";
+import { completeDrill, getDrillById } from "@/services/drill.service";
 import { useActivityStore } from "@/store/activity-store";
-import { useQueryClient } from "@tanstack/react-query";
-import { Drill } from "@/types/drill.types";
+import { Drill, type DrillCompletionEffects } from "@/types/drill.types";
+import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
 import { logger } from "@/utils/logger";
+import { useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -19,6 +21,7 @@ export default function DefinitionDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const isRedo = params.redo === "true";
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
@@ -31,9 +34,50 @@ export default function DefinitionDrill() {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [completionScore, setCompletionScore] = useState(0);
+  const [celebrationEffects, setCelebrationEffects] = useState<DrillCompletionEffects | undefined>();
+  const [completePassed, setCompletePassed] = useState(false);
+
+  const totalItems = drill?.definition_items?.length ?? 0;
+
+  const initFreshState = useCallback(() => {
+    setCurrentIndex(0);
+    setAnswers({});
+  }, []);
+
+  const hydrateFromCheckpoint = useCallback(
+    (checkpoint: {
+      resumeFromIndex: number;
+      partialResults: { answers: Record<number, string> };
+    }) => {
+      setAnswers(checkpoint.partialResults.answers ?? {});
+      setCurrentIndex(checkpoint.resumeFromIndex);
+    },
+    []
+  );
+
+  const {
+    isLoadingCheckpoint,
+    showCheckpointScreen,
+    checkpointCompletedCount,
+    dismissCheckpoint,
+    saveCheckpointAtBoundary,
+    clearCheckpoint,
+    skipLocalRestore,
+  } = useDrillCheckpoint({
+    drillId,
+    assignmentId,
+    drillType: DrillCheckpointType.definition,
+    isRedo,
+    isDrillReady: !!drill && totalItems > 0,
+    totalItems,
+    onHydrate: hydrateFromCheckpoint,
+    onFreshStart: initFreshState,
+  });
 
   // Restore progress
   useEffect(() => {
+    if (skipLocalRestore) return;
     if (drillId && drillProgress[drillId]) {
       const saved = drillProgress[drillId];
       if (saved.data?.currentIndex !== undefined) {
@@ -43,7 +87,7 @@ export default function DefinitionDrill() {
         setAnswers(saved.data.answers);
       }
     }
-  }, [drillId]);
+  }, [drillId, skipLocalRestore]);
 
   // Track activity on unmount
   useEffect(() => {
@@ -119,6 +163,8 @@ export default function DefinitionDrill() {
       return;
     }
     if (!isLast) {
+      const completedCount = currentIndex + 1;
+      void saveCheckpointAtBoundary({ answers }, completedCount, currentIndex);
       setCurrentIndex(currentIndex + 1);
     } else {
       handleSubmit();
@@ -144,7 +190,7 @@ export default function DefinitionDrill() {
         hint: item.hint || "",
       }));
 
-      await completeDrill(drillId, {
+      const result = await completeDrill(drillId, {
         drillAssignmentId: assignmentId,
         score,
         timeSpent,
@@ -153,9 +199,12 @@ export default function DefinitionDrill() {
           definitions: definitionResults,
         },
       });
+      setCelebrationEffects(result.effects);
+      setCompletePassed(result.passed);
+      clearCheckpoint();
       await invalidateDrillCaches(queryClient);
 
-      void playPracticeFeedback("success");
+      setCompletionScore(score);
       setIsCompleted(true);
       addRecentActivity({
         id: drill._id,
@@ -172,7 +221,17 @@ export default function DefinitionDrill() {
     }
   };
 
-  if (loading) {
+  if (showCheckpointScreen && drill) {
+    return (
+      <CheckpointScreen
+        completedCount={checkpointCompletedCount}
+        totalItems={totalItems}
+        onContinue={dismissCheckpoint}
+      />
+    );
+  }
+
+  if (loading || isLoadingCheckpoint) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
         <Loader />
@@ -189,10 +248,35 @@ export default function DefinitionDrill() {
   }
 
   if (isCompleted) {
+    const items = drill?.definition_items ?? [];
+    const answeredCount = items.filter((_, idx) => {
+      const answer = answers[idx];
+      return answer && answer.trim().length > 0;
+    }).length;
+    const celebrateThreshold = completionScore >= 70;
+
+    if (celebrateThreshold) {
+      return (
+        <DrillCompletedScreen
+          variant="progress"
+          completed={answeredCount}
+          total={items.length}
+          passed={celebrateThreshold}
+          celebrate={celebrateThreshold && completePassed && !!celebrationEffects}
+          celebrationEffects={celebrationEffects}
+          title="You passed!"
+          message="Great job! Your definitions have been submitted."
+          onContinue={() => router.back()}
+          onClose={() => router.back()}
+        />
+      );
+    }
+
     return (
       <DrillCompletedScreen
         variant="submitted"
         passed={false}
+        celebrate={false}
         title="Definition submitted"
         message="Your definitions have been submitted for review. You'll be notified when they have been reviewed."
         onContinue={() => router.back()}

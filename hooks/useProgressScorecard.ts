@@ -1,11 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { getProgressScorecard } from '@/services/metrics.service';
 import type { ProgressScorecardMetrics } from '@/types/progress-scorecard.types';
+import { useAuthStore } from '@/store/auth-store';
+
+export const progressScorecardQueryKey = ['progress-scorecard'] as const;
 
 export function useProgressScorecard() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
+
   return useQuery<ProgressScorecardMetrics>({
-    queryKey: ['progress-scorecard'],
+    queryKey: progressScorecardQueryKey,
     queryFn: getProgressScorecard,
+    enabled: isAuthenticated && hasHydrated,
     staleTime: 1000 * 60 * 5,
     retry: 1,
   });

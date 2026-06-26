@@ -5,12 +5,11 @@ import { setAudioModeSafely } from '@/utils/audio';
 
 export type PracticeFeedbackKind = 'success' | 'failure';
 
+export type ToneStep = { frequency: number; durationMs: number; gapMs: number };
+
 const SAMPLE_RATE = 44100;
 
-const TONE_SEQUENCES: Record<
-  PracticeFeedbackKind,
-  Array<{ frequency: number; durationMs: number; gapMs: number }>
-> = {
+const TONE_SEQUENCES: Record<PracticeFeedbackKind, ToneStep[]> = {
   success: [
     { frequency: 523, durationMs: 90, gapMs: 30 },
     { frequency: 659, durationMs: 110, gapMs: 0 },
@@ -53,9 +52,7 @@ function applyEnvelope(
   return sample * gain;
 }
 
-function synthesizeTonePcm(kind: PracticeFeedbackKind): Int16Array {
-  const waveType = kind === 'success' ? 'sine' : 'triangle';
-  const steps = TONE_SEQUENCES[kind];
+function synthesizeTonePcm(steps: ToneStep[], waveType: 'sine' | 'triangle'): Int16Array {
   const totalDurationMs = steps.reduce(
     (sum, step) => sum + step.durationMs + step.gapMs,
     0
@@ -136,10 +133,13 @@ function pcmToWavBase64(pcm: Int16Array): string {
   return uint8ArrayToBase64(new Uint8Array(buffer));
 }
 
-async function playTone(kind: PracticeFeedbackKind): Promise<void> {
-  const pcm = synthesizeTonePcm(kind);
+export async function playToneSequence(
+  steps: ToneStep[],
+  waveType: 'sine' | 'triangle'
+): Promise<void> {
+  const pcm = synthesizeTonePcm(steps, waveType);
   const base64 = pcmToWavBase64(pcm);
-  const uri = `${FileSystem.cacheDirectory}practice-feedback-${kind}-${Date.now()}.wav`;
+  const uri = `${FileSystem.cacheDirectory}practice-tone-${Date.now()}.wav`;
 
   await FileSystem.writeAsStringAsync(uri, base64, {
     encoding: 'base64',
@@ -162,9 +162,20 @@ async function playTone(kind: PracticeFeedbackKind): Promise<void> {
   });
 }
 
+export async function playHapticNotification(
+  type: Haptics.NotificationFeedbackType
+): Promise<void> {
+  await Haptics.notificationAsync(type);
+}
+
+async function playTone(kind: PracticeFeedbackKind): Promise<void> {
+  const waveType = kind === 'success' ? 'sine' : 'triangle';
+  await playToneSequence(TONE_SEQUENCES[kind], waveType);
+}
+
 export async function playPracticeFeedback(kind: PracticeFeedbackKind): Promise<void> {
   try {
-    await Haptics.notificationAsync(
+    await playHapticNotification(
       kind === 'success'
         ? Haptics.NotificationFeedbackType.Success
         : Haptics.NotificationFeedbackType.Error

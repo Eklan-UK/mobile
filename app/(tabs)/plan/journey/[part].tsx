@@ -1,5 +1,6 @@
 import { LearningJourneyTopicSection } from '@/components/learning-journey/LearningJourneyTopicSection';
 import { AppText, BoldText } from '@/components/ui';
+import { useTranslation } from '@/contexts/LanguageContext';
 import {
   getLearningJourneyPart,
   isValidLearningJourneyPart,
@@ -28,6 +29,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function LearningJourneyPartScreen() {
   const { part: partParam } = useLocalSearchParams<{ part: string }>();
+  const { t } = useTranslation();
   const isSubscribed = useIsSubscribed();
   const { colors: c } = useSemanticTheme();
   const { prefetchDrillAssignment } = usePrefetch();
@@ -90,16 +92,16 @@ export default function LearningJourneyPartScreen() {
           onPress={() => router.back()}
           style={tw`flex-row items-center gap-1 mb-3`}
           accessibilityRole="button"
-          accessibilityLabel="Back to My Learning Journey"
+          accessibilityLabel={`Back to ${t('journey.backToJourney')}`}
         >
           <Ionicons name="arrow-back" size={18} color={c.textSecondary} />
           <AppText style={[tw`text-sm font-medium`, { color: c.textSecondary }]}>
-            My Learning Journey
+            {t('journey.backToJourney')}
           </AppText>
         </TouchableOpacity>
 
         <AppText style={[tw`text-xs font-semibold uppercase`, { color: c.textSecondary }]}>
-          Part {partNumber}
+          {t('journey.mission', { part: partNumber })}
         </AppText>
         <BoldText style={[tw`text-2xl font-bold mt-1`, { color: c.textPrimary }]}>
           {partDef.title}

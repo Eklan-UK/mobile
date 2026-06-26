@@ -10,6 +10,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import { BadgeUnlockProvider } from "@/contexts/BadgeUnlockContext";
 import { AlertProvider } from "@/contexts/AlertContext";
 import { NotificationToastProvider } from "@/contexts/NotificationToastContext";
 import { BackgroundPrefetcher } from "@/components/BackgroundPrefetcher";
@@ -25,13 +26,33 @@ import { useDeviceContext, useAppColorScheme } from "twrnc";
 import { useThemeStore } from "@/store/theme-store";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { getSemanticColors } from "@/constants/theme-tokens";
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: 'https://0f8768ee1dd6787b9181b4d80a1e1d3c@o4511512667619328.ingest.de.sentry.io/4511621819138128',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 initGlobalErrorHandlers();
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+export default Sentry.wrap(function RootLayout() {
   // Load selected theme color from store
   const { theme } = useThemeStore();
   const systemColorScheme = useColorScheme();
@@ -105,6 +126,7 @@ export default function RootLayout() {
           <BottomSheetModalProvider>
             <SafeAreaProvider>
               <NotificationToastProvider>
+              <BadgeUnlockProvider>
               <OtaUpdateCoordinator appShellReady={appShellReady} />
               <SubscriptionDeepLinkHandler />
               <BackgroundPrefetcher />
@@ -141,6 +163,7 @@ export default function RootLayout() {
                 </Stack>
                 </RootErrorBoundary>
               </ThemeProvider>
+              </BadgeUnlockProvider>
               </NotificationToastProvider>
             </SafeAreaProvider>
           </BottomSheetModalProvider>
@@ -149,4 +172,4 @@ export default function RootLayout() {
       </LanguageProvider>
     </QueryClientProvider>
   );
-}
+});

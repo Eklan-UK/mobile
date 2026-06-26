@@ -1,7 +1,9 @@
-const { getDefaultConfig } = require("expo/metro-config");
+const {
+  getSentryExpoConfig
+} = require("@sentry/react-native/metro");
 
 module.exports = (() => {
-  const config = getDefaultConfig(__dirname);
+  const config = getSentryExpoConfig(__dirname);
 
   config.transformer.babelTransformerPath = require.resolve(
     "react-native-svg-transformer"

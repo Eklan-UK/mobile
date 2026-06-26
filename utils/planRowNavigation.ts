@@ -1,8 +1,31 @@
 import { getPlanDrillStatus } from '@/domain/learning-journey/group-journey-drills';
+import { useActivityStore } from '@/store/activity-store';
 import type { DrillAssignment } from '@/types/drill.types';
 import { resolveFreeTalkScenarioId } from '@/utils/drillAssignment';
 import { navigateToDrill } from '@/utils/drillNavigation';
 import { router } from 'expo-router';
+
+function trackDrillRowTap(item: DrillAssignment) {
+  const store = useActivityStore.getState();
+  const existing = store.drillProgress[item.drill._id];
+  if (existing) {
+    store.updateDrillProgress({
+      ...existing,
+      lastUpdated: Date.now(),
+    });
+    return;
+  }
+  store.updateDrillProgress({
+    drillId: item.drill._id,
+    title: item.drill.title,
+    type: item.drill.type,
+    currentStep: 1,
+    totalSteps: 1,
+    answers: [],
+    startTime: Date.now(),
+    lastUpdated: Date.now(),
+  });
+}
 
 /** Navigate from PlanDrillRow — completed drills open results when assignmentId is present. */
 export function navigatePlanDrillRow(item: DrillAssignment, onNavigate?: () => void) {
@@ -14,6 +37,7 @@ export function navigatePlanDrillRow(item: DrillAssignment, onNavigate?: () => v
     );
     return;
   }
+  trackDrillRowTap(item);
   navigateToDrill(item, item.assignmentId);
 }
 

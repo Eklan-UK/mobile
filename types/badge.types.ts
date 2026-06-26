@@ -32,3 +32,19 @@ export interface BadgeStateResponse {
   badges: BadgeView[];
   featuredBadge: BadgeView;
 }
+
+export interface BadgeUnlockCelebration {
+  badgeId: BadgeId;
+  badgeName: string;
+  icon: string;
+  afterOutcome: string;
+  humorousLine: string;
+}
+
+export type PartialBadgeUnlockCelebration = {
+  badgeId: BadgeId | string;
+  badgeName?: string;
+  icon?: string;
+  afterOutcome?: string;
+  humorousLine?: string;
+};

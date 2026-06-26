@@ -1,5 +1,6 @@
 import { AppText, BoldText } from '@/components/ui';
 import { getLearningJourneyPart, type LearningJourneyPartId } from '@/domain/learning-journey/learning-journey.catalog';
+import { useTranslation } from '@/contexts/LanguageContext';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,13 +21,14 @@ export const LearningJourneyPartCard = memo(function LearningJourneyPartCard({
   totalCount,
   onPress,
 }: LearningJourneyPartCardProps) {
+  const { t } = useTranslation();
   const { colors: c, isDark } = useSemanticTheme();
   const partDef = getLearningJourneyPart(part);
   const title = partDef?.title ?? '';
   const progressText =
     totalCount > 0
-      ? `${completedCount} of ${totalCount} drills completed`
-      : 'No drills assigned yet';
+      ? t('journey.progress', { completed: completedCount, total: totalCount })
+      : t('journey.noDrillsAssigned');
 
   return (
     <TouchableOpacity
@@ -41,7 +43,7 @@ export const LearningJourneyPartCard = memo(function LearningJourneyPartCard({
         },
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`Part ${part}, ${title}, ${progressText}`}
+      accessibilityLabel={`${t('journey.mission', { part })}, ${title}, ${progressText}`}
     >
       <LinearGradient
         colors={
@@ -58,7 +60,7 @@ export const LearningJourneyPartCard = memo(function LearningJourneyPartCard({
 
       <View style={tw`flex-1 ml-3`}>
         <AppText style={[tw`text-xs font-semibold uppercase`, { color: c.textSecondary }]}>
-          Part {part}
+          {t('journey.mission', { part })}
         </AppText>
         <BoldText
           style={[tw`text-sm font-semibold mt-0.5`, { color: c.textPrimary }]}

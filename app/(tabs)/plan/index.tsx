@@ -86,7 +86,7 @@ export default function MyPlanScreen() {
 
         <View>
           <BoldText style={tw`text-base font-bold text-gray-900 dark:text-white mb-3`}>
-            My Learning Journey
+            {t('journey.title')}
           </BoldText>
           {LEARNING_JOURNEY_PARTS.map((partDef) => {
             const progress = partProgress[partDef.part as LearningJourneyPartId];

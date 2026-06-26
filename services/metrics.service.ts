@@ -98,5 +98,11 @@ export async function fetchUserStreak(): Promise<StreakData> {
 
 export async function getProgressScorecard(): Promise<ProgressScorecardMetrics> {
   const response = await apiClient.get('/api/v1/progress/scorecard');
-  return response.data?.data?.scorecard;
+  const scorecard = response.data?.data?.scorecard;
+
+  if (!scorecard) {
+    throw new Error('Progress scorecard missing from API response');
+  }
+
+  return scorecard;
 }

@@ -1,16 +1,19 @@
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
+import CheckpointScreen from "@/components/drills/CheckpointScreen";
 import AudioButton from "@/components/drills/AudioButton";
 import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Drill } from "@/types/drill.types";
+import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
 import tw from "@/lib/tw";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -42,6 +45,7 @@ export default function SentenceWritingDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const isRedo = params.redo === "true";
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
@@ -61,8 +65,67 @@ export default function SentenceWritingDrill() {
   const [currentSection, setCurrentSection] = useState<SectionType>("intro");
   const [wordProgressList, setWordProgressList] = useState<WordProgress[]>([]);
 
+  const totalItems = wordProgressList.length;
+
+  const initFreshState = useCallback(() => {
+    setCurrentWordIndex(0);
+    setCurrentSection("intro");
+    setShowContext(!!drill?.context);
+    setWordProgressList((prev) =>
+      prev.map((wp) => ({
+        ...wp,
+        definition: "",
+        sentence1: "",
+        sentence2: "",
+      }))
+    );
+  }, [drill?.context]);
+
+  const hydrateFromCheckpoint = useCallback(
+    (checkpoint: {
+      resumeFromIndex: number;
+      partialResults: {
+        answers: {
+          wordProgressList: WordProgress[];
+          currentWordIndex: number;
+          currentSection: SectionType;
+          showContext: boolean;
+        };
+      };
+    }) => {
+      const saved = checkpoint.partialResults.answers;
+      if (saved?.wordProgressList?.length) {
+        setWordProgressList(saved.wordProgressList);
+      }
+      setCurrentWordIndex(saved?.currentWordIndex ?? checkpoint.resumeFromIndex);
+      setCurrentSection(saved?.currentSection ?? "intro");
+      setShowContext(saved?.showContext ?? false);
+    },
+    []
+  );
+
+  const {
+    isLoadingCheckpoint,
+    showCheckpointScreen,
+    checkpointCompletedCount,
+    dismissCheckpoint,
+    saveCheckpointAtBoundary,
+    clearCheckpoint,
+    skipLocalRestore,
+  } = useDrillCheckpoint({
+    drillId,
+    assignmentId,
+    drillType: DrillCheckpointType.sentence_writing,
+    isRedo,
+    isDrillReady: !!drill && totalItems > 0,
+    totalItems,
+    onHydrate: hydrateFromCheckpoint,
+    onFreshStart: initFreshState,
+  });
+
   // Restore progress
   useEffect(() => {
+    if (skipLocalRestore) return;
     if (drillId && drillProgress[drillId]) {
       const saved = drillProgress[drillId];
       if (saved.data?.wordProgressList) {
@@ -78,7 +141,7 @@ export default function SentenceWritingDrill() {
         setShowContext(saved.data.showContext);
       }
     }
-  }, [drillId]);
+  }, [drillId, skipLocalRestore]);
 
   // Track activity on unmount
   useEffect(() => {
@@ -164,7 +227,7 @@ export default function SentenceWritingDrill() {
       setWordProgressList(initialProgress);
 
       // Show context screen first if the drill has a context field
-      if (drillData.context && !drillProgress[drillId]) {
+      if (drillData.context && !skipLocalRestore && !drillProgress[drillId]) {
         setShowContext(true);
       }
     } catch (error) {
@@ -208,6 +271,19 @@ export default function SentenceWritingDrill() {
     }
 
     if (currentWordIndex < wordProgressList.length - 1) {
+      const completedCount = currentWordIndex + 1;
+      void saveCheckpointAtBoundary(
+        {
+          answers: {
+            wordProgressList,
+            currentWordIndex: currentWordIndex + 1,
+            currentSection: "intro" as const,
+            showContext,
+          },
+        },
+        completedCount,
+        currentWordIndex
+      );
       setCurrentWordIndex((prev) => prev + 1);
       setCurrentSection("intro");
     } else {
@@ -277,6 +353,7 @@ export default function SentenceWritingDrill() {
         answers: [],
         sentenceResults,
       });
+      clearCheckpoint();
       await invalidateDrillCaches(queryClient);
 
       setShowSuccess(true);
@@ -300,7 +377,17 @@ export default function SentenceWritingDrill() {
 
   // ── Loading / Error screens ──────────────────────────────────────────────
 
-  if (loading) {
+  if (showCheckpointScreen && drill) {
+    return (
+      <CheckpointScreen
+        completedCount={checkpointCompletedCount}
+        totalItems={totalItems}
+        onContinue={dismissCheckpoint}
+      />
+    );
+  }
+
+  if (loading || isLoadingCheckpoint) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
         <Loader />

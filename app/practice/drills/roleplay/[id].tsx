@@ -5,69 +5,69 @@
  */
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
-import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
+import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import RoleplayAiBubble, { BotAvatar } from "@/components/drills/roleplay/RoleplayAiBubble";
-import RoleplayUserLineBubble from "@/components/drills/roleplay/RoleplayUserLineBubble";
-import RoleplayYourTurnSection from "@/components/drills/roleplay/RoleplayYourTurnSection";
+import RoleplayConversationCompleteSheet from "@/components/drills/roleplay/RoleplayConversationCompleteSheet";
+import RoleplayFailSheet from "@/components/drills/roleplay/RoleplayFailSheet";
 import RoleplayMicDock from "@/components/drills/roleplay/RoleplayMicDock";
 import RoleplayPassSheet from "@/components/drills/roleplay/RoleplayPassSheet";
-import RoleplayFailSheet from "@/components/drills/roleplay/RoleplayFailSheet";
-import RoleplayConversationCompleteSheet from "@/components/drills/roleplay/RoleplayConversationCompleteSheet";
 import RoleplaySceneBreakPanel from "@/components/drills/roleplay/RoleplaySceneBreakPanel";
 import RoleplaySceneHeader from "@/components/drills/roleplay/RoleplaySceneHeader";
+import RoleplayUserLineBubble from "@/components/drills/roleplay/RoleplayUserLineBubble";
 import RoleplayYourLinesProgress from "@/components/drills/roleplay/RoleplayYourLinesProgress";
-import { AppText, BoldText, Loader } from "@/components/ui";
+import RoleplayYourTurnSection from "@/components/drills/roleplay/RoleplayYourTurnSection";
+import { AppText, Loader } from "@/components/ui";
 import { useNotificationToast } from "@/contexts/NotificationToastContext";
-import tw from "@/lib/tw";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
-import {
-  clearRoleplayProgress,
-  completeDrill,
-  getDrillById,
-  getRoleplayProgress,
-  saveRoleplayProgress,
-} from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
-import { useQueryClient } from "@tanstack/react-query";
-import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
+import { useSaveDrill } from "@/hooks/useSaveDrill";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
+import tw from "@/lib/tw";
+import {
+    clearRoleplayProgress,
+    completeDrill,
+    getDrillById,
+    getRoleplayProgress,
+    saveRoleplayProgress,
+} from "@/services/drill.service";
+import { extractQualityScore, extractTextScore, speechaceService } from "@/services/speechace.service";
 import { ttsService } from "@/services/tts.service";
 import { useActivityStore } from "@/store/activity-store";
-import { Drill, DialogueTurn } from "@/types/drill.types";
+import { DialogueTurn, Drill, type DrillCompletionEffects } from "@/types/drill.types";
+import type { RoleplayRoleMode, TurnAnalytics, TurnProgressMap } from "@/types/roleplay-progress.types";
 import { Alert } from "@/utils/alert";
 import { setAudioModeSafely } from "@/utils/audio";
 import { logger } from "@/utils/logger";
+import {
+    buildProgressBody,
+    buildProgressQuery,
+    checkpointToState,
+    parseRoleplayProgressContext,
+} from "@/utils/roleplayProgressContext";
+import {
+    countCompletedStudentTurns,
+    findFirstAiInScene,
+    findNextAiAfterStudent,
+    findStudentAfterAi,
+    isLastStudentTurnInScene,
+    positionAtDialogueIndex,
+    rebuildTranscriptBeforePosition,
+    sceneNameAt,
+    studentTurnIndexInScene,
+    turnKey,
+} from "@/utils/roleplaySceneHelpers";
+import { useQueryClient } from "@tanstack/react-query";
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  ScrollView,
-  View,
+    ActivityIndicator,
+    Platform,
+    ScrollView,
+    View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useSaveDrill } from "@/hooks/useSaveDrill";
-import type { RoleplayRoleMode, TurnAnalytics, TurnProgressMap } from "@/types/roleplay-progress.types";
-import {
-  buildProgressBody,
-  buildProgressQuery,
-  checkpointToState,
-  parseRoleplayProgressContext,
-} from "@/utils/roleplayProgressContext";
-import {
-  countCompletedStudentTurns,
-  findFirstAiInScene,
-  findNextAiAfterStudent,
-  findStudentAfterAi,
-  isLastStudentTurnInScene,
-  positionAtDialogueIndex,
-  rebuildTranscriptBeforePosition,
-  sceneNameAt,
-  studentTurnIndexInScene,
-  turnKey,
-} from "@/utils/roleplaySceneHelpers";
-import { Platform } from "react-native";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -224,11 +224,18 @@ export default function RoleplayDrill() {
 
   // ── Drill complete ──
   const [isDrillCompleted, setIsDrillCompleted] = useState(false);
+  const [celebrationEffects, setCelebrationEffects] = useState<DrillCompletionEffects | undefined>();
 
   // ─── Computed ───
   const totalTurns = drill ? totalStudentTurns(drill) : 0;
   const currentScene = drill?.roleplay_scenes?.[currentSceneIndex] ?? null;
   const totalScenes = drill?.roleplay_scenes?.length ?? 0;
+  const showContinueLater =
+    progressCtx.source === "assignment"
+      ? !!progressCtx.assignmentId
+      : progressCtx.source === "weekly_challenge"
+        ? !!progressCtx.challengeId
+        : false;
 
   // ─── Load drill + server checkpoint ─────────────────────────────────────
 
@@ -801,6 +808,22 @@ export default function RoleplayDrill() {
     const nextScene = drill.roleplay_scenes?.[sceneBreak.nextSceneIndex];
     if (!nextScene) return;
 
+    const autoSaveBody = buildProgressBody(progressCtx, {
+      currentSceneIndex: sceneBreak.nextSceneIndex,
+      currentTurnIndex: 0,
+      pausedAtSceneBreak: false,
+      completedSceneIndex: sceneBreak.completedSceneIndex,
+      turnProgress,
+      sessionAnalytics,
+      roleMode,
+      originalRoleProgress,
+      swappedRoleProgress,
+      startedAt: startedAtIso,
+    });
+    void saveRoleplayProgress(progressCtx.progressDrillId, autoSaveBody).catch((e) =>
+      logger.warn("Failed to auto-save roleplay progress on scene advance:", e)
+    );
+
     introTtsRunIdRef.current += 1;
     aiTurnAppendSigRef.current = null;
     void ttsService.stopAudio();
@@ -825,7 +848,7 @@ export default function RoleplayDrill() {
   };
 
   const handleContinueLater = async () => {
-    if (!drill || !sceneBreak || savingLater) return;
+    if (!drill || !sceneBreak || savingLater || !showContinueLater) return;
 
     setSavingLater(true);
     try {
@@ -843,14 +866,7 @@ export default function RoleplayDrill() {
       });
 
       await saveRoleplayProgress(progressCtx.progressDrillId, body);
-      await invalidateDrillCaches(queryClient);
-
-      showToast({
-        title: "Progress saved — pick up where you left off anytime.",
-        body: "",
-        variant: "dark",
-        duration: 4500,
-      });
+      void invalidateDrillCaches(queryClient);
 
       if (progressCtx.source === "weekly_challenge") {
         if (progressCtx.weekStartDate) {
@@ -867,7 +883,6 @@ export default function RoleplayDrill() {
     } catch (e) {
       logger.error("Failed to save roleplay progress:", e);
       Alert.alert("Could not save", "Please try again.");
-    } finally {
       setSavingLater(false);
     }
   };
@@ -929,7 +944,7 @@ export default function RoleplayDrill() {
           weekStartDate: progressCtx.weekStartDate,
         });
       } else {
-        await completeDrill(drill._id, {
+        const result = await completeDrill(drill._id, {
           drillAssignmentId: progressCtx.assignmentId,
           score,
           timeSpent: durationSeconds,
@@ -944,6 +959,7 @@ export default function RoleplayDrill() {
             })) ?? [],
           },
         });
+        setCelebrationEffects(result.effects);
         await invalidateDrillCaches(queryClient);
       }
       try {
@@ -1009,10 +1025,20 @@ export default function RoleplayDrill() {
   }
 
   if (phase === "review") {
+    const avgReviewScore =
+      analysisResults.length > 0
+        ? Math.round(
+            analysisResults.reduce((sum, r) => sum + r.score, 0) / analysisResults.length
+          )
+        : 0;
+    const reviewPassed = avgReviewScore >= PASS_THRESHOLD;
+
     return (
       <SpeechAnalysisReview
         analysisResults={analysisResults}
         drillType="roleplay"
+        passed={reviewPassed}
+        celebrationEffects={celebrationEffects}
         onDone={() => setIsDrillCompleted(true)}
         onPracticeAgain={handleRestart}
       />
@@ -1036,6 +1062,7 @@ export default function RoleplayDrill() {
         completed={totalTurns}
         total={totalTurns}
         passed={true}
+        celebrate={false}
         title="You passed!"
         message="Great job! You communicated clearly throughout the conversation."
         buttonLabel={progressCtx.source === "weekly_challenge" ? "Back to Challenge" : "Continue"}
@@ -1211,6 +1238,7 @@ export default function RoleplayDrill() {
           completedSceneName={sceneNameAt(drill, sceneBreak.completedSceneIndex)}
           nextSceneName={sceneNameAt(drill, sceneBreak.nextSceneIndex)}
           saving={savingLater}
+          showContinueLater={showContinueLater}
           bottomInset={dockBottom}
           onContinueNextScene={handleContinueToNextScene}
           onContinueLater={() => void handleContinueLater()}

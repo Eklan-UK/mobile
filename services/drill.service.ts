@@ -1,17 +1,23 @@
 import apiClient from '@/lib/api';
+import { celebrateBadgesFromResponse } from '@/lib/badges/celebrate-badge-unlock';
 import {
+  CompleteDrillData,
   Drill,
   DrillsResponse,
   DrillStatus,
   KeyPhrasesResult,
+  MatchingResults,
   PerformanceReviewSnapshot,
 } from '@/types/drill.types';
+import type {
+  DrillCheckpoint,
+  SaveCheckpointBody,
+} from '@/types/drill-checkpoint.types';
 import type {
   RoleplayCheckpoint,
   SaveRoleplayProgressBody,
 } from '@/types/roleplay-progress.types';
 import { normalizeDrillAssignments, shouldFetchDrillDetail } from '@/utils/drillAssignment';
-import { enrichAssignmentsWithJourneyFields } from '@/utils/enrichJourneyFields';
 import { logger } from "@/utils/logger";
 import { isAxiosError } from 'axios';
 
@@ -70,17 +76,16 @@ export async function getMyDrills(params?: GetMyDrillsParams): Promise<DrillsRes
 
   const rawDrills = Array.isArray(data.drills) ? data.drills : [];
   const normalized = normalizeDrillAssignments(rawDrills);
-  const enriched = await enrichAssignmentsWithJourneyFields(normalized);
 
   // Override hasBookmarks with the authoritative set from the dedicated endpoint
   if (bookmarkedIds !== null) {
-    for (const assignment of enriched) {
+    for (const assignment of normalized) {
       assignment.hasBookmarks = bookmarkedIds.has(assignment.drill._id);
     }
   }
 
   const result = {
-    drills: enriched,
+    drills: normalized,
     pagination: data.pagination || {
       total: rawDrills.length,
       page: params?.page || 1,
@@ -156,7 +161,7 @@ export async function completeDrill(
     vocabularyResults?: any;
     pronunciationResults?: any;
     roleplayResults?: any;
-    matchingResults?: any;
+    matchingResults?: MatchingResults;
     definitionResults?: any;
     grammarResults?: any;
     sentenceWritingResults?: any;
@@ -169,7 +174,7 @@ export async function completeDrill(
     deviceInfo?: string;
     platform?: 'web' | 'ios' | 'android';
   }
-): Promise<void> {
+): Promise<CompleteDrillData> {
   // Add platform info if not provided
   const data = {
     ...completionData,
@@ -177,7 +182,10 @@ export async function completeDrill(
     deviceInfo: completionData.deviceInfo || 'mobile',
   };
 
-  await apiClient.post(`/api/v1/drills/${drillId}/complete`, data);
+  const response = await apiClient.post(`/api/v1/drills/${drillId}/complete`, data);
+  celebrateBadgesFromResponse(response.data);
+  const result = response.data?.data ?? response.data;
+  return result as CompleteDrillData;
 }
 
 function roleplayProgressQueryString(query: Record<string, string>): string {
@@ -187,6 +195,48 @@ function roleplayProgressQueryString(query: Record<string, string>): string {
   }
   const qs = params.toString();
   return qs ? `?${qs}` : '';
+}
+
+/**
+ * GET saved item-drill checkpoint for a My Plan assignment.
+ */
+export async function getCheckpoint(
+  drillId: string,
+  assignmentId: string
+): Promise<DrillCheckpoint | null> {
+  const url = `/api/v1/drills/${drillId}/checkpoint?assignmentId=${assignmentId}`;
+  const response = await apiClient.get(url, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
+  const data = response.data?.data ?? response.data;
+  return (data?.checkpoint as DrillCheckpoint | null) ?? null;
+}
+
+/**
+ * POST item-drill checkpoint (every 5 completed items).
+ */
+export async function saveCheckpoint(
+  drillId: string,
+  body: SaveCheckpointBody
+): Promise<void> {
+  await apiClient.post(`/api/v1/drills/${drillId}/checkpoint`, body);
+}
+
+/**
+ * DELETE item-drill checkpoint after successful completion.
+ * Never throws — failures are logged only.
+ */
+export async function clearCheckpoint(
+  drillId: string,
+  assignmentId: string
+): Promise<void> {
+  try {
+    const url = `/api/v1/drills/${drillId}/checkpoint?assignmentId=${assignmentId}`;
+    await apiClient.delete(url);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn('Failed to clear drill checkpoint (non-critical):', message);
+  }
 }
 
 /**
@@ -288,6 +338,7 @@ export async function bookmarkWord(
         : {}),
       ...(opts?.context != null && opts.context !== '' ? { context: opts.context } : {}),
     });
+    celebrateBadgesFromResponse(response.data);
     return response.data;
   } catch (error: any) {
     logger.error('Failed to bookmark word:', error.message);
@@ -305,6 +356,7 @@ export async function saveDrill(drillId: string): Promise<any> {
       type: 'drill',
       content: drillId,
     });
+    celebrateBadgesFromResponse(response.data);
     return response.data;
   } catch (error: any) {
     logger.error('Failed to save drill:', error.message);

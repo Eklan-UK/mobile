@@ -64,6 +64,7 @@ export type PlanDrillRowProps = {
   status?: string;
   hasBookmarks?: boolean;
   showBookmark?: boolean;
+  locked?: boolean;
   onPress: () => void;
   onPressIn?: () => void;
 };
@@ -92,6 +93,7 @@ export const PlanDrillRow = memo(function PlanDrillRow({
   status,
   hasBookmarks = false,
   showBookmark = false,
+  locked = false,
   onPress,
   onPressIn,
 }: PlanDrillRowProps) {
@@ -122,6 +124,7 @@ export const PlanDrillRow = memo(function PlanDrillRow({
           backgroundColor: c.card,
           borderColor: c.border,
           boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+          opacity: locked ? 0.9 : 1,
         },
       ]}
     >
@@ -169,7 +172,14 @@ export const PlanDrillRow = memo(function PlanDrillRow({
         {showBookmark ? (
           <DrillBookmarkToggle drillId={drill._id} hasBookmarks={hasBookmarks} />
         ) : null}
-        <Ionicons name="chevron-forward" size={20} color={c.textLight} />
+        {locked ? (
+          <View style={tw`flex-row items-center gap-1 bg-green-600 px-2 py-0.5 rounded-full`}>
+            <Ionicons name="lock-closed" size={10} color="#fff" />
+            <AppText style={tw`text-[10px] font-bold text-white`}>Pro</AppText>
+          </View>
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color={c.textLight} />
+        )}
       </View>
     </View>
   );

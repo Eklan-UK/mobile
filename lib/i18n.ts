@@ -74,6 +74,14 @@ const translations = {
       yourProgress: 'Your Progress',
       noDrillsYet: 'No drills assigned yet',
     },
+    journey: {
+      title: 'My Learning Journey',
+      mission: 'Mission {{part}}',
+      progress: '{{completed}} of {{total}} drills completed',
+      noDrillsAssigned: 'No drills assigned yet',
+      noDrillsForTopic: 'No drills assigned for this topic yet.',
+      backToJourney: 'My Learning Journey',
+    },
     language: {
       screenTitle: 'What language should the app use?',
     },

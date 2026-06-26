@@ -1,23 +1,22 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import AudioButton from "@/components/drills/AudioButton";
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import RecordButton from "@/components/drills/RecordButton";
-import AudioButton from "@/components/drills/AudioButton";
 import { AppText, Loader } from "@/components/ui";
-import { getDrillById, completeDrill } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
-import { useQueryClient } from "@tanstack/react-query";
-import { Drill } from "@/types/drill.types";
-import tw from "@/lib/tw";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
-import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, router } from "expo-router";
-import { useEffect, useState, useRef } from "react";
-import { ScrollView, TouchableOpacity, View, ActivityIndicator } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useActivityStore } from "@/store/activity-store";
 import { useTTS } from "@/hooks/useTTS";
+import tw from "@/lib/tw";
+import { completeDrill, getDrillById } from "@/services/drill.service";
+import { useActivityStore } from "@/store/activity-store";
+import { Drill, type DrillCompletionEffects } from "@/types/drill.types";
 import { logger } from "@/utils/logger";
+import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, ScrollView, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ListeningDrill() {
   const params = useLocalSearchParams();
@@ -35,6 +34,8 @@ export default function ListeningDrill() {
   const [isRecording, setIsRecording] = useState(false);
   const [hasListened, setHasListened] = useState(false);
   const [isDrillCompleted, setIsDrillCompleted] = useState(false);
+  const [celebrationEffects, setCelebrationEffects] = useState<DrillCompletionEffects | undefined>();
+  const [completePassed, setCompletePassed] = useState(false);
 
   const { playAudio, isGenerating: isGeneratingAudio, isPlaying: isTTSPlaying, stopAudio: stopTTSAudio } = useTTS({
     autoPlay: false,
@@ -97,19 +98,21 @@ export default function ListeningDrill() {
         });
         void (async () => {
           try {
-            await completeDrill(drillId, {
+            const result = await completeDrill(drillId, {
               drillAssignmentId: assignmentId,
               score: 100,
               timeSpent: durationSeconds,
               answers: [],
+              listeningResults: { completed: true },
             });
+            setCelebrationEffects(result.effects);
+            setCompletePassed(result.passed);
             await invalidateDrillCaches(queryClient);
           } catch (err) {
             logger.warn('Failed to submit listening completion', err);
           }
         })();
         clearDrillProgress(drillId);
-        void playPracticeFeedback("success");
         setIsDrillCompleted(true);
       }
     } else {
@@ -125,6 +128,8 @@ export default function ListeningDrill() {
         completed={1}
         total={1}
         passed={true}
+        celebrate={completePassed && !!celebrationEffects}
+        celebrationEffects={celebrationEffects}
         title="You passed!"
         message="Great job! You practiced shadowing and improved your listening skills."
         onContinue={() => router.back()}

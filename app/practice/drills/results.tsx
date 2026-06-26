@@ -1,16 +1,16 @@
 import { AppText, BoldText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { getAssignmentAttempts } from "@/services/drill.service";
+import { getDrillCategory, type KeyPhrasesResult, type MatchingResults } from "@/types/drill.types";
+import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
+import { KEY_PHRASES_PASS_THRESHOLD } from "@/utils/keyPhrasesCompletion";
+import { MATCHING_PASS_THRESHOLD } from "@/lib/drill/matching-score";
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { router, useLocalSearchParams } from "expo-router";
-import { ScrollView, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet } from "react-native";
-import { getDrillCategory, type KeyPhrasesResult } from "@/types/drill.types";
-import { isDrillPerfectScore } from "@/utils/drillCompletion";
-import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
 
 export default function DrillResultsScreen() {
   const { drillId, assignmentId } = useLocalSearchParams<{
@@ -35,10 +35,26 @@ export default function DrillResultsScreen() {
   const score = latest?.score;
   const timeSpent = latest?.timeSpent;
   const keyPhrasesResults = latest?.keyPhrasesResults as KeyPhrasesResult | undefined;
+  const matchingResults = latest?.matchingResults as MatchingResults | undefined;
   const practiceType = drill ? resolveDrillPracticeType(drill) : null;
   const isKeyPhrases =
     !!keyPhrasesResults || practiceType === "key_phrases";
-  const runnerType = isKeyPhrases ? "key_phrases" : (drillType || practiceType || "");
+  const isMatching =
+    !!matchingResults || practiceType === "matching" || drillType === "matching";
+  const runnerType = isKeyPhrases
+    ? "key_phrases"
+    : isMatching
+      ? "matching"
+      : (drillType || practiceType || "");
+
+  function isAttemptPassed(attemptScore?: number): boolean {
+    if (attemptScore === undefined) return false;
+    if (isMatching) return attemptScore >= MATCHING_PASS_THRESHOLD;
+    if (isKeyPhrases) return attemptScore >= KEY_PHRASES_PASS_THRESHOLD;
+    return false;
+  }
+
+  const passed = isAttemptPassed(score);
 
   function formatTime(seconds?: number) {
     if (!seconds) return null;
@@ -77,28 +93,24 @@ export default function DrillResultsScreen() {
 
           {!isLoading && !isError && data && (
             <>
-              {isKeyPhrases && score !== undefined ? (
+              {(isKeyPhrases || isMatching) && score !== undefined ? (
                 <View
                   style={[
                     styles.passBanner,
-                    isDrillPerfectScore(score)
-                      ? styles.passBannerSuccess
-                      : styles.passBannerFail,
+                    passed ? styles.passBannerSuccess : styles.passBannerFail,
                   ]}
                 >
                   <Ionicons
-                    name={isDrillPerfectScore(score) ? "checkmark-circle" : "alert-circle"}
+                    name={passed ? "checkmark-circle" : "alert-circle"}
                     size={22}
-                    color={isDrillPerfectScore(score) ? "#166534" : "#B45309"}
+                    color={passed ? "#166534" : "#B45309"}
                   />
                   <BoldText
                     style={
-                      isDrillPerfectScore(score)
-                        ? styles.passBannerTextSuccess
-                        : styles.passBannerTextFail
+                      passed ? styles.passBannerTextSuccess : styles.passBannerTextFail
                     }
                   >
-                    {isDrillPerfectScore(score) ? "You passed!" : "Keep practicing"}
+                    {passed ? "You passed!" : "Keep practicing"}
                   </BoldText>
                 </View>
               ) : null}
@@ -162,6 +174,50 @@ export default function DrillResultsScreen() {
                   )}
                 </View>
               </View>
+
+              {isMatching && matchingResults ? (
+                <View style={styles.scoreCard}>
+                  <BoldText style={styles.scoreCardTitle}>Matching Summary</BoldText>
+                  <View style={tw`gap-3 mt-3`}>
+                    <View style={styles.scoreRow}>
+                      <AppText style={styles.scoreLabel}>Matched</AppText>
+                      <BoldText style={styles.scoreValue}>
+                        {matchingResults.pairsMatched}
+                      </BoldText>
+                    </View>
+                    <View style={styles.scoreRow}>
+                      <AppText style={styles.scoreLabel}>Total</AppText>
+                      <AppText style={styles.scoreValueNeutral}>
+                        {matchingResults.totalPairs}
+                      </AppText>
+                    </View>
+                    <View style={styles.scoreRow}>
+                      <AppText style={styles.scoreLabel}>Accuracy</AppText>
+                      <BoldText style={styles.scoreValue}>
+                        {Math.round(matchingResults.accuracy)}%
+                      </BoldText>
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              {isMatching && matchingResults?.incorrectPairs?.length ? (
+                <View style={styles.card}>
+                  <BoldText style={styles.scoreCardTitle}>Incorrect matches</BoldText>
+                  <View style={tw`gap-3 mt-3`}>
+                    {matchingResults.incorrectPairs.map((item, idx) => (
+                      <View
+                        key={`${idx}-${item.left.slice(0, 12)}`}
+                        style={tw`border-b border-gray-100 pb-3`}
+                      >
+                        <AppText style={tw`text-sm text-gray-800`}>
+                          {item.left} → {item.right || "—"} (attempted: {item.attemptedMatch})
+                        </AppText>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
 
               {isKeyPhrases && keyPhrasesResults ? (
                 <View style={styles.scoreCard}>

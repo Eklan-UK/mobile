@@ -1,18 +1,20 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
 import AudioButton from "@/components/drills/AudioButton";
+import CheckpointScreen from "@/components/drills/CheckpointScreen";
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
 import { useActivityStore } from "@/store/activity-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
+import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
 import { logger } from "@/utils/logger";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,6 +27,7 @@ export default function GrammarDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const isRedo = params.redo === "true";
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
@@ -38,8 +41,46 @@ export default function GrammarDrill() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
+  const totalItems = drill?.grammar_items?.length ?? 0;
+
+  const initFreshState = useCallback(() => {
+    setCurrentIndex(0);
+    setAnswers({});
+  }, []);
+
+  const hydrateFromCheckpoint = useCallback(
+    (checkpoint: {
+      resumeFromIndex: number;
+      partialResults: { answers: Record<number, PatternAnswer> };
+    }) => {
+      setAnswers(checkpoint.partialResults.answers ?? {});
+      setCurrentIndex(checkpoint.resumeFromIndex);
+    },
+    []
+  );
+
+  const {
+    isLoadingCheckpoint,
+    showCheckpointScreen,
+    checkpointCompletedCount,
+    dismissCheckpoint,
+    saveCheckpointAtBoundary,
+    clearCheckpoint,
+    skipLocalRestore,
+  } = useDrillCheckpoint({
+    drillId,
+    assignmentId,
+    drillType: DrillCheckpointType.grammar,
+    isRedo,
+    isDrillReady: !!drill && totalItems > 0,
+    totalItems,
+    onHydrate: hydrateFromCheckpoint,
+    onFreshStart: initFreshState,
+  });
+
   // Restore progress
   useEffect(() => {
+    if (skipLocalRestore) return;
     if (drillId && drillProgress[drillId]) {
       const saved = drillProgress[drillId];
       if (saved.data?.currentIndex !== undefined) {
@@ -49,7 +90,7 @@ export default function GrammarDrill() {
         setAnswers(saved.data.answers);
       }
     }
-  }, [drillId]);
+  }, [drillId, skipLocalRestore]);
 
   // Track activity on unmount
   useEffect(() => {
@@ -131,6 +172,8 @@ export default function GrammarDrill() {
       return;
     }
     if (!isLast) {
+      const completedCount = currentIndex + 1;
+      void saveCheckpointAtBoundary({ answers }, completedCount, currentIndex);
       setCurrentIndex(currentIndex + 1);
     } else {
       handleSubmit();
@@ -164,9 +207,9 @@ export default function GrammarDrill() {
         answers: [],
         grammarResults,
       });
+      clearCheckpoint();
       await invalidateDrillCaches(queryClient);
 
-      void playPracticeFeedback("success");
       setIsCompleted(true);
       addRecentActivity({
         id: drill._id,
@@ -183,7 +226,17 @@ export default function GrammarDrill() {
     }
   };
 
-  if (loading) {
+  if (showCheckpointScreen && drill) {
+    return (
+      <CheckpointScreen
+        completedCount={checkpointCompletedCount}
+        totalItems={totalItems}
+        onContinue={dismissCheckpoint}
+      />
+    );
+  }
+
+  if (loading || isLoadingCheckpoint) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
         <Loader />

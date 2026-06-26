@@ -1,4 +1,5 @@
 import { invalidateLearnerActivityCaches } from '@/hooks/invalidateLearnerActivityCaches';
+import { progressScorecardQueryKey } from '@/hooks/useProgressScorecard';
 import { completeDrill, getDrillById, getMyDrills } from '@/services/drill.service';
 import { DrillStatus } from '@/types/drill.types';
 import { shouldFetchDrillDetail } from '@/utils/drillAssignment';
@@ -30,7 +31,7 @@ export function useDrills(status?: DrillStatus, limit?: number) {
   return useQuery({
     queryKey: drillKeys.list(status, limit),
     queryFn: () => getMyDrills({ status, limit }),
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 2, // 2 minutes
     // Enable background refetching - will refetch when data becomes stale
     refetchOnMount: true,
     refetchOnReconnect: true,
@@ -77,6 +78,7 @@ export async function invalidateDrillCaches(queryClient: QueryClient) {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: drillKeys.all }),
     queryClient.invalidateQueries({ queryKey: ['home-progress'] }),
+    queryClient.invalidateQueries({ queryKey: progressScorecardQueryKey }),
     queryClient.invalidateQueries({ queryKey: ['learner-drills-profile'] }),
     queryClient.invalidateQueries({ queryKey: ['confidence-metrics'] }),
     invalidateLearnerActivityCaches(queryClient),

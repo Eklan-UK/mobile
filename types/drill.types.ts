@@ -1,5 +1,33 @@
 // types/drill.types.ts
 
+import type { BadgeUnlockCelebration } from '@/types/badge.types';
+
+export const DEFAULT_CELEBRATION_SOUND_URL =
+  'https://mrsxoheopyanhton.public.blob.vercel-storage.com/Celebration%20_Sound.mp3';
+
+export type DrillCompletionEffects = {
+  soundUrl: string;
+  triggerConfetti: boolean;
+};
+
+export type CompleteDrillData = {
+  drillId: string;
+  passed: boolean;
+  attempt: {
+    id: string;
+    score: number;
+    timeSpent: number;
+    completedAt: string;
+  };
+  badgesUnlocked?: BadgeUnlockCelebration[];
+  effects?: DrillCompletionEffects;
+};
+
+export type CompleteDrillResponse = {
+  code: 'Success';
+  data: CompleteDrillData;
+};
+
 export type DrillType =
   | "vocabulary"
   | "roleplay"
@@ -46,6 +74,22 @@ export interface MatchingPair {
   rightTranslation?: string;
   leftAudioUrl?: string;
   rightAudioUrl?: string;
+}
+
+export interface MatchingResults {
+  pairsMatched: number;
+  totalPairs: number;
+  accuracy: number;
+  incorrectPairs?: Array<{
+    left: string;
+    right: string;
+    attemptedMatch: string;
+  }>;
+  pairMatchEvents?: Array<{
+    durationSec: number;
+    left: string;
+    right: string;
+  }>;
 }
 
 export interface DefinitionItem {
@@ -298,6 +342,7 @@ export interface DrillAttempt {
   };
   pronunciationResults?: { reviewStatus?: 'pending' | 'reviewed' };
   keyPhrasesResults?: KeyPhrasesResult;
+  matchingResults?: MatchingResults;
   performanceReviewSnapshot?: PerformanceReviewSnapshot;
 }
 

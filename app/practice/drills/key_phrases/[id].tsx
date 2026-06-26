@@ -1,56 +1,58 @@
 import AudioButton from "@/components/drills/AudioButton";
+import CheckpointScreen from "@/components/drills/CheckpointScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
 import RecordButton from "@/components/drills/RecordButton";
-import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
+import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import { AppText, Loader } from "@/components/ui";
+import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
-import tw from "@/lib/tw";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
-import {
-  completeDrill,
-  DrillNotFoundError,
-  getDrillById,
-  getMyDrills,
-} from "@/services/drill.service";
-import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
 import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
-import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
+import tw from "@/lib/tw";
 import {
-  extractQualityScore,
-  extractTextScore,
-  speechaceService,
+    completeDrill,
+    DrillNotFoundError,
+    getDrillById,
+    getMyDrills,
+} from "@/services/drill.service";
+import {
+    extractQualityScore,
+    extractTextScore,
+    speechaceService,
 } from "@/services/speechace.service";
-import type { Drill, KeyPhraseItem } from "@/types/drill.types";
+import { useActivityStore } from "@/store/activity-store";
+import type { Drill, KeyPhraseItem, PerformanceReviewAnalyticsRow } from "@/types/drill.types";
+import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
+import { Alert } from "@/utils/alert";
+import { setAudioModeSafely } from "@/utils/audio";
+import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 import { resolveDrillIdsFromListing } from "@/utils/drillAssignment";
 import { drillForUi } from "@/utils/drillPracticeType";
 import {
-  buildKeyPhrasesResults,
-  buildPerformanceReviewSnapshot,
-  KEY_PHRASES_PASS_THRESHOLD,
-  textScoreToRecord,
-  type KeyPhraseItemResult,
+    buildKeyPhrasesResults,
+    buildPerformanceReviewSnapshot,
+    KEY_PHRASES_PASS_THRESHOLD,
+    textScoreToRecord,
+    type KeyPhraseItemResult,
 } from "@/utils/keyPhrasesCompletion";
-import type { PerformanceReviewAnalyticsRow } from "@/types/drill.types";
-import { Alert } from "@/utils/alert";
-import { setAudioModeSafely } from "@/utils/audio";
 import { logger } from "@/utils/logger";
+import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
 import { useQueryClient } from "@tanstack/react-query";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useActivityStore } from "@/store/activity-store";
 
 const PASS_THRESHOLD = KEY_PHRASES_PASS_THRESHOLD;
 const MAX_RECORDING_SECONDS = 120;
@@ -63,6 +65,18 @@ function previewPrompt(prompt: string, maxLen = 40): string {
   const t = prompt.trim();
   if (t.length <= maxLen) return t;
   return `${t.slice(0, maxLen)}…`;
+}
+
+function buildItemResultsMap(
+  results: Array<KeyPhraseItemResult | undefined>
+): Record<string, KeyPhraseItemResult> {
+  const map: Record<string, KeyPhraseItemResult> = {};
+  results.forEach((entry, index) => {
+    if (entry) {
+      map[String(index)] = entry;
+    }
+  });
+  return map;
 }
 
 async function resolveDrillAndAssignmentIds(
@@ -85,6 +99,7 @@ export default function KeyPhrasesDrillScreen() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const paramAssignmentId = params.assignmentId as string | undefined;
+  const isRedo = params.redo === "true";
 
   // Weekly challenge mode params
   const wcSource = params.source as string | undefined;
@@ -96,7 +111,7 @@ export default function KeyPhrasesDrillScreen() {
     : undefined;
 
   const queryClient = useQueryClient();
-  const { updateDrillProgress, clearDrillProgress } = useActivityStore();
+  const { updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const startTimeRef = useRef(Date.now());
   const scrollRef = useRef<ScrollView>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -127,11 +142,78 @@ export default function KeyPhrasesDrillScreen() {
 
   const [showReview, setShowReview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const items = drill?.key_phrase_items ?? [];
   const currentItem: KeyPhraseItem | undefined = items[currentIndex];
   const currentResult = itemResults[currentIndex];
   const totalItems = items.length;
+
+  const initFreshState = useCallback(() => {
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setItemResults([]);
+    setQuestionAttempts(0);
+    setSessionReviewAnalytics([]);
+    setAnalysisResults([]);
+    setHasScoredCurrent(false);
+  }, []);
+
+  const hydrateFromCheckpoint = useCallback(
+    (checkpoint: {
+      resumeFromIndex: number;
+      partialResults: {
+        itemResults: Record<string, KeyPhraseItemResult>;
+        sessionReviewAnalytics: PerformanceReviewAnalyticsRow[];
+      };
+    }) => {
+      const count = items.length;
+      const restored: Array<KeyPhraseItemResult | undefined> = Array.from(
+        { length: count },
+        () => undefined
+      );
+      for (const [key, value] of Object.entries(
+        checkpoint.partialResults.itemResults ?? {}
+      )) {
+        const index = Number(key);
+        if (index >= 0 && index < count) {
+          restored[index] = value;
+        }
+      }
+      setItemResults(restored);
+      setSessionReviewAnalytics(
+        checkpoint.partialResults.sessionReviewAnalytics ?? []
+      );
+      setCurrentIndex(
+        Math.min(Math.max(checkpoint.resumeFromIndex, 0), Math.max(count - 1, 0))
+      );
+      setSelectedOption(null);
+      setQuestionAttempts(0);
+      setHasScoredCurrent(false);
+      setAnalysisResults([]);
+    },
+    [items.length]
+  );
+
+  const {
+    isLoadingCheckpoint,
+    showCheckpointScreen,
+    checkpointCompletedCount,
+    dismissCheckpoint,
+    saveCheckpointAtBoundary,
+    clearCheckpoint,
+    skipLocalRestore,
+  } = useDrillCheckpoint({
+    drillId,
+    assignmentId: resolvedAssignmentId,
+    drillType: DrillCheckpointType.key_phrases,
+    isRedo,
+    isWeeklyChallenge,
+    isDrillReady: !!drill && totalItems > 0,
+    totalItems,
+    onHydrate: hydrateFromCheckpoint,
+    onFreshStart: initFreshState,
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -146,7 +228,6 @@ export default function KeyPhrasesDrillScreen() {
           if (cached) {
             if (mounted) {
               setDrill(drillForUi(cached));
-              setItemResults([]);
             }
             return;
           }
@@ -162,7 +243,6 @@ export default function KeyPhrasesDrillScreen() {
         if (!mounted) return;
         const uiDrill = drillForUi(data);
         setDrill(uiDrill);
-        setItemResults([]);
       } catch (e) {
         logger.error("Failed to load key phrases drill:", e);
         if (mounted) {
@@ -378,10 +458,22 @@ export default function KeyPhrasesDrillScreen() {
 
   const handleNext = () => {
     if (!canAdvance) return;
+    const completedCount = currentIndex + 1;
+    const isLast = currentIndex >= totalItems - 1;
+    if (!isLast) {
+      void saveCheckpointAtBoundary(
+        {
+          itemResults: buildItemResultsMap(itemResults),
+          sessionReviewAnalytics,
+        },
+        completedCount,
+        currentIndex
+      );
+    }
     setSelectedOption(null);
     setHasScoredCurrent(false);
     setQuestionAttempts(0);
-    if (currentIndex >= totalItems - 1) {
+    if (isLast) {
       setShowReview(true);
     } else {
       setCurrentIndex((i) => i + 1);
@@ -389,6 +481,7 @@ export default function KeyPhrasesDrillScreen() {
   };
 
   const handlePracticeAgain = () => {
+    submitPromiseRef.current = null;
     setShowReview(false);
     setCurrentIndex(0);
     setSelectedOption(null);
@@ -400,10 +493,9 @@ export default function KeyPhrasesDrillScreen() {
     startTimeRef.current = Date.now();
   };
 
-  const handleSubmitAfterReview = async () => {
-    if (!drill || totalItems === 0) return;
+  const doSubmit = useCallback(async (): Promise<boolean> => {
+    if (!drill || totalItems === 0) return false;
 
-    setIsSubmitting(true);
     try {
       const filledResults: KeyPhraseItemResult[] = items.map((item, idx) => {
         const r = itemResults[idx];
@@ -426,51 +518,91 @@ export default function KeyPhrasesDrillScreen() {
           score: keyPhrasesResults.score,
           weekStartDate: wcWeekStartDate,
         });
-        clearDrillProgress(drillId);
-        router.replace(
-          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
-        );
-        return;
+      } else {
+        const assignmentId = resolvedAssignmentId;
+        if (!assignmentId) {
+          Alert.alert(
+            "Cannot submit",
+            "Assignment ID is missing. Open this drill from My Plan and try again."
+          );
+          return false;
+        }
+
+        const performanceReviewSnapshot = buildPerformanceReviewSnapshot({
+          analytics: sessionReviewAnalytics,
+          items,
+          itemResults: filledResults,
+        });
+
+        await completeDrill(drill._id, {
+          drillAssignmentId: assignmentId,
+          score: keyPhrasesResults.score,
+          timeSpent,
+          platform: Platform.OS === "ios" ? "ios" : "android",
+          keyPhrasesResults,
+          performanceReviewSnapshot,
+        });
+        clearCheckpoint();
       }
-
-      const { assignmentId } = await resolveDrillAndAssignmentIds(
-        drillId,
-        resolvedAssignmentId
-      );
-      if (!assignmentId) {
-        Alert.alert(
-          "Cannot submit",
-          "Assignment ID is missing. Open this drill from My Plan and try again."
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      const performanceReviewSnapshot = buildPerformanceReviewSnapshot({
-        analytics: sessionReviewAnalytics,
-        items,
-        itemResults: filledResults,
-      });
-
-      await completeDrill(drill._id, {
-        drillAssignmentId: assignmentId,
-        score: keyPhrasesResults.score,
-        timeSpent,
-        platform: Platform.OS === "ios" ? "ios" : "android",
-        keyPhrasesResults,
-        performanceReviewSnapshot,
-      });
 
       clearDrillProgress(drillId);
-      await invalidateDrillCaches(queryClient);
+      void invalidateDrillCaches(queryClient);
 
-      router.replace({
-        pathname: "/practice/drills/results",
-        params: { drillId, assignmentId },
+      addRecentActivity({
+        id: drill._id,
+        title: drill.title,
+        type: drill.type,
+        durationSeconds: timeSpent,
+        score: keyPhrasesResults.score,
       });
+
+      return true;
     } catch (error) {
       logger.error("Failed to submit key phrases drill:", error);
       Alert.alert("Error", "Failed to submit results. Please try again.");
+      return false;
+    }
+  }, [
+    drill,
+    totalItems,
+    items,
+    itemResults,
+    isWeeklyChallenge,
+    wcItemId,
+    wcWeekStartDate,
+    queryClient,
+    resolvedAssignmentId,
+    sessionReviewAnalytics,
+    drillId,
+    clearDrillProgress,
+    clearCheckpoint,
+    addRecentActivity,
+  ]);
+
+  // Start submission while the user reads their feedback
+  useEffect(() => {
+    if (!showReview || submitPromiseRef.current) return;
+    submitPromiseRef.current = doSubmit();
+  }, [showReview, doSubmit]);
+
+  const handleDoneForToday = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const promise =
+        submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
+      const ok = await promise;
+      if (!ok) {
+        submitPromiseRef.current = null;
+        return;
+      }
+      if (isWeeklyChallenge && wcWeekStartDate) {
+        router.replace(
+          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
+        );
+      } else {
+        router.back();
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -496,7 +628,26 @@ export default function KeyPhrasesDrillScreen() {
     return () => clearTimeout(id);
   }, [processing, scored, latestAnalysis, currentIndex]);
 
+  if (showCheckpointScreen && drill) {
+    return (
+      <CheckpointScreen
+        completedCount={checkpointCompletedCount}
+        totalItems={totalItems}
+        onContinue={dismissCheckpoint}
+      />
+    );
+  }
+
   if (showReview && drill) {
+    const avgReviewScore =
+      analysisResults.length > 0
+        ? Math.round(
+            analysisResults.reduce((sum, r) => sum + r.score, 0) / analysisResults.length
+          )
+        : 0;
+    const reviewPassed =
+      (totalItems > 0 && correctItems === totalItems) || avgReviewScore >= PASS_THRESHOLD;
+
     return (
       <SpeechAnalysisReview
         analysisResults={analysisResults}
@@ -505,13 +656,15 @@ export default function KeyPhrasesDrillScreen() {
         passedItems={correctItems}
         itemTitles={items.map((item) => previewPrompt(item.prompt))}
         statsLine={`${correctItems} of ${totalItems} correct · ${sessionReviewAnalytics.length} scored attempts`}
-        onDone={handleSubmitAfterReview}
+        passed={reviewPassed}
+        onDone={() => { void handleDoneForToday(); }}
+        submitting={isSubmitting}
         onPracticeAgain={handlePracticeAgain}
       />
     );
   }
 
-  if (loading) {
+  if (loading || isLoadingCheckpoint) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
         <Loader />

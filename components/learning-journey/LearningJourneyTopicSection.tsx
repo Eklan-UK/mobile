@@ -1,6 +1,7 @@
 import { PlanDrillRow } from '@/components/learning-journey/PlanDrillRow';
 import { PlanFreeTalkRow } from '@/components/learning-journey/PlanFreeTalkRow';
 import { AppText, BoldText } from '@/components/ui';
+import { useTranslation } from '@/contexts/LanguageContext';
 import { isFreeTalkPlanItem } from '@/domain/learning-journey/group-journey-drills';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
@@ -26,6 +27,7 @@ export const LearningJourneyTopicSection = memo(function LearningJourneyTopicSec
   onFreeTalkPress,
   onDrillPressIn,
 }: LearningJourneyTopicSectionProps) {
+  const { t } = useTranslation();
   const { colors: c } = useSemanticTheme();
 
   return (
@@ -45,7 +47,7 @@ export const LearningJourneyTopicSection = memo(function LearningJourneyTopicSec
           ]}
         >
           <AppText style={[tw`text-sm text-center`, { color: c.textSecondary }]}>
-            No drills assigned for this topic yet.
+            {t('journey.noDrillsForTopic')}
           </AppText>
         </View>
       ) : (

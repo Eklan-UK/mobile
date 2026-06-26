@@ -1,4 +1,5 @@
 import apiClient, { isAxiosTimeout } from '@/lib/api';
+import { celebrateBadgesFromResponse } from '@/lib/badges/celebrate-badge-unlock';
 import { logger } from '@/utils/logger';
 import * as FileSystem from 'expo-file-system/legacy';
 import type {
@@ -716,9 +717,11 @@ export const aiService = {
           type: audioBlob.mimeType,
         } as any);
         const response = await apiClient.post('/api/v1/ai/free-talk/attempts', formData);
+        celebrateBadgesFromResponse(response.data);
         return response.data?.attempt as FreeTalkAttempt;
       } else {
         const response = await apiClient.post('/api/v1/ai/free-talk/attempts', body);
+        celebrateBadgesFromResponse(response.data);
         return response.data?.attempt as FreeTalkAttempt;
       }
     } catch (error: any) {

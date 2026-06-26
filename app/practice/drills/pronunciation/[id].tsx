@@ -1,60 +1,84 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
 import AudioButton from "@/components/drills/AudioButton";
-import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
-import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
-import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
-import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
+import CheckpointScreen from "@/components/drills/CheckpointScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
+import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
 import RecordButton from "@/components/drills/RecordButton";
+import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
+import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import { AppText, Loader } from "@/components/ui";
-import { getDrillById, completeDrill } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
-import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
 import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
-import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
-import { useQueryClient } from "@tanstack/react-query";
-import { speechaceService, extractTextScore, extractQualityScore } from "@/services/speechace.service";
-import type { PronunciationItem } from "@/types/drill.types";
-import { Drill } from "@/types/drill.types";
-import tw from "@/lib/tw";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import {
-  View,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import { Alert } from "@/utils/alert";
-import {
-  ensureMicrophonePermission,
-  isRecordingPermissionError,
-  prepareAudioForRecording,
-  showMicrophonePermissionAlert,
-} from "@/utils/microphone";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
-import { useActivityStore } from "@/store/activity-store";
-import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system/legacy";
-import { isDrillPerfectPass } from "@/utils/drillCompletion";
-import { logger } from "@/utils/logger";
 import apiClient from "@/lib/api";
 import { playPracticeFeedback } from "@/lib/practice-feedback";
+import tw from "@/lib/tw";
+import { completeDrill, getDrillById } from "@/services/drill.service";
+import { extractQualityScore, extractTextScore, speechaceService } from "@/services/speechace.service";
+import { useActivityStore } from "@/store/activity-store";
+import type { PronunciationItem } from "@/types/drill.types";
+import { Drill } from "@/types/drill.types";
+import {
+  DrillCheckpointType,
+  type IndexKeyedWordProgress,
+  type VocabularyWordProgressEntry,
+} from "@/types/drill-checkpoint.types";
+import { Alert } from "@/utils/alert";
+import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
+import { logger } from "@/utils/logger";
+import {
+    ensureMicrophonePermission,
+    isRecordingPermissionError,
+    prepareAudioForRecording,
+    showMicrophonePermissionAlert,
+} from "@/utils/microphone";
+import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
+import { useQueryClient } from "@tanstack/react-query";
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system/legacy";
+import { router, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
 const PASS_THRESHOLD = 65;
 
 type StepType = "word" | "sentence";
 
-type ItemProgress = {
-  wordPassed: boolean;
-  wordScore: number;
-  sentencePassed: boolean;
-  sentenceScore: number;
-};
+type ItemProgress = VocabularyWordProgressEntry;
+
+function emptyItemProgress(): ItemProgress {
+  return {
+    wordPassed: false,
+    wordScore: 0,
+    sentencePassed: false,
+    sentenceScore: 0,
+  };
+}
+
+function buildWordProgressMap(progress: ItemProgress[]): IndexKeyedWordProgress {
+  const map: IndexKeyedWordProgress = {};
+  progress.forEach((entry, index) => {
+    if (
+      entry.wordPassed ||
+      entry.sentencePassed ||
+      entry.wordScore > 0 ||
+      entry.sentenceScore > 0
+    ) {
+      map[String(index)] = entry;
+    }
+  });
+  return map;
+}
 
 function BookmarkIcon({ color = "#6B7280" }: { color?: string }) {
   return (
@@ -75,6 +99,7 @@ export default function PronunciationDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const isRedo = params.redo === "true";
 
   // Weekly challenge mode params
   const wcSource = params.source as string | undefined;
@@ -105,13 +130,69 @@ export default function PronunciationDrill() {
 
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showReview, setShowReview] = useState(false);
-  const [isDrillCompleted, setIsDrillCompleted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+  const submitPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
 
+  const checkpointTotalItems = drill?.pronunciation_items?.length ?? 0;
+
+  const initFreshState = useCallback(() => {
+    const count = drill?.pronunciation_items?.length ?? 0;
+    setCurrentItemIndex(0);
+    setCurrentStep("word");
+    setItemProgress(Array.from({ length: count }, emptyItemProgress));
+    setAnalysisResults([]);
+  }, [drill?.pronunciation_items?.length]);
+
+  const hydrateFromCheckpoint = useCallback(
+    (checkpoint: {
+      resumeFromIndex: number;
+      partialResults: { wordProgress: IndexKeyedWordProgress };
+    }) => {
+      const count = drill?.pronunciation_items?.length ?? 0;
+      const base = Array.from({ length: count }, emptyItemProgress);
+      for (const [key, value] of Object.entries(
+        checkpoint.partialResults.wordProgress ?? {}
+      )) {
+        const index = Number(key);
+        if (index >= 0 && index < base.length) {
+          base[index] = value;
+        }
+      }
+      setItemProgress(base);
+      setCurrentItemIndex(
+        Math.min(Math.max(checkpoint.resumeFromIndex, 0), Math.max(count - 1, 0))
+      );
+      setCurrentStep("word");
+    },
+    [drill?.pronunciation_items?.length]
+  );
+
+  const {
+    isLoadingCheckpoint,
+    showCheckpointScreen,
+    checkpointCompletedCount,
+    dismissCheckpoint,
+    saveCheckpointAtBoundary,
+    clearCheckpoint,
+    skipLocalRestore,
+  } = useDrillCheckpoint({
+    drillId,
+    assignmentId,
+    drillType: DrillCheckpointType.pronunciation,
+    isRedo,
+    isWeeklyChallenge,
+    isDrillReady: !!drill && checkpointTotalItems > 0,
+    totalItems: checkpointTotalItems,
+    onHydrate: hydrateFromCheckpoint,
+    onFreshStart: initFreshState,
+  });
+
   // Restore progress
   useEffect(() => {
+    if (skipLocalRestore) return;
     if (drillId && drillProgress[drillId]) {
       const saved = drillProgress[drillId];
       if (saved.data?.currentItemIndex !== undefined) {
@@ -124,7 +205,7 @@ export default function PronunciationDrill() {
         setItemProgress(saved.data.itemProgress);
       }
     }
-  }, [drillId]);
+  }, [drillId, skipLocalRestore]);
 
   // Track 5-min duration for recent activity
   useEffect(() => {
@@ -202,16 +283,6 @@ export default function PronunciationDrill() {
 
       const drillData = await getDrillById(drillId, assignmentId);
       setDrill(drillData);
-
-      const totalItems = drillData.pronunciation_items?.length || 0;
-      setItemProgress(
-        Array.from({ length: totalItems }, () => ({
-          wordPassed: false,
-          wordScore: 0,
-          sentencePassed: false,
-          sentenceScore: 0,
-        }))
-      );
     } catch (error) {
       logger.error("Failed to load drill:", error);
     } finally {
@@ -391,6 +462,15 @@ export default function PronunciationDrill() {
     const isLastItem = currentItemIndex >= total - 1;
 
     if (!isLastItem) {
+      const completedCount = currentItemIndex + 1;
+      void saveCheckpointAtBoundary(
+        {
+          wordProgress: buildWordProgressMap(itemProgress),
+          sessionReviewAnalytics: [],
+        },
+        completedCount,
+        currentItemIndex
+      );
       setCurrentItemIndex((prev) => prev + 1);
       setCurrentStep("word");
       setIsBookmarked(false);
@@ -466,18 +546,34 @@ export default function PronunciationDrill() {
     }
   };
 
-  // ── Build completion payload and submit ──────────────────────────────────
+  const resetReviewSession = useCallback(() => {
+    submitPromiseRef.current = null;
+    setShowReview(false);
+    setCurrentItemIndex(0);
+    setCurrentStep("word");
+    setAnalysisResults([]);
+    setIsBookmarked(false);
+    startTimeRef.current = Date.now();
+    setItemProgress(
+      Array.from({ length: drill?.pronunciation_items?.length ?? 0 }, () => ({
+        wordPassed: false,
+        wordScore: 0,
+        sentencePassed: false,
+        sentenceScore: 0,
+      }))
+    );
+  }, [drill?.pronunciation_items?.length]);
 
-  const handleSubmitAfterReview = async () => {
-    if (!drill) return;
+  const doSubmit = useCallback(async (): Promise<boolean> => {
+    if (!drill) return false;
 
-    const items = drill.pronunciation_items || [];
-    const totalItems = items.length;
+    const drillItems = drill.pronunciation_items || [];
+    const totalPronItems = drillItems.length;
     const passedItems = itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length;
-    const score = totalItems > 0 ? Math.round((passedItems / totalItems) * 100) : 0;
+    const score = totalPronItems > 0 ? Math.round((passedItems / totalPronItems) * 100) : 0;
     const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
-    const wordScores = items.map((item, idx) => {
+    const wordScores = drillItems.map((item, idx) => {
       const progress = itemProgress[idx] || {
         wordPassed: false,
         wordScore: 0,
@@ -489,12 +585,7 @@ export default function PronunciationDrill() {
         progress.wordPassed && progress.sentencePassed
           ? Math.round((progress.wordScore + progress.sentenceScore) / 2)
           : 0;
-      return {
-        word,
-        score: itemScore,
-        attempts: 1,
-        pronunciationScore: itemScore,
-      };
+      return { word, score: itemScore, attempts: 1, pronunciationScore: itemScore };
     });
 
     try {
@@ -503,7 +594,6 @@ export default function PronunciationDrill() {
           score,
           weekStartDate: wcWeekStartDate,
         });
-        clearDrillProgress(drillId);
       } else {
         await completeDrill(drillId, {
           drillAssignmentId: assignmentId,
@@ -512,16 +602,55 @@ export default function PronunciationDrill() {
           answers: [],
           pronunciationResults: { wordScores },
         });
-        await invalidateDrillCaches(queryClient);
-        clearDrillProgress(drillId);
+        clearCheckpoint();
       }
+      clearDrillProgress(drillId);
+      void invalidateDrillCaches(queryClient);
+      return true;
     } catch (error) {
       logger.error("Failed to submit pronunciation drill:", error);
       Alert.alert("Error", "Failed to submit results. Please try again.");
-      return;
+      return false;
     }
+  }, [
+    drill,
+    itemProgress,
+    isWeeklyChallenge,
+    wcItemId,
+    wcWeekStartDate,
+    queryClient,
+    drillId,
+    assignmentId,
+    clearDrillProgress,
+    clearCheckpoint,
+  ]);
 
-    setIsDrillCompleted(true);
+  useEffect(() => {
+    if (!showReview || submitPromiseRef.current) return;
+    submitPromiseRef.current = doSubmit();
+  }, [showReview, doSubmit]);
+
+  const handleDoneForToday = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const promise =
+        submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
+      const ok = await promise;
+      if (!ok) {
+        submitPromiseRef.current = null;
+        return;
+      }
+      if (isWeeklyChallenge && wcWeekStartDate) {
+        router.replace(
+          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
+        );
+      } else {
+        router.back();
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // ── Derived data ─────────────────────────────────────────────────────────
@@ -566,71 +695,45 @@ export default function PronunciationDrill() {
 
   // ── Screens ──────────────────────────────────────────────────────────────
 
-  if (showReview && !isDrillCompleted && drill) {
+  if (showCheckpointScreen && drill) {
+    return (
+      <CheckpointScreen
+        completedCount={checkpointCompletedCount}
+        totalItems={checkpointTotalItems}
+        onContinue={dismissCheckpoint}
+      />
+    );
+  }
+
+  if (showReview && drill) {
+    const totalPronItems = drill.pronunciation_items?.length ?? 0;
+    const passedCount = itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length;
+    const avgReviewScore =
+      analysisResults.length > 0
+        ? Math.round(
+            analysisResults.reduce((sum, r) => sum + r.score, 0) / analysisResults.length
+          )
+        : 0;
+    const reviewPassed =
+      (totalPronItems > 0 && passedCount === totalPronItems) ||
+      avgReviewScore >= PASS_THRESHOLD;
+
     return (
       <SpeechAnalysisReview
         analysisResults={analysisResults}
         drillType="pronunciation"
-        totalItems={drill.pronunciation_items?.length ?? 0}
-        passedItems={itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length}
+        totalItems={totalPronItems}
+        passedItems={passedCount}
         itemTitles={drill.pronunciation_items?.map((i) => i.word) ?? []}
-        onDone={handleSubmitAfterReview}
-        onPracticeAgain={() => {
-          setShowReview(false);
-          setCurrentItemIndex(0);
-          setCurrentStep("word");
-          setAnalysisResults([]);
-          setIsBookmarked(false);
-          startTimeRef.current = Date.now();
-          setItemProgress(
-            Array.from({ length: totalItems }, () => ({
-              wordPassed: false,
-              wordScore: 0,
-              sentencePassed: false,
-              sentenceScore: 0,
-            }))
-          );
-        }}
+        passed={reviewPassed}
+        onDone={() => { void handleDoneForToday(); }}
+        submitting={isSubmitting}
+        onPracticeAgain={resetReviewSession}
       />
     );
   }
 
-  if (isDrillCompleted && drill) {
-    const passedItems = itemProgress.filter(
-      (p) => p.wordPassed && p.sentencePassed
-    ).length;
-    const passed = isDrillPerfectPass(passedItems, totalItems);
-
-    const handleContinue = () => {
-      if (isWeeklyChallenge && wcWeekStartDate) {
-        router.replace(
-          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
-        );
-      } else {
-        router.back();
-      }
-    };
-
-    return (
-      <DrillCompletedScreen
-        variant="progress"
-        completed={passedItems}
-        total={totalItems}
-        passed={passed}
-        title={passed ? "You passed!" : "Keep practicing"}
-        message={
-          passed
-            ? `Great job! You've practiced pronunciation for all ${totalItems} item${totalItems > 1 ? "s" : ""}.`
-            : `You completed ${passedItems} of ${totalItems} item${totalItems > 1 ? "s" : ""}. Keep going until you pass them all.`
-        }
-        buttonLabel={isWeeklyChallenge ? "Back to Challenge" : "Continue"}
-        onContinue={handleContinue}
-        onClose={handleContinue}
-      />
-    );
-  }
-
-  if (loading) {
+  if (loading || isLoadingCheckpoint) {
     return (
       <SafeAreaView style={tw`flex-1 bg-white items-center justify-center`}>
         <Loader />

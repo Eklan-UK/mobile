@@ -75,3 +75,5 @@ GoogleService-Info.plist
 /
 
 .cursor/
+
+.env.local

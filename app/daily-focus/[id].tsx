@@ -3,7 +3,6 @@ import { View, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { AppText, Loader, Button } from "@/components/ui";
-import { useNotificationToast } from "@/contexts/NotificationToastContext";
 import { invalidateLearnerActivityCaches } from "@/hooks/invalidateLearnerActivityCaches";
 import tw from "@/lib/tw";
 import { playPracticeFeedback } from "@/lib/practice-feedback";
@@ -33,7 +32,6 @@ export default function DailyFocusPracticeScreen() {
   const { id } = useLocalSearchParams();
   const focusId = id as string;
   const queryClient = useQueryClient();
-  const { showToast } = useNotificationToast();
 
   const [dailyFocus, setDailyFocus] = useState<DailyFocus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +47,6 @@ export default function DailyFocusPracticeScreen() {
   const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
   const [allQuestions, setAllQuestions] = useState<Question[]>([]);
   const [startTime] = useState(Date.now());
-  const [badgeUnlocked, setBadgeUnlocked] = useState<any>(null);
   const [selectedMatching, setSelectedMatching] = useState<string | null>(null);
   const [selectedMultipleChoice, setSelectedMultipleChoice] = useState<number | null>(null);
 
@@ -339,16 +336,6 @@ export default function DailyFocusPracticeScreen() {
         Alert.alert("Success", "Daily focus completed! Your streak has been updated! 🔥");
       } else {
         Alert.alert("Success", "Daily focus completed!");
-      }
-
-      if (result?.badgeUnlocked) {
-        setBadgeUnlocked(result.badgeUnlocked);
-        showToast({
-          title: 'Badge unlocked!',
-          body: result.badgeUnlocked.badgeName,
-          variant: 'dark',
-          duration: 4000,
-        });
       }
 
       setIsCompleted(true);

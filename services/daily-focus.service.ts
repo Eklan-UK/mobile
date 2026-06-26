@@ -1,5 +1,7 @@
 import apiClient, { isAxiosTimeout } from '@/lib/api';
+import { celebrateBadgesFromResponse } from '@/lib/badges/celebrate-badge-unlock';
 import { logger } from '@/utils/logger';
+import type { BadgeUnlockCelebration } from '@/types/badge.types';
 
 export interface DailyFocus {
   _id: string;
@@ -70,6 +72,7 @@ export interface DailyFocusCompleteResponse {
   message: string;
   score: number;
   streakUpdated: boolean;
+  badgesUnlocked?: BadgeUnlockCelebration[];
   badgeUnlocked: {
     badgeId: string;
     badgeName: string;
@@ -220,6 +223,7 @@ export const dailyFocusService = {
       }
 
       logger.log('✅ Daily focus completed successfully');
+      celebrateBadgesFromResponse(response.data.data);
       return response.data.data;
     } catch (error: any) {
       logger.error('❌ Error completing daily focus:', error);
