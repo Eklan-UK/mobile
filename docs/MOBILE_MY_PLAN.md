@@ -17,6 +17,8 @@ Drills support 12 types: `vocabulary`, `pronunciation`, `roleplay`, `matching`, 
 
 See [KEY_PHRASES_DRILL.md](./KEY_PHRASES_DRILL.md) for the full Key Phrases runner spec.
 
+See [`MOBILE_MATCHING_DRILL.md`](./MOBILE_MATCHING_DRILL.md) for the full **Matching** drill runner spec (tap-to-match, manual submit, checkpoints, Pattern B celebration). **Supersedes** the outdated matching examples in §5 and §8 of this doc.
+
 ---
 
 ## 2. Web Routes → Mobile Screens
@@ -41,7 +43,7 @@ All endpoints require `Authorization: Bearer <token>`. See `MOBILE_README.md`.
 |--------|------|------|-------------|----------|-------|
 | GET | `/drills/learner/my-drills` | Yes | `status?`, `limit?` (default 100), `offset?` | `{ code: 'Success', data: { drills: LearnerDrill[], pagination } }` | Main listing |
 | GET | `/drills/:drillId` | Yes | `assignmentId?` | `{ code: 'Success', data: { drill: DrillDetail, assignment?: DrillAssignment } }` | Full drill data |
-| POST | `/drills/:drillId/complete` | Yes | See `completeSchema` below | `{ code: 'Success', data: { attempt, streakUpdated? } }` | Completes assignment |
+| POST | `/drills/:drillId/complete` | Yes | See `completeSchema` below | `{ code: 'Success', data: { drillId, passed, attempt, badgesUnlocked?, effects? } }` | Completes assignment; see [`MOBILE_DRILL_CELEBRATION.md`](./MOBILE_DRILL_CELEBRATION.md) for `effects` |
 | GET | `/drills/assignments/:assignmentId/attempts` | Yes | `limit?`, `offset?` | `{ code: 'Success', data: { attempts: DrillAttempt[] } }` | Post-completion history |
 | POST | `/speechace/score` | Yes | `{ text, audioBase64, questionInfo? }` | `{ code, data: SpeechaceResponse }` | Pronunciation scoring |
 | POST | `/pronunciations/drill-attempt` | Yes | `{ text, audioBase64, drillId?, drillType, passingThreshold? }` | `{ code: 'Success', data: { attempt } }` | Persist pronunciation attempt |
@@ -228,6 +230,7 @@ export interface FillBlankItem {
   sentence: string;
   translation?: string;
   audioUrl?: string;
+  context?: string;
   blanks: {
     position: number;
     correctAnswer: string;
@@ -404,14 +407,18 @@ const assignmentId = allDrills?.drills.find(d => d._id === drillId)?.assignmentI
 
 ### 8.3 Drill Completion Call
 
-All drill components call this when the student finishes:
+All drill components call this when the student finishes. **Celebration MP3 + confetti** timing differs by drill type — see [`MOBILE_DRILL_CELEBRATION.md`](./MOBILE_DRILL_CELEBRATION.md) §4 (Pattern A: score review before complete; Pattern B: complete then completion screen).
 
 ```ts
 const completeMutation = useMutation({
   mutationFn: (body: CompleteDrillBody) =>
-    apiClient.post(`/drills/${drillId}/complete`, body),
+    apiClient.post<CompleteDrillResponse>(`/drills/${drillId}/complete`, body),
   onSuccess: (res) => {
+    const { data } = res.data;
+    // Pattern B only (matching, listening, definition): pass data.effects to completion screen
+    // Pattern A (vocab, pronunciation, etc.): celebration already ran on score review — do not replay here
     queryClient.invalidateQueries(['learner-drills']);
+    queryClient.invalidateQueries(['progress-scorecard']);
     router.replace({
       pathname: `/my-plan/drills/${drillId}/completed`,
       params: { assignmentId },
@@ -429,8 +436,25 @@ completeMutation.mutate({
   timeSpent: elapsedSeconds,
   platform: Platform.OS === 'ios' ? 'ios' : 'android',
   vocabularyResults: results,  // or whichever type applies
+  performanceReviewSnapshot: {
+    version: 1,
+    ui: 'drillPerformance',
+    avgScore: score,
+    passThreshold: 65, // or 70 — see MOBILE_DRILL_CELEBRATION.md
+    // ...
+  },
 });
 ```
+
+**Complete response fields used by mobile**
+
+| Field | Use |
+|-------|-----|
+| `data.passed` | Gate for celebration |
+| `data.effects.soundUrl` | Celebration MP3 (Pattern B; Pattern A may use before API returns) |
+| `data.effects.triggerConfetti` | Show confetti once |
+| `data.attempt` | Completed screen / history |
+| `data.badgesUnlocked` | Badge celebration UI |
 
 ### 8.4 Completed Screen (`my-plan/drills/[id]/completed.tsx`)
 

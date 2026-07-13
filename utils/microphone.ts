@@ -1,8 +1,14 @@
-import { Audio } from 'expo-av';
-import { Linking } from 'react-native';
+import { stopAudioButtonPlayback } from '@/components/drills/AudioButton';
+import { stopPracticeFeedback } from '@/lib/practice-feedback';
 import { ttsService } from '@/services/tts.service';
 import { Alert } from '@/utils/alert';
 import { setAudioModeSafely } from '@/utils/audio';
+import {
+  Audio,
+  InterruptionModeAndroid,
+  InterruptionModeIOS,
+} from 'expo-av';
+import { Linking } from 'react-native';
 
 export type MicrophonePermissionStatus = 'granted' | 'denied' | 'blocked';
 
@@ -34,11 +40,30 @@ export function showMicrophonePermissionAlert(
   ]);
 }
 
+export async function releaseRecording(
+  recording: Audio.Recording | null | undefined
+): Promise<void> {
+  if (!recording) return;
+
+  try {
+    await recording.stopAndUnloadAsync();
+  } catch {
+    /* ignore — recorder may already be unloaded */
+  }
+}
+
 export async function prepareAudioForRecording(): Promise<void> {
+  await stopPracticeFeedback();
+  await stopAudioButtonPlayback();
   await ttsService.stopAudio();
   await setAudioModeSafely({
     allowsRecordingIOS: true,
     playsInSilentModeIOS: true,
+    staysActiveInBackground: false,
+    interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+    interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+    shouldDuckAndroid: true,
+    playThroughEarpieceAndroid: false,
   });
 }
 

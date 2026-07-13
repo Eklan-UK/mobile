@@ -2,21 +2,27 @@ import { LearningJourneyPartCard } from '@/components/learning-journey/LearningJ
 import { SavedDrillsSection } from '@/components/learning-journey/SavedDrillsSection';
 import { MyPlanHeader } from '@/components/plan/MyPlanHeader';
 import { NextSessionCard } from '@/components/sessions/NextSessionCard';
-import { BoldText } from '@/components/ui';
+import { AppText, BoldText } from '@/components/ui';
 import {
   LEARNING_JOURNEY_PARTS,
-  type LearningJourneyPartId,
 } from '@/domain/learning-journey/learning-journey.catalog';
-import { computePartProgress } from '@/domain/learning-journey/group-journey-drills';
+import { countPartJourneyProgress } from '@/domain/learning-journey/group-journey-drills';
 import { useLearnerDrills } from '@/hooks/useLearnerDrills';
 import { useIsSubscribed } from '@/hooks/useIsSubscribed';
 import { useLearnerClasses } from '@/hooks/useLearnerClasses';
+import { useMyMissionEnrollments } from '@/hooks/useMyMissionEnrollments';
 import { useTranslation } from '@/contexts/LanguageContext';
 import tw from '@/lib/tw';
 import { useFocusEffect } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MyPlanScreen() {
@@ -26,24 +32,32 @@ export default function MyPlanScreen() {
   const expandSavedDrills = section === 'saved-drills';
 
   const { data, refetch: refetchDrills } = useLearnerDrills();
+  const {
+    data: enrolledParts,
+    isError: enrollmentsError,
+    refetch: refetchEnrollments,
+  } = useMyMissionEnrollments();
   const { nextSession } = useLearnerClasses();
   const [refreshing, setRefreshing] = useState(false);
 
+  const enrolledSet = useMemo(
+    () => new Set(enrollmentsError ? [] : (enrolledParts ?? [])),
+    [enrolledParts, enrollmentsError]
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetchDrills();
+    await Promise.all([refetchDrills(), refetchEnrollments()]);
     setRefreshing(false);
   };
 
-  const partProgress = useMemo(
-    () => computePartProgress(data?.drills ?? []),
-    [data?.drills]
-  );
+  const drills = data?.drills ?? [];
 
   useFocusEffect(
     useCallback(() => {
       void refetchDrills();
-    }, [refetchDrills])
+      void refetchEnrollments();
+    }, [refetchDrills, refetchEnrollments])
   );
 
   useEffect(() => {
@@ -88,16 +102,40 @@ export default function MyPlanScreen() {
           <BoldText style={tw`text-base font-bold text-gray-900 dark:text-white mb-3`}>
             {t('journey.title')}
           </BoldText>
+
+          {enrollmentsError && (
+            <View
+              style={tw`mb-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900`}
+            >
+              <AppText style={tw`text-sm text-red-700 dark:text-red-300 mb-2`}>
+                {t('journey.enrollmentsLoadError')}
+              </AppText>
+              <TouchableOpacity
+                onPress={() => void refetchEnrollments()}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.retry')}
+              >
+                <AppText style={tw`text-sm font-semibold text-red-700 dark:text-red-300`}>
+                  {t('common.retry')}
+                </AppText>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {LEARNING_JOURNEY_PARTS.map((partDef) => {
-            const progress = partProgress[partDef.part as LearningJourneyPartId];
+            const { completed, total } = countPartJourneyProgress(drills, partDef.part);
+            const isEnrolled = enrolledSet.has(partDef.part);
             return (
               <LearningJourneyPartCard
                 key={partDef.part}
                 part={partDef.part}
-                completedCount={progress?.completed ?? 0}
-                totalCount={progress?.total ?? 0}
-                onPress={() =>
-                  router.push(`/(tabs)/plan/journey/${partDef.part}` as never)
+                completedCount={completed}
+                totalCount={total}
+                isEnrolled={isEnrolled}
+                onPress={
+                  isEnrolled
+                    ? () => router.push(`/(tabs)/plan/journey/${partDef.part}` as never)
+                    : undefined
                 }
               />
             );

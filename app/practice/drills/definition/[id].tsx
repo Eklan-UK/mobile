@@ -5,6 +5,8 @@ import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
+import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { useActivityStore } from "@/store/activity-store";
@@ -25,6 +27,10 @@ export default function DefinitionDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
+  const handleExit = () => {
+    void exitDrill();
+  };
   const startTimeRef = useRef(Date.now());
   const insets = useSafeAreaInsets();
 
@@ -37,6 +43,9 @@ export default function DefinitionDrill() {
   const [completionScore, setCompletionScore] = useState(0);
   const [celebrationEffects, setCelebrationEffects] = useState<DrillCompletionEffects | undefined>();
   const [completePassed, setCompletePassed] = useState(false);
+
+  usePreloadDrillCelebration();
+  usePreloadDrillCelebration(celebrationEffects);
 
   const totalItems = drill?.definition_items?.length ?? 0;
 
@@ -266,8 +275,9 @@ export default function DefinitionDrill() {
           celebrationEffects={celebrationEffects}
           title="You passed!"
           message="Great job! Your definitions have been submitted."
-          onContinue={() => router.back()}
-          onClose={() => router.back()}
+          exiting={isExiting}
+          onContinue={handleExit}
+          onClose={handleExit}
         />
       );
     }
@@ -279,8 +289,9 @@ export default function DefinitionDrill() {
         celebrate={false}
         title="Definition submitted"
         message="Your definitions have been submitted for review. You'll be notified when they have been reviewed."
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        exiting={isExiting}
+        onContinue={handleExit}
+        onClose={handleExit}
       />
     );
   }

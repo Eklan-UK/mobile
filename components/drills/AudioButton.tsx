@@ -8,6 +8,30 @@ import { useState } from "react";
 import { Audio } from "expo-av";
 import { logger } from "@/utils/logger";
 
+let activeUriSound: Audio.Sound | null = null;
+let activeUriPlaybackReset: (() => void) | null = null;
+
+export async function stopAudioButtonPlayback(): Promise<void> {
+  const sound = activeUriSound;
+  const reset = activeUriPlaybackReset;
+  activeUriSound = null;
+  activeUriPlaybackReset = null;
+  reset?.();
+
+  if (!sound) return;
+
+  try {
+    await sound.stopAsync();
+  } catch {
+    /* ignore */
+  }
+  try {
+    await sound.unloadAsync();
+  } catch {
+    /* ignore */
+  }
+}
+
 interface AudioButtonProps {
   text?: string;
   audioUri?: string;
@@ -39,7 +63,7 @@ export default function AudioButton({
 
     // Stop everything first, regardless of path
     await ttsService.stopAudio();
-    setIsUriPlaying(false);
+    await stopAudioButtonPlayback();
     await stopAudio();
 
     if (currentlyActive) {
@@ -60,17 +84,28 @@ export default function AudioButton({
     if (audioUri) {
       // Play from pre-generated URI via expo-av directly
       try {
+        await stopAudioButtonPlayback();
         const { sound } = await Audio.Sound.createAsync({ uri: audioUri });
+        activeUriSound = sound;
+        activeUriPlaybackReset = () => setIsUriPlaying(false);
         setIsUriPlaying(true);
         await sound.playAsync();
         sound.setOnPlaybackStatusUpdate((status) => {
           if (status.isLoaded && status.didJustFinish) {
+            if (activeUriSound === sound) {
+              activeUriSound = null;
+              activeUriPlaybackReset = null;
+            }
             setIsUriPlaying(false);
             sound.unloadAsync().catch(() => {});
           }
         });
       } catch (error) {
         logger.error("AudioButton: error playing URI:", error);
+        if (activeUriSound) {
+          activeUriSound = null;
+          activeUriPlaybackReset = null;
+        }
         setIsUriPlaying(false);
         // Fall back to TTS if URI fails
         if (text) {

@@ -4,10 +4,10 @@ import { resolveDrillPracticeType } from '@/utils/drillPracticeType';
 
 const OBJECT_ID_RE = /^[a-f0-9]{24}$/i;
 
-function coerceJourneyPart(raw: unknown): 1 | 2 | 3 | 4 | undefined {
+function coerceJourneyPart(raw: unknown): 1 | 2 | 3 | 4 | 5 | undefined {
   if (raw == null || raw === '') return undefined;
   const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
-  if (n >= 1 && n <= 4) return n as 1 | 2 | 3 | 4;
+  if (n >= 1 && n <= 5) return n as 1 | 2 | 3 | 4 | 5;
   return undefined;
 }
 
@@ -17,9 +17,21 @@ function readJourneyTopic(raw: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readTopicTitle(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** Display topic from API `drill.topicTitle` — omit when unmapped. */
+export function resolveDrillTopicTitle(drill: Drill | null | undefined): string | null {
+  const title = drill?.topicTitle;
+  return typeof title === 'string' && title.trim() ? title.trim() : null;
+}
+
 /** Read learning journey fields from snake_case or camelCase API keys. */
 export function readJourneyFields(source: Record<string, unknown> | null | undefined): {
-  part?: 1 | 2 | 3 | 4;
+  part?: 1 | 2 | 3 | 4 | 5;
   topic?: string;
 } {
   if (!source) return {};
@@ -38,9 +50,12 @@ function applyJourneyFieldsToDrill(
   ...sources: Array<Record<string, unknown> | null | undefined>
 ): Drill {
   for (const source of sources) {
+    if (!source) continue;
     const { part, topic } = readJourneyFields(source);
     if (part != null) drill.learning_journey_part = part;
     if (topic != null) drill.learning_journey_topic = topic;
+    const topicTitle = readTopicTitle(source.topicTitle ?? source.topic_title);
+    if (topicTitle != null) drill.topicTitle = topicTitle;
   }
   return drill;
 }

@@ -1,5 +1,5 @@
 import { AppText, BoldText } from '@/components/ui';
-import { getLearningJourneyPart, type LearningJourneyPartId } from '@/domain/learning-journey/learning-journey.catalog';
+import { getPartById, type LearningJourneyPartId } from '@/domain/learning-journey/learning-journey.catalog';
 import { useTranslation } from '@/contexts/LanguageContext';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
@@ -12,58 +12,76 @@ export type LearningJourneyPartCardProps = {
   part: LearningJourneyPartId;
   completedCount: number;
   totalCount: number;
-  onPress: () => void;
+  isEnrolled: boolean;
+  isLocked?: boolean;
+  onPress?: () => void;
 };
 
 export const LearningJourneyPartCard = memo(function LearningJourneyPartCard({
   part,
   completedCount,
   totalCount,
+  isEnrolled,
+  isLocked = !isEnrolled,
   onPress,
 }: LearningJourneyPartCardProps) {
   const { t } = useTranslation();
   const { colors: c, isDark } = useSemanticTheme();
-  const partDef = getLearningJourneyPart(part);
+  const partDef = getPartById(part);
   const title = partDef?.title ?? '';
-  const progressText =
-    totalCount > 0
+  const progressText = isLocked
+    ? t('journey.notEnrolledYet')
+    : totalCount > 0
       ? t('journey.progress', { completed: completedCount, total: totalCount })
       : t('journey.noDrillsAssigned');
 
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.75}
+  const cardStyle = [
+    tw`rounded-2xl flex-row items-center p-4 border mb-3`,
+    {
+      backgroundColor: c.card,
+      borderColor: c.border,
+      boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+      opacity: isLocked ? 0.75 : 1,
+    },
+  ];
+
+  const badge = isLocked ? (
+    <View
       style={[
-        tw`rounded-2xl flex-row items-center p-4 border mb-3`,
-        {
-          backgroundColor: c.card,
-          borderColor: c.border,
-          boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
-        },
+        tw`w-12 h-12 rounded-xl items-center justify-center`,
+        { backgroundColor: isDark ? 'rgba(75, 85, 99, 0.4)' : '#E5E7EB' },
       ]}
-      accessibilityRole="button"
-      accessibilityLabel={`${t('journey.mission', { part })}, ${title}, ${progressText}`}
     >
-      <LinearGradient
-        colors={
-          isDark
-            ? ['rgba(6, 78, 59, 0.4)', 'rgba(19, 78, 74, 0.4)']
-            : ['#D1FAE5', '#99F6E4']
-        }
-        style={tw`w-12 h-12 rounded-xl items-center justify-center`}
-      >
-        <BoldText style={tw`text-lg text-emerald-800 dark:text-emerald-200`}>
-          {part}
-        </BoldText>
-      </LinearGradient>
+      <Ionicons name="lock-closed" size={20} color={c.textSecondary} />
+    </View>
+  ) : (
+    <LinearGradient
+      colors={
+        isDark
+          ? ['rgba(6, 78, 59, 0.4)', 'rgba(19, 78, 74, 0.4)']
+          : ['#D1FAE5', '#99F6E4']
+      }
+      style={tw`w-12 h-12 rounded-xl items-center justify-center`}
+    >
+      <BoldText style={tw`text-lg text-emerald-800 dark:text-emerald-200`}>
+        {part}
+      </BoldText>
+    </LinearGradient>
+  );
+
+  const content = (
+    <>
+      {badge}
 
       <View style={tw`flex-1 ml-3`}>
         <AppText style={[tw`text-xs font-semibold uppercase`, { color: c.textSecondary }]}>
           {t('journey.mission', { part })}
         </AppText>
         <BoldText
-          style={[tw`text-sm font-semibold mt-0.5`, { color: c.textPrimary }]}
+          style={[
+            tw`text-sm font-semibold mt-0.5`,
+            { color: isLocked ? c.textSecondary : c.textPrimary },
+          ]}
           numberOfLines={2}
         >
           {title}
@@ -73,7 +91,32 @@ export const LearningJourneyPartCard = memo(function LearningJourneyPartCard({
         </AppText>
       </View>
 
-      <Ionicons name="chevron-forward" size={20} color={c.textLight} />
+      {!isLocked && <Ionicons name="chevron-forward" size={20} color={c.textLight} />}
+    </>
+  );
+
+  if (isLocked) {
+    return (
+      <View
+        style={cardStyle}
+        accessibilityRole="text"
+        accessibilityState={{ disabled: true }}
+        accessibilityLabel={`${t('journey.mission', { part })}, ${title}, ${progressText}`}
+      >
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={cardStyle}
+      accessibilityRole="button"
+      accessibilityLabel={`${t('journey.mission', { part })}, ${title}, ${progressText}`}
+    >
+      {content}
     </TouchableOpacity>
   );
 });

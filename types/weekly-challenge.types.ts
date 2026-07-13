@@ -58,6 +58,7 @@ export interface FillBlankGeneratedContent {
     }>;
     translation?: string;
     audioUrl?: string;
+    context?: string;
   }>;
 }
 

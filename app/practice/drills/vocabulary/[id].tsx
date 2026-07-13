@@ -8,16 +8,17 @@ import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import { AppText, Loader } from "@/components/ui";
 import { invalidateLearnerActivityCaches } from "@/hooks/invalidateLearnerActivityCaches";
-import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
+import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import apiClient from "@/lib/api";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
+import { playPracticeFeedback, stopPracticeFeedback } from "@/lib/practice-feedback";
 import tw from "@/lib/tw";
 import { bookmarkWord, completeDrill, getDrillById } from "@/services/drill.service";
 import { extractQualityScore, extractTextScore, speechaceService } from "@/services/speechace.service";
 import { useActivityStore } from "@/store/activity-store";
-import { Drill } from "@/types/drill.types";
+import { Drill, type PerformanceReviewAnalyticsRow } from "@/types/drill.types";
 import {
   DrillCheckpointType,
   type IndexKeyedWordProgress,
@@ -26,9 +27,19 @@ import {
 import { Alert } from "@/utils/alert";
 import { logger } from "@/utils/logger";
 import {
+  analyticsRowsToAnalysisResults,
+  buildSpeechDrillPerformanceReviewSnapshot,
+  computeSpeechDrillAvgScore,
+  removeAnalyticsRow,
+  textScoreToRecord,
+  turnIndexFromStep,
+  upsertAnalyticsRow,
+} from "@/utils/performanceReviewAnalytics";
+import {
     ensureMicrophonePermission,
     isRecordingPermissionError,
     prepareAudioForRecording,
+    releaseRecording,
     showMicrophonePermissionAlert,
 } from "@/utils/microphone";
 import { useQueryClient } from "@tanstack/react-query";
@@ -98,11 +109,17 @@ export default function VocabularyDrill() {
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
   const startTimeRef = useRef(Date.now());
   const scrollRef = useRef<ScrollView>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const isStartingRef = useRef(false);
+  const analysisGenerationRef = useRef(0);
 
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
+
+  usePreloadDrillCelebration();
 
   // Per-item navigation
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
@@ -119,8 +136,10 @@ export default function VocabularyDrill() {
   // UI states
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showReview, setShowReview] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+  const [sessionReviewAnalytics, setSessionReviewAnalytics] = useState<
+    PerformanceReviewAnalyticsRow[]
+  >([]);
   const submitPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
@@ -133,6 +152,7 @@ export default function VocabularyDrill() {
     setCurrentStep("word");
     setItemProgress(Array.from({ length: count }, emptyItemProgress));
     setAnalysisResults([]);
+    setSessionReviewAnalytics([]);
   }, [drill?.target_sentences?.length]);
 
   const hydrateFromCheckpoint = useCallback(
@@ -140,6 +160,7 @@ export default function VocabularyDrill() {
       resumeFromIndex: number;
       partialResults: {
         wordProgress: IndexKeyedWordProgress;
+        sessionReviewAnalytics: PerformanceReviewAnalyticsRow[];
       };
     }) => {
       const count = drill?.target_sentences?.length ?? 0;
@@ -152,7 +173,11 @@ export default function VocabularyDrill() {
           base[index] = value;
         }
       }
+      const restoredAnalytics =
+        checkpoint.partialResults.sessionReviewAnalytics ?? [];
       setItemProgress(base);
+      setSessionReviewAnalytics(restoredAnalytics);
+      setAnalysisResults(analyticsRowsToAnalysisResults(restoredAnalytics));
       setCurrentItemIndex(
         Math.min(Math.max(checkpoint.resumeFromIndex, 0), Math.max(count - 1, 0))
       );
@@ -247,9 +272,31 @@ export default function VocabularyDrill() {
     loadData();
     return () => {
       isMounted = false;
-      if (recording) stopRecording();
+      void releaseRecording(recordingRef.current);
+      recordingRef.current = null;
+      void stopPracticeFeedback();
     };
   }, [drillId]);
+
+  const resetAudioForRecording = useCallback(() => {
+    void prepareAudioForRecording();
+  }, []);
+
+  useEffect(() => {
+    if (!showCheckpointScreen) {
+      resetAudioForRecording();
+    }
+  }, [showCheckpointScreen, resetAudioForRecording]);
+
+  const cancelActiveRecording = useCallback(async () => {
+    analysisGenerationRef.current += 1;
+    const activeRecording = recordingRef.current;
+    recordingRef.current = null;
+    setRecording(null);
+    setIsRecording(false);
+    setProcessing(false);
+    await releaseRecording(activeRecording);
+  }, []);
 
   const loadDrill = async () => {
     try {
@@ -266,6 +313,8 @@ export default function VocabularyDrill() {
   // ── Recording helpers ──────────────────────────────────────────────────
 
   async function startRecording() {
+    if (isStartingRef.current || processing || recordingRef.current) return;
+    isStartingRef.current = true;
     try {
       const status = await ensureMicrophonePermission();
       if (status !== "granted") {
@@ -273,12 +322,14 @@ export default function VocabularyDrill() {
         return;
       }
 
+      await cancelActiveRecording();
       await prepareAudioForRecording();
 
-      const { recording } = await Audio.Recording.createAsync(
+      const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
-      setRecording(recording);
+      recordingRef.current = newRecording;
+      setRecording(newRecording);
       setIsRecording(true);
     } catch (err) {
       logger.error("Failed to start recording:", err);
@@ -290,20 +341,21 @@ export default function VocabularyDrill() {
           "Another sound may still be playing. Wait a moment and try again."
         );
       }
+    } finally {
+      isStartingRef.current = false;
     }
   }
 
   async function stopRecording() {
-    if (!recording) {
-      setIsRecording(false);
-      setProcessing(false);
-      return;
-    }
+    const recordingToStop = recordingRef.current;
+    if (!recordingToStop) return;
 
-    const recordingToStop = recording;
+    recordingRef.current = null;
     setRecording(null);
     setIsRecording(false);
     setProcessing(true);
+
+    const generation = ++analysisGenerationRef.current;
 
     try {
       if (typeof recordingToStop.stopAndUnloadAsync === "function") {
@@ -314,7 +366,7 @@ export default function VocabularyDrill() {
           const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: (FileSystem as any).EncodingType?.Base64 || "base64",
           });
-          await analyzeRecording(base64);
+          await analyzeRecording(base64, generation);
         }
       }
     } catch (error: any) {
@@ -327,7 +379,9 @@ export default function VocabularyDrill() {
     }
   }
 
-  const analyzeRecording = async (base64: string) => {
+  const analyzeRecording = async (base64: string, generation: number) => {
+    if (generation !== analysisGenerationRef.current) return;
+
     const currentSentence = drill?.target_sentences?.[currentItemIndex];
     if (!currentSentence) return;
 
@@ -340,6 +394,8 @@ export default function VocabularyDrill() {
 
     try {
       const result = await speechaceService.scorePronunciation(referenceText, base64);
+
+      if (generation !== analysisGenerationRef.current) return;
 
       // Check for "No speech detected"
       if (result.status === "error" && result.short_message === "error_no_speech") {
@@ -355,13 +411,31 @@ export default function VocabularyDrill() {
 
       logger.log(`Score for ${currentStep}: ${qualityScore}`);
 
-      // Save for review screen (tagged with position so retries can remove stale entries)
+      const turnIndex = turnIndexFromStep(currentStep);
+      setSessionReviewAnalytics((prev) =>
+        upsertAnalyticsRow(prev, {
+          sceneIndex: currentItemIndex,
+          turnIndex,
+          text: referenceText,
+          score: qualityScore,
+          textScore: textScoreToRecord(textScore),
+        })
+      );
       setAnalysisResults((prev) => [
-        ...prev,
-        { text: referenceText, score: qualityScore, textScore, itemIndex: currentItemIndex, step: currentStep },
+        ...prev.filter(
+          (r) => !(r.itemIndex === currentItemIndex && r.step === currentStep)
+        ),
+        {
+          text: referenceText,
+          score: qualityScore,
+          textScore,
+          itemIndex: currentItemIndex,
+          step: currentStep,
+        },
       ]);
 
       const passed = qualityScore >= PASS_THRESHOLD;
+      if (generation !== analysisGenerationRef.current) return;
       void playPracticeFeedback(passed ? "success" : "failure");
 
       if (currentStep === "word") {
@@ -436,12 +510,15 @@ export default function VocabularyDrill() {
     const total = drill?.target_sentences?.length || 1;
     const isLastItem = currentItemIndex >= total - 1;
 
+    void cancelActiveRecording();
+    resetAudioForRecording();
+
     if (!isLastItem) {
       const completedCount = currentItemIndex + 1;
       void saveCheckpointAtBoundary(
         {
           wordProgress: buildWordProgressMap(itemProgress),
-          sessionReviewAnalytics: [],
+          sessionReviewAnalytics,
         },
         completedCount,
         currentItemIndex
@@ -465,11 +542,13 @@ export default function VocabularyDrill() {
   };
 
   const handleRecord = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
+    if (processing) return;
+    if (recordingRef.current || isRecording) {
+      void stopRecording();
+      return;
     }
+    if (isStartingRef.current) return;
+    void startRecording();
   };
 
   const handleMoveToSentence = () => {
@@ -481,10 +560,14 @@ export default function VocabularyDrill() {
       );
       return;
     }
+    void cancelActiveRecording();
+    resetAudioForRecording();
     setCurrentStep("sentence");
   };
 
   const handleTryAgainWord = () => {
+    void cancelActiveRecording();
+    resetAudioForRecording();
     setItemProgress((prev) => {
       const updated = [...prev];
       updated[currentItemIndex] = {
@@ -494,12 +577,17 @@ export default function VocabularyDrill() {
       };
       return updated;
     });
+    setSessionReviewAnalytics((prev) =>
+      removeAnalyticsRow(prev, currentItemIndex, turnIndexFromStep("word"))
+    );
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "word"))
     );
   };
 
   const handleTryAgainSentence = () => {
+    void cancelActiveRecording();
+    resetAudioForRecording();
     setItemProgress((prev) => {
       const updated = [...prev];
       updated[currentItemIndex] = {
@@ -509,6 +597,9 @@ export default function VocabularyDrill() {
       };
       return updated;
     });
+    setSessionReviewAnalytics((prev) =>
+      removeAnalyticsRow(prev, currentItemIndex, turnIndexFromStep("sentence"))
+    );
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "sentence"))
     );
@@ -542,6 +633,7 @@ export default function VocabularyDrill() {
     setCurrentItemIndex(0);
     setCurrentStep("word");
     setAnalysisResults([]);
+    setSessionReviewAnalytics([]);
     setIsBookmarked(false);
     startTimeRef.current = Date.now();
     setItemProgress(
@@ -578,6 +670,15 @@ export default function VocabularyDrill() {
       return { word, score: itemScore, attempts: 1, pronunciationScore: itemScore };
     });
 
+    const itemTitles =
+      vocabItems.map((sentence) => sentence.word || sentence.text?.split(" ")[0] || "") ?? [];
+    const performanceReviewSnapshot = buildSpeechDrillPerformanceReviewSnapshot({
+      analytics: sessionReviewAnalytics,
+      itemTitles,
+      itemProgress,
+      passThreshold: PASS_THRESHOLD,
+    });
+
     try {
       await completeDrill(drillId, {
         drillAssignmentId: assignmentId,
@@ -585,38 +686,44 @@ export default function VocabularyDrill() {
         timeSpent,
         answers: [],
         vocabularyResults: { wordScores },
+        performanceReviewSnapshot,
       });
       clearCheckpoint();
       clearDrillProgress(drillId);
-      void invalidateDrillCaches(queryClient);
       return true;
     } catch (error) {
       logger.error("Failed to submit vocabulary drill:", error);
       Alert.alert("Error", "Failed to submit results. Please try again.");
       return false;
     }
-  }, [drill, itemProgress, drillId, assignmentId, clearDrillProgress, clearCheckpoint, queryClient]);
+  }, [
+    drill,
+    itemProgress,
+    sessionReviewAnalytics,
+    drillId,
+    assignmentId,
+    clearDrillProgress,
+    clearCheckpoint,
+    queryClient,
+  ]);
 
   useEffect(() => {
     if (!showReview || submitPromiseRef.current) return;
     submitPromiseRef.current = doSubmit();
   }, [showReview, doSubmit]);
 
-  const handleDoneForToday = async () => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const promise =
-        submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
-      const ok = await promise;
-      if (!ok) {
-        submitPromiseRef.current = null;
-        return;
-      }
-      router.back();
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleDoneForToday = () => {
+    void exitDrill({
+      beforeExit: async () => {
+        const promise =
+          submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
+        const ok = await promise;
+        if (!ok) {
+          submitPromiseRef.current = null;
+          throw new Error("Submit failed");
+        }
+      },
+    });
   };
 
   // ── Derived data ─────────────────────────────────────────────────────────
@@ -677,12 +784,7 @@ export default function VocabularyDrill() {
   if (showReview && drill) {
     const totalVocabItems = drill.target_sentences?.length ?? 0;
     const passedCount = itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length;
-    const avgReviewScore =
-      analysisResults.length > 0
-        ? Math.round(
-            analysisResults.reduce((sum, r) => sum + r.score, 0) / analysisResults.length
-          )
-        : 0;
+    const avgReviewScore = computeSpeechDrillAvgScore(sessionReviewAnalytics, itemProgress);
     const reviewPassed =
       (totalVocabItems > 0 && passedCount === totalVocabItems) ||
       avgReviewScore >= PASS_THRESHOLD;
@@ -695,8 +797,9 @@ export default function VocabularyDrill() {
         passedItems={passedCount}
         itemTitles={drill.target_sentences?.map((s) => s.word || s.text?.split(" ")[0] || "") ?? []}
         passed={reviewPassed}
-        onDone={() => { void handleDoneForToday(); }}
-        submitting={isSubmitting}
+        onDone={handleDoneForToday}
+        submitting={isExiting}
+        exiting={isExiting}
         onPracticeAgain={resetReviewSession}
       />
     );
@@ -840,11 +943,15 @@ export default function VocabularyDrill() {
                 <BookmarkIcon color={isBookmarked ? "#F59E0B" : "#6B7280"} />
               </TouchableOpacity>
 
-              <RecordButton
-                onPress={handleRecord}
-                isRecording={isRecording}
-                isListening={processing}
-              />
+              {processing ? (
+                <ActivityIndicator size="large" color="#22C55E" />
+              ) : (
+                <RecordButton
+                  onPress={handleRecord}
+                  isRecording={isRecording}
+                  isListening={processing}
+                />
+              )}
 
               <View style={tw`w-12 h-12`} />
             </View>
@@ -987,11 +1094,15 @@ export default function VocabularyDrill() {
               <BookmarkIcon color={isBookmarked ? "#F59E0B" : "#6B7280"} />
             </TouchableOpacity>
 
-            <RecordButton
-              onPress={handleRecord}
-              isRecording={isRecording}
-              isListening={processing}
-            />
+            {processing ? (
+              <ActivityIndicator size="large" color="#22C55E" />
+            ) : (
+              <RecordButton
+                onPress={handleRecord}
+                isRecording={isRecording}
+                isListening={processing}
+              />
+            )}
 
             <View style={tw`w-12 h-12`} />
           </View>

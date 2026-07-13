@@ -1,5 +1,5 @@
 import { DrillBookmarkToggle } from '@/components/practice/DrillBookmarkToggle';
-import { AppText } from '@/components/ui';
+import { AppText, BoldText } from '@/components/ui';
 import { getPlanDrillStatus } from '@/domain/learning-journey/group-journey-drills';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
@@ -58,6 +58,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 export type PlanDrillRowProps = {
   drill: Pick<Drill, '_id' | 'title' | 'type' | 'date'>;
+  topicTitle?: string | null;
   assignmentId?: string;
   dueDate?: string;
   completedAt?: string;
@@ -87,6 +88,7 @@ function DrillThumb({ type }: { type: DrillType }) {
 
 export const PlanDrillRow = memo(function PlanDrillRow({
   drill,
+  topicTitle,
   assignmentId: _assignmentId,
   dueDate,
   completedAt,
@@ -137,8 +139,19 @@ export const PlanDrillRow = memo(function PlanDrillRow({
       >
         <DrillThumb type={drill.type} />
         <View style={tw`flex-1 ml-3`}>
+          {topicTitle ? (
+            <BoldText
+              style={[tw`text-sm`, { color: c.textPrimary }]}
+              numberOfLines={2}
+            >
+              {topicTitle}
+            </BoldText>
+          ) : null}
           <AppText
-            style={[tw`text-sm font-semibold`, { color: c.textPrimary }]}
+            style={[
+              topicTitle ? tw`text-sm font-medium mt-0.5` : tw`text-sm font-semibold`,
+              { color: c.textPrimary },
+            ]}
             numberOfLines={2}
           >
             {drill.title}

@@ -4,16 +4,17 @@ import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import RecordButton from "@/components/drills/RecordButton";
 import { AppText, Loader } from "@/components/ui";
-import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useDrillExit } from "@/hooks/useDrillExit";
+import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import { useTTS } from "@/hooks/useTTS";
 import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { useActivityStore } from "@/store/activity-store";
 import { Drill, type DrillCompletionEffects } from "@/types/drill.types";
+import { Alert } from "@/utils/alert";
 import { logger } from "@/utils/logger";
 import { Ionicons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -24,8 +25,9 @@ export default function ListeningDrill() {
   const assignmentId = params.assignmentId as string | undefined;
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
-  const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
   const startTimeRef = useRef(Date.now());
+  const submitPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,8 +36,12 @@ export default function ListeningDrill() {
   const [isRecording, setIsRecording] = useState(false);
   const [hasListened, setHasListened] = useState(false);
   const [isDrillCompleted, setIsDrillCompleted] = useState(false);
+  const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
   const [celebrationEffects, setCelebrationEffects] = useState<DrillCompletionEffects | undefined>();
   const [completePassed, setCompletePassed] = useState(false);
+
+  usePreloadDrillCelebration();
+  usePreloadDrillCelebration(celebrationEffects);
 
   const { playAudio, isGenerating: isGeneratingAudio, isPlaying: isTTSPlaying, stopAudio: stopTTSAudio } = useTTS({
     autoPlay: false,
@@ -87,37 +93,64 @@ export default function ListeningDrill() {
   const handleRecord = () => {
     if (isRecording) {
       setIsRecording(false);
-      if (drill) {
-        const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
-        addRecentActivity({
-          id: drill._id,
-          title: drill.title,
-          type: drill.type,
-          durationSeconds,
-          score: 100,
-        });
-        void (async () => {
-          try {
-            const result = await completeDrill(drillId, {
-              drillAssignmentId: assignmentId,
-              score: 100,
-              timeSpent: durationSeconds,
-              answers: [],
-              listeningResults: { completed: true },
-            });
-            setCelebrationEffects(result.effects);
-            setCompletePassed(result.passed);
-            await invalidateDrillCaches(queryClient);
-          } catch (err) {
-            logger.warn('Failed to submit listening completion', err);
-          }
-        })();
-        clearDrillProgress(drillId);
-        setIsDrillCompleted(true);
-      }
+      if (!drill) return;
+
+      const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
+      addRecentActivity({
+        id: drill._id,
+        title: drill.title,
+        type: drill.type,
+        durationSeconds,
+        score: 100,
+      });
+
+      setIsSubmittingCompletion(true);
+      submitPromiseRef.current = (async () => {
+        try {
+          const result = await completeDrill(drillId, {
+            drillAssignmentId: assignmentId,
+            score: 100,
+            timeSpent: durationSeconds,
+            answers: [],
+            listeningResults: { completed: true },
+          });
+          setCelebrationEffects(result.effects);
+          setCompletePassed(result.passed);
+          clearDrillProgress(drillId);
+          return true;
+        } catch (err) {
+          logger.warn("Failed to submit listening completion", err);
+          Alert.alert("Error", "Failed to submit results. Please try again.");
+          return false;
+        }
+      })();
+
+      void (async () => {
+        const ok = await submitPromiseRef.current;
+        setIsSubmittingCompletion(false);
+        if (ok) {
+          setIsDrillCompleted(true);
+        } else {
+          submitPromiseRef.current = null;
+        }
+      })();
     } else {
       setIsRecording(true);
     }
+  };
+
+  const handleExit = () => {
+    void exitDrill({
+      beforeExit: async () => {
+        const promise = submitPromiseRef.current;
+        if (!promise) return;
+        const ok = await promise;
+        if (!ok) {
+          throw new Error("Submit failed");
+        }
+      },
+      invalidateCaches: true,
+    });
   };
 
   // ── Completion Screen ──
@@ -132,8 +165,11 @@ export default function ListeningDrill() {
         celebrationEffects={celebrationEffects}
         title="You passed!"
         message="Great job! You practiced shadowing and improved your listening skills."
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        continueDisabled={isSubmittingCompletion}
+        continueLoadingLabel="Submitting..."
+        exiting={isExiting}
+        onContinue={handleExit}
+        onClose={handleExit}
       />
     );
   }

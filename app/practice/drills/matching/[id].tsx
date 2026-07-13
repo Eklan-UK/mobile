@@ -6,6 +6,8 @@ import { AppText, Loader } from "@/components/ui";
 import { useNotificationToast } from "@/contexts/NotificationToastContext";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
+import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import { computeMatchingScore, MATCHING_PASS_THRESHOLD } from "@/lib/drill/matching-score";
 import {
   buildIncorrectPairEntry,
@@ -103,6 +105,10 @@ export default function MatchingDrill() {
 
   const { addRecentActivity } = useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
+  const handleExit = () => {
+    void exitDrill();
+  };
   const { showToast } = useNotificationToast();
   const startTimeRef = useRef(Date.now());
   const lastMatchTimeRef = useRef(Date.now());
@@ -143,6 +149,9 @@ export default function MatchingDrill() {
   const [celebrationEffects, setCelebrationEffects] = useState<
     DrillCompletionEffects | undefined
   >();
+
+  usePreloadDrillCelebration();
+  usePreloadDrillCelebration(celebrationEffects);
 
   const totalItems = pairs.length;
   const pairsMatched = matchedCanonical.size;
@@ -598,8 +607,9 @@ export default function MatchingDrill() {
             ? `Great job! You matched all ${pairs.length} pairs with ${completionScore}% accuracy.`
             : `You matched all ${pairs.length} pairs with ${completionScore}% accuracy. Keep practicing to reach 70%.`
         }
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        exiting={isExiting}
+        onContinue={handleExit}
+        onClose={handleExit}
       />
     );
   }

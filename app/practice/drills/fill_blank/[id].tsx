@@ -1,29 +1,35 @@
 import AITutorMessage from "@/components/drills/AITutorMessage";
+import AudioButton from "@/components/drills/AudioButton";
 import CheckpointScreen from "@/components/drills/CheckpointScreen";
 import DrillCompletedScreen from "@/components/drills/DrillCompletedScreen";
 import DrillHeader from "@/components/drills/DrillHeader";
 import { AppText, Loader } from "@/components/ui";
-import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
 import { useDrillScoreCelebration } from "@/hooks/useDrillScoreCelebration";
+import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
 import {
+  beginCelebrationSession,
+  playDrillEndCelebration,
   registerDrillConfettiTrigger,
+  shouldPlayCelebration,
   unregisterDrillConfettiTrigger,
   unloadDrillCelebrationSound,
 } from "@/lib/drill-celebration";
+import { playPracticeFeedback } from "@/lib/practice-feedback";
 import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { useActivityStore } from "@/store/activity-store";
 import { Drill } from "@/types/drill.types";
 import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
-import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
+import { decodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 import { logger } from "@/utils/logger";
 import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
 import { useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -104,12 +110,14 @@ function FillBlankResultsView({
   correctBlanks,
   totalBlanks,
   isWeeklyChallenge,
+  isExiting,
   onContinue,
 }: {
   passed: boolean;
   correctBlanks: number;
   totalBlanks: number;
   isWeeklyChallenge: boolean;
+  isExiting: boolean;
   onContinue: () => void;
 }) {
   const confettiRef = useRef<ConfettiCannon>(null);
@@ -127,19 +135,21 @@ function FillBlankResultsView({
   return (
     <>
       {passed ? (
-        <ConfettiCannon
-          ref={confettiRef}
-          count={150}
-          origin={{
-            x: FILL_BLANK_SCREEN_WIDTH / 2,
-            y: FILL_BLANK_SCREEN_HEIGHT * 0.55,
-          }}
-          autoStart={false}
-          fadeOut
-          fallSpeed={3000}
-          explosionSpeed={350}
-          colors={FILL_BLANK_CONFETTI_COLORS}
-        />
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          <ConfettiCannon
+            ref={confettiRef}
+            count={150}
+            origin={{
+              x: FILL_BLANK_SCREEN_WIDTH / 2,
+              y: FILL_BLANK_SCREEN_HEIGHT * 0.55,
+            }}
+            autoStart={false}
+            fadeOut
+            fallSpeed={3000}
+            explosionSpeed={350}
+            colors={FILL_BLANK_CONFETTI_COLORS}
+          />
+        </View>
       ) : null}
       <DrillCompletedScreen
         variant="progress"
@@ -154,6 +164,9 @@ function FillBlankResultsView({
             : `You answered ${correctBlanks} out of ${totalBlanks} blanks correctly.`
         }
         buttonLabel={isWeeklyChallenge ? "Back to Challenge" : "Continue"}
+        continueDisabled={isExiting}
+        continueLoadingLabel="Submitting..."
+        exiting={isExiting}
         onContinue={onContinue}
         onClose={onContinue}
       />
@@ -181,6 +194,10 @@ export default function FillBlankDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit({
+    source: isWeeklyChallenge ? "weekly_challenge" : "plan",
+    weekStartDate: wcWeekStartDate,
+  });
   const startTimeRef = useRef(Date.now());
 
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -189,7 +206,8 @@ export default function FillBlankDrill() {
   const [answers, setAnswers] = useState<Record<number, Record<number, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [isCompleting, setIsCompleting] = useState(false);
+
+  usePreloadDrillCelebration();
 
   const totalItems = drill?.fill_blank_items?.length ?? 0;
 
@@ -317,6 +335,13 @@ export default function FillBlankDrill() {
   const items = drill?.fill_blank_items || [];
   const currentItem = items[currentIndex];
   const currentAnswers = answers[currentIndex] || {};
+  const dedupedHints = Array.from(
+    new Set(
+      (currentItem?.blanks ?? [])
+        .map((blank) => blank.hint?.trim())
+        .filter((hint): hint is string => Boolean(hint))
+    )
+  );
   const allBlanksAnswered = currentItem?.blanks?.every(
     (_, blankIndex) => currentAnswers[blankIndex] && currentAnswers[blankIndex].trim() !== ""
   ) || false;
@@ -361,64 +386,67 @@ export default function FillBlankDrill() {
 
   const handleSubmit = () => {
     if (!drill) return;
+
+    const itemsList = drill.fill_blank_items ?? [];
+    const { score } = computeFillBlankScore(itemsList, answers);
+    const passed = score >= 70;
+    const token = beginCelebrationSession();
+
+    if (passed && shouldPlayCelebration(token)) {
+      void playDrillEndCelebration();
+    } else if (!passed && shouldPlayCelebration(token)) {
+      void playPracticeFeedback("failure");
+    }
+
     setIsSubmitting(true);
     setIsCompleted(true);
     setIsSubmitting(false);
   };
 
-  const handleCompleteAndContinue = async () => {
-    if (!drill || isCompleting) return;
+  const handleCompleteAndContinue = () => {
+    void exitDrill({
+      beforeExit: async () => {
+        if (!drill) throw new Error("Drill not loaded");
 
-    setIsCompleting(true);
-    try {
-      const itemsList = drill.fill_blank_items ?? [];
-      const fillBlankResults = buildFillBlankResults(itemsList, answers);
-      const { totalBlanks, correctBlanks, score } = computeFillBlankScore(itemsList, answers);
-      const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
-
-      if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
-        await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {
-          score,
-          weekStartDate: wcWeekStartDate,
-        });
-      } else {
-        await completeDrill(drillId, {
-          drillAssignmentId: assignmentId,
-          score,
-          timeSpent,
-          answers: [],
-          fillBlankResults: {
-            ...fillBlankResults,
-            totalBlanks,
-            correctBlanks,
-            score,
-          },
-        });
-        clearCheckpoint();
-        await invalidateDrillCaches(queryClient);
-      }
-
-      addRecentActivity({
-        id: drill._id,
-        title: drill.title,
-        type: drill.type,
-        durationSeconds: timeSpent,
-        score,
-      });
-      clearDrillProgress(drillId);
-
-      if (isWeeklyChallenge && wcWeekStartDate) {
-        router.replace(
-          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
+        const itemsList = drill.fill_blank_items ?? [];
+        const fillBlankResults = buildFillBlankResults(itemsList, answers);
+        const { totalBlanks, correctBlanks, score } = computeFillBlankScore(
+          itemsList,
+          answers
         );
-      } else {
-        router.back();
-      }
-    } catch (error: unknown) {
-      logger.error('Failed to submit drill:', error);
-    } finally {
-      setIsCompleting(false);
-    }
+        const timeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
+
+        if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
+          await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {
+            score,
+            weekStartDate: wcWeekStartDate,
+          });
+        } else {
+          await completeDrill(drillId, {
+            drillAssignmentId: assignmentId,
+            score,
+            timeSpent,
+            answers: [],
+            fillBlankResults: {
+              ...fillBlankResults,
+              totalBlanks,
+              correctBlanks,
+              score,
+            },
+          });
+          clearCheckpoint();
+        }
+
+        addRecentActivity({
+          id: drill._id,
+          title: drill.title,
+          type: drill.type,
+          durationSeconds: timeSpent,
+          score,
+        });
+        clearDrillProgress(drillId);
+      },
+    });
   };
 
   if (showCheckpointScreen && drill) {
@@ -440,7 +468,7 @@ export default function FillBlankDrill() {
     
     // Display sentence text
     return (
-      <View style={tw`mb-4`}>
+      <View>
         <AppText style={tw`text-base text-gray-900 leading-6 mb-4`}>
           {sentence}
         </AppText>
@@ -456,13 +484,6 @@ export default function FillBlankDrill() {
                 <AppText style={tw`text-sm font-semibold text-gray-700 mb-2`}>
                   Blank {blankIndex + 1}:
                 </AppText>
-                {blank.hint && (
-                  <View style={tw`bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-2`}>
-                    <AppText style={tw`text-xs text-yellow-700`}>
-                      💡 Hint: {blank.hint}
-                    </AppText>
-                  </View>
-                )}
                 <View style={tw`flex-row flex-wrap gap-2`}>
                   {blank.options.map((option: string, optIdx: number) => {
                     const isOptionSelected = selectedValue === option;
@@ -530,7 +551,8 @@ export default function FillBlankDrill() {
         correctBlanks={correctBlanks}
         totalBlanks={totalBlanks}
         isWeeklyChallenge={isWeeklyChallenge}
-        onContinue={() => { void handleCompleteAndContinue(); }}
+        isExiting={isExiting}
+        onContinue={handleCompleteAndContinue}
       />
     );
   }
@@ -565,26 +587,39 @@ export default function FillBlankDrill() {
             </View>
           )}
 
-          <View style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-4`}>
-            <AppText style={tw`text-base font-semibold text-gray-900 mb-4`}>
-              Complete the sentence:
+          <View style={tw`flex-row items-center justify-between mb-2`}>
+            <AppText style={tw`text-sm text-gray-500`}>
+              Sentence {currentIndex + 1} of {items.length}
             </AppText>
-            
-            {renderSentence()}
-            
-            {currentItem.blanks?.map((blank, blankIndex) => {
-              if (blank.hint) {
-                return (
-                  <View key={blankIndex} style={tw`mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-2`}>
-                    <AppText style={tw`text-xs text-yellow-700`}>
-                      💡 Hint for blank {blankIndex + 1}: {blank.hint}
-                    </AppText>
-                  </View>
-                );
-              }
-              return null;
-            })}
+            {currentItem.audioUrl ? (
+              <AudioButton
+                text={currentItem.sentence}
+                audioUri={currentItem.audioUrl}
+                size={18}
+              />
+            ) : null}
           </View>
+
+          {currentItem.context?.trim() ? (
+            <AppText style={tw`text-sm text-gray-500 mb-3`}>
+              {currentItem.context.trim()}
+            </AppText>
+          ) : null}
+
+          <View style={tw`bg-white border border-gray-200 rounded-2xl p-4 mb-4`}>
+            {renderSentence()}
+          </View>
+
+          {dedupedHints.map((hint) => (
+            <View
+              key={hint}
+              style={tw`mb-2 bg-yellow-50 border border-yellow-200 rounded-lg p-2`}
+            >
+              <AppText style={tw`text-xs text-yellow-700`}>
+                💡 Hint: {hint}
+              </AppText>
+            </View>
+          ))}
         </ScrollView>
 
         <View style={tw`px-5 pb-6 flex-row items-center justify-between`}>

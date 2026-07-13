@@ -6,6 +6,7 @@ import { AppText, Loader } from "@/components/ui";
 import { getDrillById, completeDrill } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
@@ -50,6 +51,10 @@ export default function SentenceWritingDrill() {
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
+  const handleExit = () => {
+    void exitDrill();
+  };
   const startTimeRef = useRef(Date.now());
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
   const { user } = useAuth();
@@ -421,8 +426,9 @@ export default function SentenceWritingDrill() {
         passed={false}
         title="Sentence submitted"
         message="Your submission has been submitted for review. You'll be notified when your sentences have been reviewed."
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        exiting={isExiting}
+        onContinue={handleExit}
+        onClose={handleExit}
       />
     );
   }

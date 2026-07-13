@@ -61,6 +61,7 @@ export interface OAuthResult {
     emailVerified?: boolean;
     hasProfile?: boolean; // Backend flag: true when user has completed profile/onboarding
     role?: string; // User role (admin, tutor, user)
+    iapAccountToken?: string;
   };
   session: {
     token: string;
@@ -340,6 +341,7 @@ export async function signInWithGoogle(): Promise<OAuthResult> {
         emailVerified: user.emailVerified !== undefined ? user.emailVerified : true,
         hasProfile,
         role: user.role,
+        iapAccountToken: user.iapAccountToken,
       },
       session: session || {
         token: token,
@@ -454,6 +456,7 @@ export async function signInWithApple(): Promise<OAuthResult> {
         emailVerified: user.emailVerified !== undefined ? user.emailVerified : true,
         hasProfile,
         role: user.role,
+        iapAccountToken: user.iapAccountToken,
       },
       session: session || {
         token: token,

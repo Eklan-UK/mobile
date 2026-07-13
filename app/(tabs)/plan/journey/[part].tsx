@@ -1,10 +1,10 @@
 import { LearningJourneyTopicSection } from '@/components/learning-journey/LearningJourneyTopicSection';
 import { AppText, BoldText } from '@/components/ui';
+import { useNotificationToast } from '@/contexts/NotificationToastContext';
 import { useTranslation } from '@/contexts/LanguageContext';
 import {
-  getLearningJourneyPart,
-  isValidLearningJourneyPart,
-  type LearningJourneyPartId,
+  getPartById,
+  parseLearningJourneyPartId,
 } from '@/domain/learning-journey/learning-journey.catalog';
 import {
   getDrillsForPart,
@@ -12,6 +12,7 @@ import {
 } from '@/domain/learning-journey/group-journey-drills';
 import { useLearnerDrills } from '@/hooks/useLearnerDrills';
 import { useIsSubscribed } from '@/hooks/useIsSubscribed';
+import { useMyMissionEnrollments } from '@/hooks/useMyMissionEnrollments';
 import { usePrefetch } from '@/hooks/usePrefetch';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
@@ -30,25 +31,32 @@ import { Ionicons } from '@expo/vector-icons';
 export default function LearningJourneyPartScreen() {
   const { part: partParam } = useLocalSearchParams<{ part: string }>();
   const { t } = useTranslation();
+  const { showToast } = useNotificationToast();
   const isSubscribed = useIsSubscribed();
   const { colors: c } = useSemanticTheme();
   const { prefetchDrillAssignment } = usePrefetch();
   const { data, isLoading, refetch } = useLearnerDrills();
+  const {
+    data: enrolledParts = [],
+    isLoading: enrollmentsLoading,
+    refetch: refetchEnrollments,
+  } = useMyMissionEnrollments();
 
-  const partNumber = parseInt(String(partParam ?? ''), 10) as LearningJourneyPartId;
-  const isValidPart = isValidLearningJourneyPart(partNumber);
-  const partDef = isValidPart ? getLearningJourneyPart(partNumber) : undefined;
+  const part = parseLearningJourneyPartId(partParam);
+  const partDef = part != null ? getPartById(part) : undefined;
+  const isEnrolled = part != null && enrolledParts.includes(part);
 
   const topicGroups = useMemo(() => {
-    if (!isValidPart) return [];
+    if (part == null) return [];
     const grouped = groupDrillsByJourney(data?.drills ?? []);
-    return getDrillsForPart(grouped, partNumber);
-  }, [data?.drills, isValidPart, partNumber]);
+    return getDrillsForPart(grouped, part);
+  }, [data?.drills, part]);
 
   useFocusEffect(
     useCallback(() => {
       void refetch();
-    }, [refetch])
+      void refetchEnrollments();
+    }, [refetch, refetchEnrollments])
   );
 
   useEffect(() => {
@@ -56,10 +64,23 @@ export default function LearningJourneyPartScreen() {
       router.replace('/premium' as never);
       return;
     }
-    if (!isValidPart) {
+    if (part == null) {
       router.replace('/(tabs)/plan' as never);
     }
-  }, [isSubscribed, isValidPart]);
+  }, [isSubscribed, part]);
+
+  useEffect(() => {
+    if (!isSubscribed || part == null) return;
+    if (enrollmentsLoading) return;
+    if (!enrolledParts.includes(part)) {
+      showToast({
+        title: t('journey.notEnrolledToast'),
+        body: '',
+        variant: 'dark',
+      });
+      router.replace('/(tabs)/plan' as never);
+    }
+  }, [isSubscribed, part, enrollmentsLoading, enrolledParts, showToast, t]);
 
   const handleDrillPress = useCallback((item: DrillAssignment) => {
     navigatePlanDrillRow(item);
@@ -69,7 +90,14 @@ export default function LearningJourneyPartScreen() {
     navigatePlanFreeTalkRow(item, false);
   }, []);
 
-  if (!isSubscribed || !isValidPart || !partDef) {
+  if (
+    !isSubscribed ||
+    part == null ||
+    !partDef ||
+    enrollmentsLoading ||
+    isLoading ||
+    !isEnrolled
+  ) {
     return (
       <SafeAreaView
         edges={['top']}
@@ -101,36 +129,30 @@ export default function LearningJourneyPartScreen() {
         </TouchableOpacity>
 
         <AppText style={[tw`text-xs font-semibold uppercase`, { color: c.textSecondary }]}>
-          {t('journey.mission', { part: partNumber })}
+          {t('journey.mission', { part })}
         </AppText>
         <BoldText style={[tw`text-2xl font-bold mt-1`, { color: c.textPrimary }]}>
           {partDef.title}
         </BoldText>
       </View>
 
-      {isLoading ? (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator size="large" color="#22c55e" />
-        </View>
-      ) : (
-        <ScrollView
-          style={tw`flex-1`}
-          contentContainerStyle={tw`px-5 py-6 pb-24 gap-8`}
-          showsVerticalScrollIndicator={false}
-        >
-          {topicGroups.map((group) => (
-            <LearningJourneyTopicSection
-              key={group.topicId}
-              topicId={group.topicId}
-              topicTitle={group.topicTitle}
-              items={group.items}
-              onDrillPress={handleDrillPress}
-              onFreeTalkPress={handleFreeTalkPress}
-              onDrillPressIn={prefetchDrillAssignment}
-            />
-          ))}
-        </ScrollView>
-      )}
+      <ScrollView
+        style={tw`flex-1`}
+        contentContainerStyle={tw`px-5 py-6 pb-24 gap-8`}
+        showsVerticalScrollIndicator={false}
+      >
+        {topicGroups.map((group) => (
+          <LearningJourneyTopicSection
+            key={group.topicId}
+            topicId={group.topicId}
+            topicTitle={group.topicTitle}
+            items={group.items}
+            onDrillPress={handleDrillPress}
+            onFreeTalkPress={handleFreeTalkPress}
+            onDrillPressIn={prefetchDrillAssignment}
+          />
+        ))}
+      </ScrollView>
     </SafeAreaView>
   );
 }

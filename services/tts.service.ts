@@ -27,6 +27,19 @@ interface TTSResponse {
   audioBlob?: Blob;
 }
 
+const TTS_FETCH_TIMEOUT_MS = 30_000;
+
+export class TTSTimeoutError extends Error {
+  constructor() {
+    super('TTS request timed out');
+    this.name = 'TTSTimeoutError';
+  }
+}
+
+export function isTtsTimeoutError(error: unknown): boolean {
+  return error instanceof TTSTimeoutError;
+}
+
 /**
  * TTS Service for Mobile
  * Supports both Speechase and ElevenLabs TTS
@@ -86,15 +99,30 @@ class TTSService {
         body: requestBody,
       });
       
-      const response = await fetch(`${API_BASE_URL}/api/v1/tts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
-        credentials: 'include',
-        body: JSON.stringify(requestBody),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TTS_FETCH_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE_URL}/api/v1/tts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+          credentials: 'include',
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+      } catch (fetchError: unknown) {
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          logger.warn('roleplay_tts_timeout: TTS POST aborted after 30s');
+          throw new TTSTimeoutError();
+        }
+        throw fetchError;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       logger.log('📥 TTS POST Response:', {
         status: response.status,
@@ -220,6 +248,10 @@ class TTSService {
       const audioUri = await this.saveAudioBlob(audioBlob, options.text);
       return audioUri;
     } catch (error: any) {
+      if (isTtsTimeoutError(error)) {
+        throw error;
+      }
+
       logger.error('🚨 TTS generation failed - Full Error Details:', {
         message: error.message,
         name: error.name,

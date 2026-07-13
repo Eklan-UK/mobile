@@ -178,7 +178,7 @@ function waitForPurchase(): Promise<Purchase> {
   });
 }
 
-export async function requestProSubscription(): Promise<Purchase> {
+export async function requestProSubscription(iapAccountToken?: string): Promise<Purchase> {
   await initAppleIap();
   const iap = await getIap();
 
@@ -188,7 +188,10 @@ export async function requestProSubscription(): Promise<Purchase> {
     await iap.requestPurchase({
       type: 'subs',
       request: {
-        apple: { sku: APPLE_PRO_MONTHLY_PRODUCT_ID },
+        apple: {
+          sku: APPLE_PRO_MONTHLY_PRODUCT_ID,
+          appAccountToken: iapAccountToken,
+        },
       },
     });
   } catch (e) {

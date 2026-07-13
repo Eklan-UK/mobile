@@ -647,6 +647,8 @@ Summary card for one Part on My Plans.
 | 1 | `phone_colleagues` | Phone Communication with Colleagues | `phone_colleague` |
 | 2 | `phone_other_departments` | Phone Communication with Other Departments | `phone_department` |
 | 3 | `phone_patient_families` | Phone Communication with the Patient's Families | `phone_family` |
+| 4 | `grammar` | Grammar | — (standard drills via `learning_journey_topic`) |
+| 5 | `interview_preparation` | Interview Preparation | — (standard drills via `learning_journey_topic`) |
 
 #### Drill-to-topic mapping (server-side fields)
 
@@ -1344,6 +1346,8 @@ export const LEARNING_JOURNEY_PARTS: LearningJourneyPart[] = [
       { id: "phone_colleagues",      title: "Phone Communication with Colleagues",                   order: 1, freeTalkScenarioType: "phone_colleague" },
       { id: "phone_other_departments",title: "Phone Communication with Other Departments",           order: 2, freeTalkScenarioType: "phone_department" },
       { id: "phone_patient_families", title: "Phone Communication with the Patient's Families",      order: 3, freeTalkScenarioType: "phone_family" },
+      { id: "grammar",                title: "Grammar",                                              order: 4 },
+      { id: "interview_preparation",  title: "Interview Preparation",                                order: 5 },
     ],
   },
 ];

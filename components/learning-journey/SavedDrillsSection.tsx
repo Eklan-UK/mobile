@@ -1,24 +1,19 @@
-import { PlanDrillRow } from '@/components/learning-journey/PlanDrillRow';
-import { PlanFreeTalkRow } from '@/components/learning-journey/PlanFreeTalkRow';
+import { SavedDrillsList } from '@/components/learning-journey/SavedDrillsList';
 import { AppText, BoldText } from '@/components/ui';
-import {
-  getBookmarkedPlanItems,
-  isFreeTalkPlanItem,
-} from '@/domain/learning-journey/group-journey-drills';
+import { getBookmarkedPlanItems } from '@/domain/learning-journey/group-journey-drills';
 import { useLearnerDrills } from '@/hooks/useLearnerDrills';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
-import type { DrillAssignment } from '@/types/drill.types';
-import { resolveFreeTalkScenarioId } from '@/utils/drillAssignment';
-import { navigatePlanDrillRow, navigatePlanFreeTalkRow } from '@/utils/planRowNavigation';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { TouchableOpacity, View } from 'react-native';
 
 export type SavedDrillsSectionProps = {
   id?: string;
   title?: string;
   defaultExpanded?: boolean;
+  /** When true, show server topicTitle above drill titles (Home only). */
+  showTopicTitle?: boolean;
 };
 
 function subtitleForCount(count: number, isLoading: boolean): string {
@@ -32,6 +27,7 @@ export function SavedDrillsSection({
   id = 'saved-drills',
   title = 'Saved Drills',
   defaultExpanded = false,
+  showTopicTitle = false,
 }: SavedDrillsSectionProps) {
   const { colors: c, isDark } = useSemanticTheme();
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -44,14 +40,6 @@ export function SavedDrillsSection({
   const count = bookmarked.length;
   const subtitle = subtitleForCount(count, isLoading);
   const showBadge = !isLoading && count > 0;
-
-  const handleDrillPress = useCallback((item: DrillAssignment) => {
-    navigatePlanDrillRow(item);
-  }, []);
-
-  const handleFreeTalkPress = useCallback((item: DrillAssignment) => {
-    navigatePlanFreeTalkRow(item, false);
-  }, []);
 
   return (
     <View nativeID={id}>
@@ -108,52 +96,8 @@ export function SavedDrillsSection({
       </TouchableOpacity>
 
       {expanded ? (
-        <View nativeID={`${id}-panel`} style={tw`mt-3 gap-3`}>
-          {isLoading ? (
-            <View style={tw`py-8 items-center`}>
-              <ActivityIndicator size="large" color="#22c55e" />
-            </View>
-          ) : count === 0 ? (
-            <View
-              style={[
-                tw`rounded-2xl p-6 border items-center`,
-                { backgroundColor: c.card, borderColor: c.border },
-              ]}
-            >
-              <Ionicons name="book-outline" size={32} color={c.textLight} />
-              <AppText
-                style={[tw`text-sm text-center mt-3`, { color: c.textSecondary }]}
-              >
-                Bookmark drills from your learning journey to find them here.
-              </AppText>
-            </View>
-          ) : (
-            bookmarked.map((item) =>
-              isFreeTalkPlanItem(item) ? (
-                <PlanFreeTalkRow
-                  key={item.assignmentId}
-                  scenarioId={resolveFreeTalkScenarioId(item.drill, item.assignmentId)}
-                  title={item.drill.title}
-                  scenarioType={item.drill.scenarioType ?? ''}
-                  completionDate={item.drill.completionDate ?? item.dueDate}
-                  completedAt={item.completedAt}
-                  onPress={() => handleFreeTalkPress(item)}
-                />
-              ) : (
-                <PlanDrillRow
-                  key={item.assignmentId}
-                  drill={item.drill}
-                  assignmentId={item.assignmentId}
-                  dueDate={item.dueDate}
-                  completedAt={item.completedAt}
-                  status={item.status}
-                  hasBookmarks={item.hasBookmarks}
-                  showBookmark
-                  onPress={() => handleDrillPress(item)}
-                />
-              )
-            )
-          )}
+        <View nativeID={`${id}-panel`} style={tw`mt-3`}>
+          <SavedDrillsList showTopicTitle={showTopicTitle} />
         </View>
       ) : null}
     </View>

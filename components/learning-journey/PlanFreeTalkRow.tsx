@@ -1,5 +1,5 @@
 import { FreeTalkDueBadge } from '@/components/practice/FreeTalkDueBadge';
-import { AppText } from '@/components/ui';
+import { AppText, BoldText } from '@/components/ui';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
 import { freeTalkScenarioTypeLabel } from '@/types/free-talk';
@@ -13,6 +13,7 @@ export type PlanFreeTalkRowProps = {
   scenarioId: string;
   title: string;
   scenarioType: string;
+  topicTitle?: string | null;
   completionDate?: string | Date | null;
   completedAt?: string | Date | null;
   locked?: boolean;
@@ -22,6 +23,7 @@ export type PlanFreeTalkRowProps = {
 export const PlanFreeTalkRow = memo(function PlanFreeTalkRow({
   title,
   scenarioType,
+  topicTitle,
   completionDate,
   completedAt,
   locked = false,
@@ -54,8 +56,19 @@ export const PlanFreeTalkRow = memo(function PlanFreeTalkRow({
       </LinearGradient>
 
       <View style={tw`flex-1 ml-3`}>
+        {topicTitle ? (
+          <BoldText
+            style={[tw`text-sm`, { color: c.textPrimary }]}
+            numberOfLines={2}
+          >
+            {topicTitle}
+          </BoldText>
+        ) : null}
         <AppText
-          style={[tw`text-sm font-semibold`, { color: c.textPrimary }]}
+          style={[
+            topicTitle ? tw`text-sm font-medium mt-0.5` : tw`text-sm font-semibold`,
+            { color: c.textPrimary },
+          ]}
           numberOfLines={2}
         >
           {title}

@@ -1,4 +1,9 @@
 import apiClient from '@/lib/api';
+import type {
+  GetNotificationsParams,
+  MarkAllNotificationsReadResponse,
+  NotificationsResponse,
+} from '@/types/notifications';
 import { logger } from '@/utils/logger';
 import Constants from 'expo-constants';
 
@@ -26,9 +31,53 @@ export interface RegisterPushTokenData {
 }
 
 /**
- * Notification service for managing push tokens
+ * Notification service for inbox CRUD and push token management.
  */
 export const notificationService = {
+  /**
+   * Fetch in-app notifications inbox (flat response — no { code, data } wrapper).
+   */
+  async getNotifications(params?: GetNotificationsParams): Promise<NotificationsResponse> {
+    const response = await apiClient.get<NotificationsResponse>('/api/v1/notifications', {
+      params: {
+        limit: params?.limit,
+        skip: params?.skip,
+        unreadOnly: params?.unreadOnly,
+      },
+    });
+    return response.data;
+  },
+
+  /**
+   * Mark a single notification as read.
+   */
+  async markNotificationRead(notificationId: string): Promise<{ success: boolean }> {
+    const response = await apiClient.patch<{ success: boolean }>(
+      `/api/v1/notifications/${notificationId}`
+    );
+    return response.data;
+  },
+
+  /**
+   * Mark all notifications as read.
+   */
+  async markAllNotificationsRead(): Promise<MarkAllNotificationsReadResponse> {
+    const response = await apiClient.post<MarkAllNotificationsReadResponse>(
+      '/api/v1/notifications/read-all'
+    );
+    return response.data;
+  },
+
+  /**
+   * Delete a notification.
+   */
+  async deleteNotification(notificationId: string): Promise<{ success: boolean }> {
+    const response = await apiClient.delete<{ success: boolean }>(
+      `/api/v1/notifications/${notificationId}`
+    );
+    return response.data;
+  },
+
   /**
    * Register a push token with the backend
    */
@@ -80,4 +129,3 @@ export const notificationService = {
     }
   },
 };
-

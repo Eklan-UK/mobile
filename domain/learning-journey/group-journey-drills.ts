@@ -1,4 +1,8 @@
-import { LEARNING_JOURNEY_PARTS, type LearningJourneyPartId } from '@/domain/learning-journey/learning-journey.catalog';
+import {
+  getTopicsForPart,
+  LEARNING_JOURNEY_PARTS,
+  type LearningJourneyPartId,
+} from '@/domain/learning-journey/learning-journey.catalog';
 import type { DrillAssignment } from '@/types/drill.types';
 import { isFreeTalkDrillType } from '@/types/drill.types';
 import { readJourneyFields } from '@/utils/drillAssignment';
@@ -109,15 +113,33 @@ export function getDrillsForPart(
     }));
 }
 
+function isPartDrill(item: DrillAssignment, part: LearningJourneyPartId): boolean {
+  const topics = getTopicsForPart(part);
+  if (isFreeTalkPlanItem(item)) {
+    const scenarioType = item.drill?.scenarioType;
+    return topics.some((t) => t.freeTalkScenarioType === scenarioType);
+  }
+  const { part: itemPart } = readJourneyFields(item.drill as Record<string, unknown>);
+  return itemPart === part;
+}
+
+export function countPartJourneyProgress(
+  drills: DrillAssignment[],
+  part: LearningJourneyPartId
+): PartProgress {
+  const partDrills = drills.filter((item) => isPartDrill(item, part));
+  return {
+    total: partDrills.length,
+    completed: partDrills.filter(isCompletedPlanItem).length,
+  };
+}
+
 export function computePartProgress(
   drills: DrillAssignment[]
 ): Record<LearningJourneyPartId, PartProgress> {
-  const progress: Record<number, PartProgress> = {
-    1: { completed: 0, total: 0 },
-    2: { completed: 0, total: 0 },
-    3: { completed: 0, total: 0 },
-    4: { completed: 0, total: 0 },
-  };
+  const progress = Object.fromEntries(
+    LEARNING_JOURNEY_PARTS.map((p) => [p.part, { completed: 0, total: 0 }])
+  ) as Record<number, PartProgress>;
 
   for (const item of drills) {
     const part = resolvePartForItem(item);

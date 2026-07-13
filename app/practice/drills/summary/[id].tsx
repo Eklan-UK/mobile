@@ -6,6 +6,7 @@ import { AppText, Loader } from "@/components/ui";
 import tw from "@/lib/tw";
 import { completeDrill, getAssignmentAttempts, getDrillById } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useDrillExit } from "@/hooks/useDrillExit";
 import { useActivityStore } from "@/store/activity-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
@@ -23,6 +24,10 @@ export default function SummaryDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
+  const handleExit = () => {
+    void exitDrill();
+  };
   const startTimeRef = useRef(Date.now());
   const insets = useSafeAreaInsets();
 
@@ -146,7 +151,7 @@ export default function SummaryDrill() {
   };
 
   const handleSkip = () => {
-    router.back();
+    handleExit();
   };
 
   const handleSubmit = async () => {
@@ -234,11 +239,10 @@ export default function SummaryDrill() {
   if (isCompleted && showSubmittedScreen) {
     const handleSubmittedContinue = () => {
       setShowSubmittedScreen(false);
-      // Check if there are comprehension questions to show next
       if (hasQuestions) {
         setShowInstructions(true);
       } else {
-        router.back();
+        handleExit();
       }
     };
 
@@ -248,8 +252,9 @@ export default function SummaryDrill() {
         passed={false}
         title="Summary submitted"
         message="Nice work putting the ideas into your own words. Expressing understanding clearly is a powerful skill."
+        exiting={isExiting}
         onContinue={handleSubmittedContinue}
-        onClose={() => router.back()}
+        onClose={handleExit}
       />
     );
   }
@@ -262,7 +267,7 @@ export default function SummaryDrill() {
         <View style={tw`flex-1 px-5`}>
           {/* Close button */}
           <View style={tw`flex-row justify-end pt-4 pb-2`}>
-            <TouchableOpacity onPress={() => router.back()}>
+            <TouchableOpacity onPress={handleExit}>
               <Ionicons name="close" size={28} color="#1F2937" />
             </TouchableOpacity>
           </View>
@@ -420,7 +425,7 @@ export default function SummaryDrill() {
 
           <View style={tw`px-5 pb-6`}>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={handleExit}
               style={tw`rounded-full py-4 items-center bg-green-700`}
             >
               <AppText style={tw`text-base font-semibold text-white`}>

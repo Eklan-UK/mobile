@@ -7,17 +7,18 @@ import RecordButton from "@/components/drills/RecordButton";
 import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import { AppText, Loader } from "@/components/ui";
-import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
+import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import { useSaveDrill } from "@/hooks/useSaveDrill";
 import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
 import apiClient from "@/lib/api";
-import { playPracticeFeedback } from "@/lib/practice-feedback";
+import { playPracticeFeedback, stopPracticeFeedback } from "@/lib/practice-feedback";
 import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { extractQualityScore, extractTextScore, speechaceService } from "@/services/speechace.service";
 import { useActivityStore } from "@/store/activity-store";
-import type { PronunciationItem } from "@/types/drill.types";
+import type { PerformanceReviewAnalyticsRow, PronunciationItem } from "@/types/drill.types";
 import { Drill } from "@/types/drill.types";
 import {
   DrillCheckpointType,
@@ -25,12 +26,22 @@ import {
   type VocabularyWordProgressEntry,
 } from "@/types/drill-checkpoint.types";
 import { Alert } from "@/utils/alert";
-import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
+import { decodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 import { logger } from "@/utils/logger";
+import {
+  analyticsRowsToAnalysisResults,
+  buildSpeechDrillPerformanceReviewSnapshot,
+  computeSpeechDrillAvgScore,
+  removeAnalyticsRow,
+  textScoreToRecord,
+  turnIndexFromStep,
+  upsertAnalyticsRow,
+} from "@/utils/performanceReviewAnalytics";
 import {
     ensureMicrophonePermission,
     isRecordingPermissionError,
     prepareAudioForRecording,
+    releaseRecording,
     showMicrophonePermissionAlert,
 } from "@/utils/microphone";
 import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
@@ -113,11 +124,20 @@ export default function PronunciationDrill() {
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } =
     useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit({
+    source: isWeeklyChallenge ? "weekly_challenge" : "plan",
+    weekStartDate: wcWeekStartDate,
+  });
   const startTimeRef = useRef(Date.now());
   const scrollRef = useRef<ScrollView>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const isStartingRef = useRef(false);
+  const analysisGenerationRef = useRef(0);
 
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
+
+  usePreloadDrillCelebration();
 
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [currentStep, setCurrentStep] = useState<StepType>("word");
@@ -130,8 +150,10 @@ export default function PronunciationDrill() {
 
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showReview, setShowReview] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+  const [sessionReviewAnalytics, setSessionReviewAnalytics] = useState<
+    PerformanceReviewAnalyticsRow[]
+  >([]);
   const submitPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const { isSaved, handleSave, handleUnsave } = useSaveDrill(drillId);
@@ -144,12 +166,16 @@ export default function PronunciationDrill() {
     setCurrentStep("word");
     setItemProgress(Array.from({ length: count }, emptyItemProgress));
     setAnalysisResults([]);
+    setSessionReviewAnalytics([]);
   }, [drill?.pronunciation_items?.length]);
 
   const hydrateFromCheckpoint = useCallback(
     (checkpoint: {
       resumeFromIndex: number;
-      partialResults: { wordProgress: IndexKeyedWordProgress };
+      partialResults: {
+        wordProgress: IndexKeyedWordProgress;
+        sessionReviewAnalytics: PerformanceReviewAnalyticsRow[];
+      };
     }) => {
       const count = drill?.pronunciation_items?.length ?? 0;
       const base = Array.from({ length: count }, emptyItemProgress);
@@ -161,7 +187,11 @@ export default function PronunciationDrill() {
           base[index] = value;
         }
       }
+      const restoredAnalytics =
+        checkpoint.partialResults.sessionReviewAnalytics ?? [];
       setItemProgress(base);
+      setSessionReviewAnalytics(restoredAnalytics);
+      setAnalysisResults(analyticsRowsToAnalysisResults(restoredAnalytics));
       setCurrentItemIndex(
         Math.min(Math.max(checkpoint.resumeFromIndex, 0), Math.max(count - 1, 0))
       );
@@ -253,8 +283,31 @@ export default function PronunciationDrill() {
     loadData();
     return () => {
       isMounted = false;
+      void releaseRecording(recordingRef.current);
+      recordingRef.current = null;
+      void stopPracticeFeedback();
     };
   }, [drillId]);
+
+  const resetAudioForRecording = useCallback(() => {
+    void prepareAudioForRecording();
+  }, []);
+
+  useEffect(() => {
+    if (!showCheckpointScreen) {
+      resetAudioForRecording();
+    }
+  }, [showCheckpointScreen, resetAudioForRecording]);
+
+  const cancelActiveRecording = useCallback(async () => {
+    analysisGenerationRef.current += 1;
+    const activeRecording = recordingRef.current;
+    recordingRef.current = null;
+    setRecording(null);
+    setIsRecording(false);
+    setProcessing(false);
+    await releaseRecording(activeRecording);
+  }, []);
 
   const loadDrill = async () => {
     try {
@@ -293,6 +346,8 @@ export default function PronunciationDrill() {
   // ── Recording helpers ──────────────────────────────────────────────────
 
   async function startRecording() {
+    if (isStartingRef.current || processing || recordingRef.current) return;
+    isStartingRef.current = true;
     try {
       const status = await ensureMicrophonePermission();
       if (status !== "granted") {
@@ -300,11 +355,13 @@ export default function PronunciationDrill() {
         return;
       }
 
+      await cancelActiveRecording();
       await prepareAudioForRecording();
 
       const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
+      recordingRef.current = newRecording;
       setRecording(newRecording);
       setIsRecording(true);
     } catch (err) {
@@ -317,20 +374,21 @@ export default function PronunciationDrill() {
           "Another sound may still be playing. Wait a moment and try again."
         );
       }
+    } finally {
+      isStartingRef.current = false;
     }
   }
 
   async function stopRecording() {
-    if (!recording) {
-      setIsRecording(false);
-      setProcessing(false);
-      return;
-    }
+    const recordingToStop = recordingRef.current;
+    if (!recordingToStop) return;
 
-    const recordingToStop = recording;
+    recordingRef.current = null;
     setRecording(null);
     setIsRecording(false);
     setProcessing(true);
+
+    const generation = ++analysisGenerationRef.current;
 
     try {
       if (typeof recordingToStop.stopAndUnloadAsync === "function") {
@@ -341,7 +399,7 @@ export default function PronunciationDrill() {
           const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: (FileSystem as any).EncodingType?.Base64 || "base64",
           });
-          await analyzeRecording(base64);
+          await analyzeRecording(base64, generation);
         }
       }
     } catch (error: any) {
@@ -354,7 +412,9 @@ export default function PronunciationDrill() {
     }
   }
 
-  const analyzeRecording = async (base64: string) => {
+  const analyzeRecording = async (base64: string, generation: number) => {
+    if (generation !== analysisGenerationRef.current) return;
+
     const currentItem = drill?.pronunciation_items?.[currentItemIndex];
     if (!currentItem) return;
 
@@ -367,6 +427,8 @@ export default function PronunciationDrill() {
 
     try {
       const result = await speechaceService.scorePronunciation(referenceText, base64);
+
+      if (generation !== analysisGenerationRef.current) return;
 
       if (result.status === "error" && result.short_message === "error_no_speech") {
         Alert.alert(
@@ -381,12 +443,31 @@ export default function PronunciationDrill() {
 
       logger.log(`Score for ${currentStep}: ${qualityScore}`);
 
+      const turnIndex = turnIndexFromStep(currentStep);
+      setSessionReviewAnalytics((prev) =>
+        upsertAnalyticsRow(prev, {
+          sceneIndex: currentItemIndex,
+          turnIndex,
+          text: referenceText,
+          score: qualityScore,
+          textScore: textScoreToRecord(textScore),
+        })
+      );
       setAnalysisResults((prev) => [
-        ...prev,
-        { text: referenceText, score: qualityScore, textScore, itemIndex: currentItemIndex, step: currentStep },
+        ...prev.filter(
+          (r) => !(r.itemIndex === currentItemIndex && r.step === currentStep)
+        ),
+        {
+          text: referenceText,
+          score: qualityScore,
+          textScore,
+          itemIndex: currentItemIndex,
+          step: currentStep,
+        },
       ]);
 
       const passed = qualityScore >= PASS_THRESHOLD;
+      if (generation !== analysisGenerationRef.current) return;
       void playPracticeFeedback(passed ? "success" : "failure");
 
       if (currentStep === "word") {
@@ -461,12 +542,15 @@ export default function PronunciationDrill() {
     const total = drill?.pronunciation_items?.length || 1;
     const isLastItem = currentItemIndex >= total - 1;
 
+    void cancelActiveRecording();
+    resetAudioForRecording();
+
     if (!isLastItem) {
       const completedCount = currentItemIndex + 1;
       void saveCheckpointAtBoundary(
         {
           wordProgress: buildWordProgressMap(itemProgress),
-          sessionReviewAnalytics: [],
+          sessionReviewAnalytics,
         },
         completedCount,
         currentItemIndex
@@ -490,11 +574,13 @@ export default function PronunciationDrill() {
   };
 
   const handleRecord = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
+    if (processing) return;
+    if (recordingRef.current || isRecording) {
+      void stopRecording();
+      return;
     }
+    if (isStartingRef.current) return;
+    void startRecording();
   };
 
   const handleMoveToSentence = () => {
@@ -506,10 +592,14 @@ export default function PronunciationDrill() {
       );
       return;
     }
+    void cancelActiveRecording();
+    resetAudioForRecording();
     setCurrentStep("sentence");
   };
 
   const handleTryAgainWord = () => {
+    void cancelActiveRecording();
+    resetAudioForRecording();
     setItemProgress((prev) => {
       const updated = [...prev];
       updated[currentItemIndex] = {
@@ -519,12 +609,17 @@ export default function PronunciationDrill() {
       };
       return updated;
     });
+    setSessionReviewAnalytics((prev) =>
+      removeAnalyticsRow(prev, currentItemIndex, turnIndexFromStep("word"))
+    );
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "word"))
     );
   };
 
   const handleTryAgainSentence = () => {
+    void cancelActiveRecording();
+    resetAudioForRecording();
     setItemProgress((prev) => {
       const updated = [...prev];
       updated[currentItemIndex] = {
@@ -534,6 +629,9 @@ export default function PronunciationDrill() {
       };
       return updated;
     });
+    setSessionReviewAnalytics((prev) =>
+      removeAnalyticsRow(prev, currentItemIndex, turnIndexFromStep("sentence"))
+    );
     setAnalysisResults((prev) =>
       prev.filter((r) => !(r.itemIndex === currentItemIndex && r.step === "sentence"))
     );
@@ -552,6 +650,7 @@ export default function PronunciationDrill() {
     setCurrentItemIndex(0);
     setCurrentStep("word");
     setAnalysisResults([]);
+    setSessionReviewAnalytics([]);
     setIsBookmarked(false);
     startTimeRef.current = Date.now();
     setItemProgress(
@@ -588,6 +687,14 @@ export default function PronunciationDrill() {
       return { word, score: itemScore, attempts: 1, pronunciationScore: itemScore };
     });
 
+    const itemTitles = drillItems.map((item) => item.word.trim() || `Item`);
+    const performanceReviewSnapshot = buildSpeechDrillPerformanceReviewSnapshot({
+      analytics: sessionReviewAnalytics,
+      itemTitles,
+      itemProgress,
+      passThreshold: PASS_THRESHOLD,
+    });
+
     try {
       if (isWeeklyChallenge && wcItemId && wcWeekStartDate) {
         await completeWeeklyChallengeItemAndRefetch(queryClient, wcItemId, {
@@ -601,11 +708,11 @@ export default function PronunciationDrill() {
           timeSpent,
           answers: [],
           pronunciationResults: { wordScores },
+          performanceReviewSnapshot,
         });
         clearCheckpoint();
       }
       clearDrillProgress(drillId);
-      void invalidateDrillCaches(queryClient);
       return true;
     } catch (error) {
       logger.error("Failed to submit pronunciation drill:", error);
@@ -615,6 +722,7 @@ export default function PronunciationDrill() {
   }, [
     drill,
     itemProgress,
+    sessionReviewAnalytics,
     isWeeklyChallenge,
     wcItemId,
     wcWeekStartDate,
@@ -630,27 +738,18 @@ export default function PronunciationDrill() {
     submitPromiseRef.current = doSubmit();
   }, [showReview, doSubmit]);
 
-  const handleDoneForToday = async () => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const promise =
-        submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
-      const ok = await promise;
-      if (!ok) {
-        submitPromiseRef.current = null;
-        return;
-      }
-      if (isWeeklyChallenge && wcWeekStartDate) {
-        router.replace(
-          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
-        );
-      } else {
-        router.back();
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleDoneForToday = () => {
+    void exitDrill({
+      beforeExit: async () => {
+        const promise =
+          submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
+        const ok = await promise;
+        if (!ok) {
+          submitPromiseRef.current = null;
+          throw new Error("Submit failed");
+        }
+      },
+    });
   };
 
   // ── Derived data ─────────────────────────────────────────────────────────
@@ -708,12 +807,7 @@ export default function PronunciationDrill() {
   if (showReview && drill) {
     const totalPronItems = drill.pronunciation_items?.length ?? 0;
     const passedCount = itemProgress.filter((p) => p.wordPassed && p.sentencePassed).length;
-    const avgReviewScore =
-      analysisResults.length > 0
-        ? Math.round(
-            analysisResults.reduce((sum, r) => sum + r.score, 0) / analysisResults.length
-          )
-        : 0;
+    const avgReviewScore = computeSpeechDrillAvgScore(sessionReviewAnalytics, itemProgress);
     const reviewPassed =
       (totalPronItems > 0 && passedCount === totalPronItems) ||
       avgReviewScore >= PASS_THRESHOLD;
@@ -726,8 +820,9 @@ export default function PronunciationDrill() {
         passedItems={passedCount}
         itemTitles={drill.pronunciation_items?.map((i) => i.word) ?? []}
         passed={reviewPassed}
-        onDone={() => { void handleDoneForToday(); }}
-        submitting={isSubmitting}
+        onDone={handleDoneForToday}
+        submitting={isExiting}
+        exiting={isExiting}
         onPracticeAgain={resetReviewSession}
       />
     );
@@ -876,11 +971,15 @@ export default function PronunciationDrill() {
                 <BookmarkIcon />
               </TouchableOpacity>
 
-              <RecordButton
-                onPress={handleRecord}
-                isRecording={isRecording}
-                isListening={processing}
-              />
+              {processing ? (
+                <ActivityIndicator size="large" color="#22C55E" />
+              ) : (
+                <RecordButton
+                  onPress={handleRecord}
+                  isRecording={isRecording}
+                  isListening={processing}
+                />
+              )}
 
               <View style={tw`w-12 h-12`} />
             </View>
@@ -1018,11 +1117,15 @@ export default function PronunciationDrill() {
           <View style={tw`flex-row items-center justify-center gap-4`}>
             <View style={tw`w-12 h-12`} />
 
-            <RecordButton
-              onPress={handleRecord}
-              isRecording={isRecording}
-              isListening={processing}
-            />
+            {processing ? (
+              <ActivityIndicator size="large" color="#22C55E" />
+            ) : (
+              <RecordButton
+                onPress={handleRecord}
+                isRecording={isRecording}
+                isListening={processing}
+              />
+            )}
 
             <View style={tw`w-12 h-12`} />
           </View>

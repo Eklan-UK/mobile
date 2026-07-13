@@ -7,7 +7,8 @@ import type { AnalysisResult } from "@/components/drills/SpeechAnalysisReview";
 import SpeechAnalysisReview from "@/components/drills/SpeechAnalysisReview";
 import { AppText, Loader } from "@/components/ui";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
-import { invalidateDrillCaches } from "@/hooks/useDrills";
+import { useDrillExit } from "@/hooks/useDrillExit";
+import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import { completeWeeklyChallengeItemAndRefetch } from "@/hooks/useWeeklyChallenge";
 import { playPracticeFeedback } from "@/lib/practice-feedback";
 import tw from "@/lib/tw";
@@ -27,7 +28,7 @@ import type { Drill, KeyPhraseItem, PerformanceReviewAnalyticsRow } from "@/type
 import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
 import { Alert } from "@/utils/alert";
 import { setAudioModeSafely } from "@/utils/audio";
-import { decodeWeekStartDate, encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
+import { decodeWeekStartDate } from "@/utils/challengeDrillAdapter";
 import { resolveDrillIdsFromListing } from "@/utils/drillAssignment";
 import { drillForUi } from "@/utils/drillPracticeType";
 import {
@@ -38,6 +39,7 @@ import {
     type KeyPhraseItemResult,
 } from "@/utils/keyPhrasesCompletion";
 import { logger } from "@/utils/logger";
+import { analyticsRowsToAnalysisResults } from "@/utils/performanceReviewAnalytics";
 import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
 import { useQueryClient } from "@tanstack/react-query";
 import { Audio } from "expo-av";
@@ -111,6 +113,10 @@ export default function KeyPhrasesDrillScreen() {
     : undefined;
 
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit({
+    source: isWeeklyChallenge ? "weekly_challenge" : "plan",
+    weekStartDate: wcWeekStartDate,
+  });
   const { updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const startTimeRef = useRef(Date.now());
   const scrollRef = useRef<ScrollView>(null);
@@ -119,6 +125,9 @@ export default function KeyPhrasesDrillScreen() {
   const [drill, setDrill] = useState<Drill | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  usePreloadDrillCelebration();
+
   const [resolvedAssignmentId, setResolvedAssignmentId] = useState<string | undefined>(
     paramAssignmentId
   );
@@ -141,7 +150,6 @@ export default function KeyPhrasesDrillScreen() {
   const [hasScoredCurrent, setHasScoredCurrent] = useState(false);
 
   const [showReview, setShowReview] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const submitPromiseRef = useRef<Promise<boolean> | null>(null);
 
   const items = drill?.key_phrase_items ?? [];
@@ -181,16 +189,16 @@ export default function KeyPhrasesDrillScreen() {
         }
       }
       setItemResults(restored);
-      setSessionReviewAnalytics(
-        checkpoint.partialResults.sessionReviewAnalytics ?? []
-      );
+      const restoredAnalytics =
+        checkpoint.partialResults.sessionReviewAnalytics ?? [];
+      setSessionReviewAnalytics(restoredAnalytics);
       setCurrentIndex(
         Math.min(Math.max(checkpoint.resumeFromIndex, 0), Math.max(count - 1, 0))
       );
       setSelectedOption(null);
       setQuestionAttempts(0);
       setHasScoredCurrent(false);
-      setAnalysisResults([]);
+      setAnalysisResults(analyticsRowsToAnalysisResults(restoredAnalytics));
     },
     [items.length]
   );
@@ -546,7 +554,6 @@ export default function KeyPhrasesDrillScreen() {
       }
 
       clearDrillProgress(drillId);
-      void invalidateDrillCaches(queryClient);
 
       addRecentActivity({
         id: drill._id,
@@ -585,27 +592,18 @@ export default function KeyPhrasesDrillScreen() {
     submitPromiseRef.current = doSubmit();
   }, [showReview, doSubmit]);
 
-  const handleDoneForToday = async () => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      const promise =
-        submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
-      const ok = await promise;
-      if (!ok) {
-        submitPromiseRef.current = null;
-        return;
-      }
-      if (isWeeklyChallenge && wcWeekStartDate) {
-        router.replace(
-          `/practice/weekly-challenge/${encodeWeekStartDate(wcWeekStartDate)}` as never
-        );
-      } else {
-        router.back();
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleDoneForToday = () => {
+    void exitDrill({
+      beforeExit: async () => {
+        const promise =
+          submitPromiseRef.current ?? (submitPromiseRef.current = doSubmit());
+        const ok = await promise;
+        if (!ok) {
+          submitPromiseRef.current = null;
+          throw new Error("Submit failed");
+        }
+      },
+    });
   };
 
   const handleRecord = () => {
@@ -657,8 +655,9 @@ export default function KeyPhrasesDrillScreen() {
         itemTitles={items.map((item) => previewPrompt(item.prompt))}
         statsLine={`${correctItems} of ${totalItems} correct · ${sessionReviewAnalytics.length} scored attempts`}
         passed={reviewPassed}
-        onDone={() => { void handleDoneForToday(); }}
-        submitting={isSubmitting}
+        onDone={handleDoneForToday}
+        submitting={isExiting}
+        exiting={isExiting}
         onPracticeAgain={handlePracticeAgain}
       />
     );
@@ -829,13 +828,6 @@ export default function KeyPhrasesDrillScreen() {
                   </AppText>
                 </TouchableOpacity>
               )}
-            </View>
-          ) : null}
-
-          {isSubmitting ? (
-            <View style={tw`items-center mt-4`}>
-              <ActivityIndicator color="#22C55E" />
-              <AppText style={tw`text-gray-500 mt-2`}>Submitting…</AppText>
             </View>
           ) : null}
         </ScrollView>

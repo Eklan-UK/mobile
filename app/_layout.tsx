@@ -144,6 +144,7 @@ export default Sentry.wrap(function RootLayout() {
                   {/* Post-auth profile setup */}
                   <Stack.Screen name="(profile-setup)" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="account" options={{ headerShown: false }} />
                   <Stack.Screen name="practice" options={{ headerShown: false }} />
                   <Stack.Screen name="sessions" options={{ headerShown: false }} />
                   <Stack.Screen name="settings" options={{ headerShown: false }} />

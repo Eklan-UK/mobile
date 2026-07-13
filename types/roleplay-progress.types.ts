@@ -15,7 +15,7 @@ export interface TurnAnalytics {
   turnIndex: number;
   text: string;
   score: number;
-  textScore?: number;
+  textScore: Record<string, unknown> | null;
   attempts: number;
   timestamp: string;
 }

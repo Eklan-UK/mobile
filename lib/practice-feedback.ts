@@ -133,10 +133,31 @@ function pcmToWavBase64(pcm: Int16Array): string {
   return uint8ArrayToBase64(new Uint8Array(buffer));
 }
 
+let activeFeedbackSound: Audio.Sound | null = null;
+
+export async function stopPracticeFeedback(): Promise<void> {
+  const sound = activeFeedbackSound;
+  activeFeedbackSound = null;
+  if (!sound) return;
+
+  try {
+    await sound.stopAsync();
+  } catch {
+    /* ignore */
+  }
+  try {
+    await sound.unloadAsync();
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function playToneSequence(
   steps: ToneStep[],
   waveType: 'sine' | 'triangle'
 ): Promise<void> {
+  await stopPracticeFeedback();
+
   const pcm = synthesizeTonePcm(steps, waveType);
   const base64 = pcmToWavBase64(pcm);
   const uri = `${FileSystem.cacheDirectory}practice-tone-${Date.now()}.wav`;
@@ -153,9 +174,13 @@ export async function playToneSequence(
   });
 
   const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true, volume: 1.0 });
+  activeFeedbackSound = sound;
 
   sound.setOnPlaybackStatusUpdate((status) => {
     if (status.isLoaded && status.didJustFinish) {
+      if (activeFeedbackSound === sound) {
+        activeFeedbackSound = null;
+      }
       void sound.unloadAsync();
       void FileSystem.deleteAsync(uri, { idempotent: true });
     }

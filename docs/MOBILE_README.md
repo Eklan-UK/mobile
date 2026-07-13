@@ -257,9 +257,9 @@ export const queryKeys = {
   learnerDrills: (params?: object) => ['learner-drills', params] as const,
   drill: (id: string) => ['drill', id] as const,
   dailyFocus: ['daily-focus-today'] as const,
-  userBadges: ['user-badges'] as const,
   pronunciationProblems: (params?: object) => ['pronunciation-problems', params] as const,
   sessionSummaries: (params?: object) => ['session-summaries', params] as const,
+  pressureTestSessions: ['pressure-test-sessions'] as const,
   bookmarks: ['bookmarks'] as const,
 };
 ```
@@ -411,6 +411,18 @@ await sound.unloadAsync();
 ```
 
 For PCM chunks streamed from AI (base64 PCM 16kHz), you'll need to write to a temp file and play with `Audio.Sound` or use a native audio buffer library.
+
+### Practice pass/fail feedback
+
+See [`mobile-practice-feedback.md`](mobile-practice-feedback.md) for haptics + optional sounds when learners pass or fail **individual** drill items, free talk, and other practice surfaces. Web: `src/lib/practice-feedback.ts` (`playPracticeFeedback`, `playTone`).
+
+### Drill end celebration (MP3 + confetti)
+
+See [`MOBILE_DRILL_CELEBRATION.md`](MOBILE_DRILL_CELEBRATION.md) when the learner **passes a full drill** — hosted celebration MP3 from `POST /drills/:id/complete` `effects`, plus confetti. Web: `playDrillEndCelebration` in `src/lib/practice-feedback.ts`.
+
+See [`MOBILE_MATCHING_DRILL.md`](MOBILE_MATCHING_DRILL.md) for the **matching** drill end-to-end spec (per-pair feedback, checkpoints, manual submit, `matchingResults` payload).
+
+See [`MOBILE_DRILL_BUILDER_LIST.md`](MOBILE_DRILL_BUILDER_LIST.md) for **tutor/admin drill list** checkbox selection, safe bulk delete, and the Mission 4 **Grammar** topic in the Drill Builder catalog.
 
 ---
 

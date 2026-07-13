@@ -178,6 +178,7 @@ export interface FillBlankItem {
   }>;
   translation?: string;
   audioUrl?: string;
+  context?: string;
 }
 
 export interface Drill {
@@ -244,8 +245,10 @@ export interface Drill {
   is_active: boolean;
 
   // Learning journey
-  learning_journey_part?: 1 | 2 | 3 | 4;
+  learning_journey_part?: 1 | 2 | 3 | 4 | 5;
   learning_journey_topic?: string;
+  /** Server-computed display title for Home drill cards (not catalog-resolved). */
+  topicTitle?: string | null;
   scenarioType?: string;
   completionDate?: string | null;
 

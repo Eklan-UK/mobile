@@ -23,6 +23,32 @@ import { Linking, Platform } from 'react-native';
 const POLL_ATTEMPTS = 5;
 const POLL_INTERVAL_MS = 2000;
 
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Ensure the current user has a valid `iapAccountToken` before starting an
+ * Apple IAP purchase. Refreshes the session once if the token is missing
+ * (e.g. stale cache, pre-upgrade user, background `checkSession` not yet
+ * resolved). Never falls back to `user.id` or `user.email` — StoreKit
+ * silently drops non-UUID `appAccountToken` values rather than erroring, so
+ * a malformed token would look like a successful purchase with no token.
+ */
+export async function ensureIapAccountToken(): Promise<string> {
+  let iapAccountToken = useAuthStore.getState().user?.iapAccountToken;
+
+  if (!iapAccountToken) {
+    await useAuthStore.getState().checkSession();
+    iapAccountToken = useAuthStore.getState().user?.iapAccountToken;
+  }
+
+  if (!iapAccountToken || !UUID_V4_REGEX.test(iapAccountToken)) {
+    throw new Error('Unable to prepare your account for purchase. Please try again.');
+  }
+
+  return iapAccountToken;
+}
+
 /**
  * Poll GET /api/v1/users/current until `user.isSubscribed === true`.
  * Shared by iOS IAP and Android Stripe deep-link flows.
@@ -56,8 +82,9 @@ export async function pollUntilSubscribed(
  */
 export async function startUpgrade(): Promise<void> {
   if (Platform.OS === 'ios') {
+    const iapAccountToken = await ensureIapAccountToken();
     await initAppleIap();
-    const purchase = await requestProSubscription();
+    const purchase = await requestProSubscription(iapAccountToken);
     await verifyAndFinishPurchase(purchase);
     return;
   }

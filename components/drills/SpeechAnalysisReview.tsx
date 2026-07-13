@@ -1,3 +1,4 @@
+import DrillExitOverlay from "@/components/drills/DrillExitOverlay";
 import DrillLineReviewAccordion from "@/components/drills/DrillLineReviewAccordion";
 import { useDrillScoreCelebration } from "@/hooks/useDrillScoreCelebration";
 import {
@@ -18,6 +19,7 @@ import {
     ActivityIndicator,
     Dimensions,
     ScrollView,
+    StyleSheet,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -51,6 +53,8 @@ interface SpeechAnalysisReviewProps {
   groupItemLabel?: string;
   /** True while the drill completion API call is still in flight */
   submitting?: boolean;
+  /** Full-screen loader overlay while async exit work is in flight */
+  exiting?: boolean;
   /** Whether the learner passed — drives end-of-drill celebration (Pattern A). */
   passed?: boolean | null;
   /** Optional API effects (e.g. roleplay after complete). Defaults to celebration MP3. */
@@ -320,16 +324,18 @@ function ReviewConfettiLayer() {
   }, []);
 
   return (
-    <ConfettiCannon
-      ref={confettiRef}
-      count={150}
-      origin={{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.55 }}
-      autoStart={false}
-      fadeOut
-      fallSpeed={3000}
-      explosionSpeed={350}
-      colors={GREEN_CONFETTI_COLORS}
-    />
+    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+      <ConfettiCannon
+        ref={confettiRef}
+        count={150}
+        origin={{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.55 }}
+        autoStart={false}
+        fadeOut
+        fallSpeed={3000}
+        explosionSpeed={350}
+        colors={GREEN_CONFETTI_COLORS}
+      />
+    </View>
   );
 }
 
@@ -354,6 +360,7 @@ function ReviewPerformanceUI({
   statsLine: statsLineProp,
   groupItemLabel = "Item",
   submitting = false,
+  exiting = false,
   passed: passedProp,
   celebrationEffects,
 }: {
@@ -367,10 +374,12 @@ function ReviewPerformanceUI({
   statsLine?: string;
   groupItemLabel?: string;
   submitting?: boolean;
+  exiting?: boolean;
   passed?: boolean | null;
   celebrationEffects?: DrillCompletionEffects | null;
 }) {
   const [expandedGroupIndex, setExpandedGroupIndex] = useState<number | null>(null);
+  const isBusy = submitting || exiting;
 
   const avgScore = useMemo(() => getAverageScore(analysisResults), [analysisResults]);
   const passed = passedProp ?? avgScore >= PASS_THRESHOLD;
@@ -410,7 +419,7 @@ function ReviewPerformanceUI({
         <AppText style={tw`text-xl font-bold text-neutral-900`}>
           Review Performance
         </AppText>
-        <TouchableOpacity onPress={onDone} hitSlop={8} disabled={submitting}>
+        <TouchableOpacity onPress={onDone} hitSlop={8} disabled={isBusy}>
           <CloseIcon />
         </TouchableOpacity>
       </View>
@@ -497,14 +506,14 @@ function ReviewPerformanceUI({
       <View style={tw`px-5 pb-4 border-t border-gray-100 pt-3`}>
         <TouchableOpacity
           onPress={onDone}
-          disabled={submitting}
+          disabled={isBusy}
           style={[
             tw`w-full bg-primary-500 rounded-full py-4 items-center mb-3`,
-            submitting && tw`opacity-70`,
+            isBusy && tw`opacity-70`,
           ]}
           activeOpacity={0.8}
         >
-          {submitting ? (
+          {isBusy ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
             <AppText style={tw`text-white text-base font-semibold`}>
@@ -515,10 +524,10 @@ function ReviewPerformanceUI({
 
         <TouchableOpacity
           onPress={onPracticeAgain}
-          disabled={submitting}
+          disabled={isBusy}
           style={[
             tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`,
-            submitting && tw`opacity-50`,
+            isBusy && tw`opacity-50`,
           ]}
           activeOpacity={0.8}
         >
@@ -528,6 +537,7 @@ function ReviewPerformanceUI({
         </TouchableOpacity>
       </View>
 
+      {isBusy ? <DrillExitOverlay /> : null}
     </SafeAreaView>
   );
 }
@@ -554,15 +564,20 @@ function RoleplayReviewUI({
   analysisResults,
   onDone,
   onPracticeAgain,
+  submitting = false,
+  exiting = false,
   passed: passedProp,
   celebrationEffects,
 }: {
   analysisResults: AnalysisResult[];
   onDone: () => void;
   onPracticeAgain: () => void;
+  submitting?: boolean;
+  exiting?: boolean;
   passed?: boolean | null;
   celebrationEffects?: DrillCompletionEffects | null;
 }) {
+  const isBusy = submitting || exiting;
   const avgScore = useMemo(() => getAverageScore(analysisResults), [analysisResults]);
   const passed = passedProp ?? avgScore >= PASS_THRESHOLD;
 
@@ -582,7 +597,7 @@ function RoleplayReviewUI({
       {passed ? <ReviewConfettiLayer /> : null}
       {/* Header: back arrow + "Review Performance" title (Figma 186588) */}
       <View style={tw`px-5 pt-3 flex-row items-center`}>
-        <TouchableOpacity onPress={onDone} hitSlop={12} style={tw`mr-3`}>
+        <TouchableOpacity onPress={onDone} hitSlop={12} style={tw`mr-3`} disabled={isBusy}>
           <BackArrowIcon />
         </TouchableOpacity>
         <AppText style={tw`text-xl font-bold text-neutral-900 flex-1`}>Review Performance</AppText>
@@ -677,13 +692,35 @@ function RoleplayReviewUI({
       </ScrollView>
 
       <View style={tw`px-5 pb-4 pt-2`}>
-        <TouchableOpacity onPress={onDone} style={tw`w-full bg-primary-500 rounded-full py-4 items-center mb-3`} activeOpacity={0.8}>
-          <AppText style={tw`text-white text-base font-semibold`}>Done for today</AppText>
+        <TouchableOpacity
+          onPress={onDone}
+          disabled={isBusy}
+          style={[
+            tw`w-full bg-primary-500 rounded-full py-4 items-center mb-3`,
+            isBusy && tw`opacity-70`,
+          ]}
+          activeOpacity={0.8}
+        >
+          {isBusy ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <AppText style={tw`text-white text-base font-semibold`}>Done for today</AppText>
+          )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={onPracticeAgain} style={tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`} activeOpacity={0.8}>
+        <TouchableOpacity
+          onPress={onPracticeAgain}
+          disabled={isBusy}
+          style={[
+            tw`w-full border-2 border-primary-500 rounded-full py-4 items-center`,
+            isBusy && tw`opacity-50`,
+          ]}
+          activeOpacity={0.8}
+        >
           <AppText style={tw`text-primary-500 text-base font-semibold`}>Practice again</AppText>
         </TouchableOpacity>
       </View>
+
+      {isBusy ? <DrillExitOverlay /> : null}
     </SafeAreaView>
   );
 }
@@ -702,6 +739,7 @@ export default function SpeechAnalysisReview({
   statsLine,
   groupItemLabel,
   submitting = false,
+  exiting = false,
   passed,
   celebrationEffects,
 }: SpeechAnalysisReviewProps) {
@@ -728,6 +766,7 @@ export default function SpeechAnalysisReview({
           groupItemLabel ?? (drillType === "key_phrases" ? "Question" : "Item")
         }
         submitting={submitting}
+        exiting={exiting}
         passed={passed}
         celebrationEffects={celebrationEffects}
       />
@@ -739,6 +778,8 @@ export default function SpeechAnalysisReview({
       analysisResults={analysisResults}
       onDone={onDone}
       onPracticeAgain={onPracticeAgain}
+      submitting={submitting}
+      exiting={exiting}
       passed={passed}
       celebrationEffects={celebrationEffects}
     />

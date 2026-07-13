@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { router } from 'expo-router';
 import { notificationService } from '@/services/notification.service';
 import { useAuthStore } from '@/store/auth-store';
 import { logger } from '@/utils/logger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { queryClient } from '@/lib/query-client';
+import { notificationsQueryKey } from '@/hooks/useNotifications';
+import {
+  navigateFromNotification,
+} from '@/lib/notifications/deep-links';
 
 // Safely import expo-notifications - may not be available if native module isn't linked
 let Notifications: any = null;
@@ -52,8 +56,8 @@ const PUSH_TOKEN_STORAGE_KEY = '@push_token';
 export function usePushNotifications() {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [notification, setNotification] = useState<any | null>(null);
-  const notificationListener = useRef<any>();
-  const responseListener = useRef<any>();
+  const notificationListener = useRef<any>(undefined);
+  const responseListener = useRef<any>(undefined);
   const { isAuthenticated, user } = useAuthStore();
   const [isModuleAvailable, setIsModuleAvailable] = useState(false);
 
@@ -172,6 +176,10 @@ export function usePushNotifications() {
         logger.log('✅ Expo push token obtained:', token);
       }
 
+      if (!token) {
+        return null;
+      }
+
       // Store token locally
       await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
 
@@ -223,46 +231,17 @@ export function usePushNotifications() {
   };
 
   /**
-   * Handle notification tap - navigate based on notification data
+   * Handle notification tap - navigate via shared deep link router
    */
   const handleNotificationTap = (notification: any) => {
-    const data = notification.request.content.data;
+    const raw = notification.request.content.data;
+    logger.log('🔔 Notification tapped:', raw);
+    void navigateFromNotification(raw);
+    queryClient.invalidateQueries({ queryKey: notificationsQueryKey.all });
+  };
 
-    logger.log('🔔 Notification tapped:', data);
-
-    // Navigate based on notification type/data
-    const notificationData = data as any;
-    if (notificationData?.type) {
-      switch (notificationData.type) {
-        case 'drill_assigned':
-          if (notificationData.drillId) {
-            router.push(`/practice/drills/${notificationData.drillId}`);
-          } else {
-            router.push('/practice/drills');
-          }
-          break;
-        case 'drill_reviewed':
-          if (notificationData.drillId) {
-            router.push(`/practice/drills/${notificationData.drillId}`);
-          } else {
-            router.push('/practice/drills');
-          }
-          break;
-        case 'attempt_reviewed':
-          if (notificationData.attemptId || notificationData.drillId) {
-            router.push('/practice/drills');
-          } else {
-            router.push('/(tabs)');
-          }
-          break;
-        default:
-          // Default navigation
-          router.push('/(tabs)');
-      }
-    } else {
-      // No type specified, go to home
-      router.push('/(tabs)');
-    }
+  const invalidateNotifications = () => {
+    queryClient.invalidateQueries({ queryKey: notificationsQueryKey.all });
   };
 
   useEffect(() => {
@@ -300,17 +279,18 @@ export function usePushNotifications() {
     // Only set up listeners if module is available
     try {
       if (Notifications.addNotificationReceivedListener) {
-        notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+        notificationListener.current = Notifications.addNotificationReceivedListener((notification: any) => {
           logger.log('🔔 Notification received (foreground):', notification);
           if (isMounted) {
             setNotification(notification);
+            invalidateNotifications();
           }
         });
       }
 
       // Listen for notification taps
       if (Notifications.addNotificationResponseReceivedListener) {
-        responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+        responseListener.current = Notifications.addNotificationResponseReceivedListener((response: any) => {
           logger.log('🔔 Notification response:', response);
           handleNotificationTap(response.notification);
         });

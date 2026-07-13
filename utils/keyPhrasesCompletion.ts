@@ -1,4 +1,3 @@
-import type { TextScore } from "@/services/speechace.service";
 import type {
   KeyPhraseItem,
   KeyPhrasesResult,
@@ -6,7 +5,9 @@ import type {
   PerformanceReviewGroup,
   PerformanceReviewSnapshot,
 } from "@/types/drill.types";
+import { textScoreToRecord } from "@/utils/performanceReviewAnalytics";
 
+export { textScoreToRecord };
 export const KEY_PHRASES_PASS_THRESHOLD = 65;
 
 export type KeyPhraseItemResult = {
@@ -128,7 +129,3 @@ export function buildPerformanceReviewSnapshot(params: {
   };
 }
 
-export function textScoreToRecord(textScore: TextScore | null): Record<string, unknown> | undefined {
-  if (!textScore) return undefined;
-  return JSON.parse(JSON.stringify(textScore)) as Record<string, unknown>;
-}

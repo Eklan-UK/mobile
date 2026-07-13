@@ -1,14 +1,27 @@
 import { AppText, BoldText } from "@/components/ui";
-import {
-  DrillAssignment,
-  DrillType,
-  getDrillCategory,
-  getEstimatedTime,
-} from "@/types/drill.types";
+import { DrillAssignment, DrillType } from "@/types/drill.types";
+import { resolveDrillTopicTitle } from "@/utils/drillAssignment";
+import { isInProgressPlanItem } from "@/utils/learnerAssignedPlan";
 import { LinearGradient } from "expo-linear-gradient";
 import { memo } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
+
+const DRILL_TYPE_LABELS: Record<string, string> = {
+  roleplay: "Roleplay",
+  vocabulary: "Vocabulary",
+  grammar: "Grammar",
+  matching: "Matching",
+  definition: "Definition",
+  sentence_writing: "Sentence Building",
+  fill_blank: "Fill-in-the-Blank",
+  key_phrases: "Key Phrases",
+  summary: "Reading",
+  listening: "Listening",
+  sentence: "Sentence",
+};
+
+const DRILL_ESTIMATED_DURATION_LABEL = "5–15 minutes";
 
 function PlayIconSmall() {
   return (
@@ -16,10 +29,6 @@ function PlayIconSmall() {
       <Path d="M5 3l14 9-14 9V3z" />
     </Svg>
   );
-}
-
-function formatDurationLabel(type: DrillType): string {
-  return getEstimatedTime(type).replace(/-/g, "—").replace("mins", "minutes");
 }
 
 export interface ContinuePracticeCardProps {
@@ -39,9 +48,9 @@ export const ContinuePracticeCard = memo(function ContinuePracticeCard({
   subscriptionLocked = false,
 }: ContinuePracticeCardProps) {
   const { drill } = assignment;
-  const isResume = assignment.status === "in_progress";
-  const typeLabel = getDrillCategory(drill.type);
-  const durationLabel = formatDurationLabel(drill.type);
+  const isResume = isInProgressPlanItem(assignment);
+  const typeLabel = DRILL_TYPE_LABELS[drill.type as DrillType] ?? drill.type;
+  const topicTitle = resolveDrillTopicTitle(drill);
 
   return (
     <View style={[styles.outer, subscriptionLocked && { opacity: 0.92 }]}>
@@ -58,13 +67,19 @@ export const ContinuePracticeCard = memo(function ContinuePracticeCard({
           </AppText>
         </View>
 
+        {topicTitle ? (
+          <BoldText style={styles.topicTitle} numberOfLines={2}>
+            {topicTitle}
+          </BoldText>
+        ) : null}
+
         <BoldText style={styles.title} numberOfLines={2}>
           {drill.title}
         </BoldText>
 
         <View style={styles.metaRow}>
           <AppText style={styles.meta}>{typeLabel}</AppText>
-          <AppText style={styles.meta}>{durationLabel}</AppText>
+          <AppText style={styles.meta}>{DRILL_ESTIMATED_DURATION_LABEL}</AppText>
         </View>
 
         <TouchableOpacity
@@ -114,6 +129,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.6,
+  },
+  topicTitle: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20,
+    marginBottom: 6,
   },
   title: {
     color: "#FFFFFF",

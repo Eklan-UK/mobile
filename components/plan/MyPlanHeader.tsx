@@ -1,6 +1,6 @@
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { HomeBadgeButton } from '@/components/badges/HomeBadgeButton';
 import { AppText, BoldText } from '@/components/ui';
-import BellIcon from '@/assets/icons/bell.svg';
 import tw from '@/lib/tw';
 import { useUserStreakCount } from '@/hooks/useUserStreakCount';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,13 +56,7 @@ export function MyPlanHeader() {
             <StreakPill count={streakCount} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={tw`w-9 h-9 rounded-full bg-neutral-100 dark:bg-neutral-800 items-center justify-center`}
-            onPress={() => router.push('/notifications')}
-            accessibilityLabel="Notifications"
-          >
-            <BellIcon width={18} height={18} />
-          </TouchableOpacity>
+          <NotificationBell variant="plan" />
         </View>
       </View>
     </View>

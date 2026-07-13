@@ -1,33 +1,31 @@
 import { AppText, BoldText } from "@/components/ui";
 import { ContinuePracticeCard } from "@/components/practice/continue-practice-card";
+import { TodaysFocusCard } from "@/components/daily-focus/TodaysFocusCard";
+import { WeeklyChallengeCard } from "@/components/weekly-challenge/WeeklyChallengeCard";
 import { HomeProgressCard } from "@/components/progress/HomeProgressCard";
 import { PlanDrillRow } from "@/components/learning-journey/PlanDrillRow";
-import { PlanFreeTalkRow } from "@/components/learning-journey/PlanFreeTalkRow";
 import { SavedDrillsSection } from "@/components/learning-journey/SavedDrillsSection";
 import { useProgressScorecard } from "@/hooks/useProgressScorecard";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsSubscribed } from "@/hooks/useIsSubscribed";
 import { useDailyFocusToday } from "@/hooks/useDailyFocusToday";
-import { useLearnerDrills } from "@/hooks/useLearnerDrills";
-import { useFreeTalkCompletedScenarioIds } from "@/hooks/useFreeTalkCompletedScenarioIds";
-import { useFreeTalkScenarios } from "@/hooks/useFreeTalkScenarios";
-import {
-  buildAssignedPracticeFeed,
-  takeAssignedPracticeFeed,
-  type AssignedPracticeFeedItem,
-} from "@/utils/assignedPracticeFeed";
-import { categorizeDrillsByPlanTab } from "@/utils/drillPlanTab";
+import { useHomeLearnerDrills } from "@/hooks/useLearnerDrills";
+import { useWeeklyChallengeWeek } from "@/hooks/useWeeklyChallenge";
 import { usePrefetch } from "@/hooks/usePrefetch";
 import { useUserStreakCount } from "@/hooks/useUserStreakCount";
 import { DrillAssignment } from "@/types/drill.types";
-import { pickNextPracticeDrill } from "@/utils/learnerAssignedPlan";
-import { navigateToDrill } from "@/utils/drillNavigation";
+import { isFreeTalkPlanItem } from "@/domain/learning-journey/group-journey-drills";
 import {
-  navigatePlanDrillRow,
-  navigatePlanFreeTalkByScenarioId,
-} from "@/utils/planRowNavigation";
+  isActiveAssignedPlanItem,
+  pickNextPracticeDrill,
+  sortAssignedPlanItems,
+} from "@/utils/learnerAssignedPlan";
+import { isWeeklyChallengeDayUtc } from "@/utils/challenges/utc-week-challenge";
+import { resolveDrillTopicTitle } from "@/utils/drillAssignment";
+import { navigateToDrill } from "@/utils/drillNavigation";
+import { navigatePlanDrillRow } from "@/utils/planRowNavigation";
 import tw from "@/lib/tw";
-import BellIcon from "@/assets/icons/bell.svg";
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
@@ -167,6 +165,11 @@ export default function HomeScreen() {
   const isSubscribed = useIsSubscribed();
   const firstName = user?.firstName ?? "there";
 
+  const subscriptionActivatedAt = user?.subscriptionActivatedAt
+    ? new Date(user.subscriptionActivatedAt)
+    : undefined;
+  const isChallengeDay = isWeeklyChallengeDayUtc(new Date(), subscriptionActivatedAt);
+
   const { prefetchDrillAssignment } = usePrefetch();
   const { data: streakCount = 0 } = useUserStreakCount();
 
@@ -182,45 +185,50 @@ export default function HomeScreen() {
     isError: isDailyFocusError,
   } = useDailyFocusToday();
 
-  const { data: drillsData, isLoading: isDrillsLoading, refetch: refetchDrills } = useLearnerDrills();
-  const {
-    data: freeTalkScenarios = [],
-    isLoading: isFreeTalkLoading,
-    refetch: refetchFreeTalk,
-  } = useFreeTalkScenarios(isSubscribed);
-  const { data: completedFreeTalkIds } = useFreeTalkCompletedScenarioIds(isSubscribed);
+  const { data: drillsData, isLoading: isDrillsLoading, refetch: refetchDrills } =
+    useHomeLearnerDrills();
+
+  const { data: weeklyChallenge } = useWeeklyChallengeWeek(undefined, {
+    enabled: isChallengeDay,
+  });
 
   useFocusEffect(
     useCallback(() => {
       void refetchScorecard();
       void refetchDrills();
-      if (isSubscribed) {
-        void refetchFreeTalk();
-      }
-    }, [refetchScorecard, refetchDrills, isSubscribed, refetchFreeTalk])
+    }, [refetchScorecard, refetchDrills])
   );
 
-  const assignedPracticeFeed = useMemo(() => {
-    const { ongoing } = categorizeDrillsByPlanTab(drillsData?.drills ?? []);
-    const feed = buildAssignedPracticeFeed(ongoing, freeTalkScenarios);
-    return takeAssignedPracticeFeed(feed, 4);
-  }, [drillsData?.drills, freeTalkScenarios]);
-
-  const isAssignedPracticeLoading = isDrillsLoading || (isSubscribed && isFreeTalkLoading);
-
-  const handleFreeTalkPress = useCallback(
-    (scenarioId: string) => {
-      navigatePlanFreeTalkByScenarioId(scenarioId, !isSubscribed);
-    },
-    [isSubscribed]
+  const drills = drillsData?.drills ?? [];
+  const activeDrills = useMemo(
+    () => drills.filter(isActiveAssignedPlanItem),
+    [drills]
   );
+
+  const assignedDrillRows = useMemo(() => {
+    const drillOnly = activeDrills.filter((item) => !isFreeTalkPlanItem(item));
+    return sortAssignedPlanItems(drillOnly).slice(0, 4);
+  }, [activeDrills]);
 
   const continuePracticeAssignment = useMemo(
-    () => pickNextPracticeDrill(drillsData?.drills ?? []),
-    [drillsData]
+    () => pickNextPracticeDrill(drills),
+    [drills]
   );
 
+  const showWeeklyChallenge =
+    isChallengeDay &&
+    activeDrills.length === 0 &&
+    weeklyChallenge != null &&
+    ["ready", "generating", "failed"].includes(weeklyChallenge.status);
+
+  const showTodaysFocus =
+    !showWeeklyChallenge &&
+    !isDailyFocusPending &&
+    !isDailyFocusError &&
+    dailyFocus !== null;
+
   const showContinuePracticeCard =
+    !showWeeklyChallenge &&
     !isDailyFocusPending &&
     !isDailyFocusError &&
     dailyFocus === null &&
@@ -239,6 +247,24 @@ export default function HomeScreen() {
     },
     [prefetchDrillAssignment, isSubscribed]
   );
+
+  const handleWeeklyChallengePress = useCallback(() => {
+    if (!isSubscribed) {
+      router.push("/premium");
+      return;
+    }
+    router.push("/practice/weekly-challenge");
+  }, [isSubscribed]);
+
+  const handleDailyFocusPress = useCallback(() => {
+    if (!isSubscribed) {
+      router.push("/premium");
+      return;
+    }
+    if (dailyFocus?._id) {
+      router.push(`/daily-focus/${dailyFocus._id}`);
+    }
+  }, [isSubscribed, dailyFocus?._id]);
 
   return (
     <SafeAreaView edges={["top"]} style={[tw`flex-1`, { backgroundColor: p.pageBg }]}>
@@ -262,23 +288,26 @@ export default function HomeScreen() {
           <View style={tw`flex-row items-center gap-2 pt-1`}>
             <HomeBadgeButton />
             <StreakPill count={streakCount} />
-            <TouchableOpacity
-              style={[
-                styles.bellBtn,
-                { backgroundColor: p.bellBtnBg, borderColor: p.bellBtnBorder },
-              ]}
-              onPress={() => router.push("/notifications")}
-              accessibilityLabel="Notifications"
-            >
-              <BellIcon width={16} height={16} />
-            </TouchableOpacity>
+            <NotificationBell variant="home" />
           </View>
         </View>
 
         <View style={tw`px-5 gap-4`}>
 
-          {/* ── START / CONTINUE PRACTICE (no daily focus + open assignment) ─ */}
-          {showContinuePracticeCard && continuePracticeAssignment && (
+          {/* ── HERO: Weekly Challenge → Today's Focus → Continue Practice ─ */}
+          {showWeeklyChallenge && weeklyChallenge ? (
+            <WeeklyChallengeCard
+              challenge={weeklyChallenge}
+              subscriptionLocked={!isSubscribed}
+              onPress={handleWeeklyChallengePress}
+            />
+          ) : showTodaysFocus && dailyFocus ? (
+            <TodaysFocusCard
+              dailyFocus={dailyFocus}
+              subscriptionLocked={!isSubscribed}
+              onPress={handleDailyFocusPress}
+            />
+          ) : showContinuePracticeCard && continuePracticeAssignment ? (
             <ContinuePracticeCard
               assignment={continuePracticeAssignment}
               subscriptionLocked={!isSubscribed}
@@ -291,7 +320,7 @@ export default function HomeScreen() {
                 navigateToDrill(continuePracticeAssignment);
               }}
             />
-          )}
+          ) : null}
 
           {/* ── VIEW SESSIONS ───────────────────────────────── */}
           <ViewSessionsButton />
@@ -340,7 +369,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <SavedDrillsSection title={t("account.savedDrills")} />
+          <SavedDrillsSection title={t("account.savedDrills")} showTopicTitle />
 
           {/* ── ASSIGNED DRILLS ────────────────────────────── */}
           <View>
@@ -380,47 +409,31 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <View style={tw`gap-3 mt-2`}>
-              {isAssignedPracticeLoading ? (
+              {isDrillsLoading ? (
                 <View style={[styles.emptyState, { backgroundColor: p.emptyStateBg }]}>
                   <AppText style={[tw`text-sm`, { color: p.emptyStateText }]}>Loading drills…</AppText>
                 </View>
-              ) : assignedPracticeFeed.length === 0 ? (
+              ) : assignedDrillRows.length === 0 ? (
                 <View style={[styles.emptyState, { backgroundColor: p.emptyStateBg }]}>
                   <AppText style={[tw`text-sm`, { color: p.emptyStateText }]}>
                     {t("account.noDrillsYet")}
                   </AppText>
                 </View>
               ) : (
-                assignedPracticeFeed.map((item: AssignedPracticeFeedItem) =>
-                  item.kind === "drill" ? (
-                    <PlanDrillRow
-                      key={item.assignment.assignmentId}
-                      drill={item.assignment.drill}
-                      assignmentId={item.assignment.assignmentId}
-                      dueDate={item.assignment.dueDate}
-                      completedAt={item.assignment.completedAt}
-                      status={item.assignment.status}
-                      locked={!isSubscribed}
-                      onPress={() => handleDrillPress(item.assignment)}
-                      onPressIn={() => prefetchDrillAssignment(item.assignment)}
-                    />
-                  ) : (
-                    <PlanFreeTalkRow
-                      key={`free-talk-${item.scenario.id}`}
-                      scenarioId={item.scenario.id}
-                      title={item.scenario.title}
-                      scenarioType={item.scenario.scenarioType}
-                      completionDate={item.scenario.completionDate}
-                      completedAt={
-                        completedFreeTalkIds?.has(item.scenario.id)
-                          ? new Date().toISOString()
-                          : undefined
-                      }
-                      locked={!isSubscribed}
-                      onPress={() => handleFreeTalkPress(item.scenario.id)}
-                    />
-                  )
-                )
+                assignedDrillRows.map((assignment) => (
+                  <PlanDrillRow
+                    key={assignment.assignmentId}
+                    drill={assignment.drill}
+                    topicTitle={resolveDrillTopicTitle(assignment.drill)}
+                    assignmentId={assignment.assignmentId}
+                    dueDate={assignment.dueDate}
+                    completedAt={assignment.completedAt}
+                    status={assignment.status}
+                    locked={!isSubscribed}
+                    onPress={() => handleDrillPress(assignment)}
+                    onPressIn={() => prefetchDrillAssignment(assignment)}
+                  />
+                ))
               )}
             </View>
           </View>

@@ -3,6 +3,7 @@ import {
   clearCheckpointSafe,
   shouldCheckpoint,
 } from '@/lib/drill/drill-checkpoint';
+import { syncDrillProgressToLearnerDrills } from '@/hooks/useDrills';
 import {
   getCheckpoint,
   saveCheckpoint,
@@ -14,6 +15,7 @@ import type {
   PartialResultsForDrillType,
 } from '@/types/drill-checkpoint.types';
 import { logger } from '@/utils/logger';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface UseDrillCheckpointOptions<
@@ -41,6 +43,7 @@ export function useDrillCheckpoint<TType extends DrillCheckpointType>({
   onHydrate,
   onFreshStart,
 }: UseDrillCheckpointOptions<TType>) {
+  const queryClient = useQueryClient();
   const [isLoadingCheckpoint, setIsLoadingCheckpoint] = useState(false);
   const [showCheckpointScreen, setShowCheckpointScreen] = useState(false);
   const [checkpointCompletedCount, setCheckpointCompletedCount] = useState(0);
@@ -119,15 +122,19 @@ export function useDrillCheckpoint<TType extends DrillCheckpointType>({
     isDrillReady,
   ]);
 
-  const saveCheckpointAtBoundary = useCallback(
+  const persistCheckpoint = useCallback(
     async (
       partialResults: PartialResultsForDrillType<TType>,
       completedCount: number,
-      currentIndex?: number
+      currentIndex?: number,
+      options?: { requireBoundary?: boolean; showCheckpointScreen?: boolean }
     ) => {
-      if (!checkpointsEnabled || !shouldCheckpoint(completedCount)) return;
+      if (!checkpointsEnabled) return;
+      if (options?.requireBoundary !== false && !shouldCheckpoint(completedCount)) {
+        return;
+      }
 
-      const index = currentIndex ?? completedCount - 1;
+      const index = currentIndex ?? Math.max(completedCount - 1, 0);
 
       if (!startedAtRef.current) {
         startedAtRef.current = new Date().toISOString();
@@ -143,13 +150,28 @@ export function useDrillCheckpoint<TType extends DrillCheckpointType>({
           startedAt: startedAtRef.current,
         });
         await saveCheckpoint(drillId, body);
+        syncDrillProgressToLearnerDrills(queryClient, assignmentId!);
         setCheckpointCompletedCount(completedCount);
-        setShowCheckpointScreen(true);
+        if (options?.showCheckpointScreen !== false && shouldCheckpoint(completedCount)) {
+          setShowCheckpointScreen(true);
+        }
       } catch (error) {
         logger.warn('Failed to save drill checkpoint:', error);
       }
     },
-    [assignmentId, checkpointsEnabled, drillId, drillType]
+    [assignmentId, checkpointsEnabled, drillId, drillType, queryClient]
+  );
+
+  const saveCheckpointAtBoundary = useCallback(
+    (
+      partialResults: PartialResultsForDrillType<TType>,
+      completedCount: number,
+      currentIndex?: number
+    ) =>
+      persistCheckpoint(partialResults, completedCount, currentIndex, {
+        requireBoundary: true,
+      }),
+    [persistCheckpoint]
   );
 
   const dismissCheckpoint = useCallback(() => {
@@ -167,6 +189,7 @@ export function useDrillCheckpoint<TType extends DrillCheckpointType>({
     checkpointCompletedCount,
     dismissCheckpoint,
     saveCheckpointAtBoundary,
+    persistCheckpoint,
     clearCheckpoint,
     startedAtRef,
     sessionKey,

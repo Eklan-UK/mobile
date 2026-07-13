@@ -170,8 +170,19 @@ interface WeeklyChallengeCompleteResponse {
 |--------|------|-------|
 | `GET` | `/drills/{drillId}/roleplay-progress` | Query: `source=weekly_challenge`, `challengeId`, `challengeItemIndex` |
 | `POST` | `/drills/{drillId}/roleplay-progress` | Body includes `source: 'weekly_challenge'`, `challengeId`, `challengeItemIndex`, `weekStartDate?`, turn/scene state |
+| `DELETE` | `/drills/{drillId}/roleplay-progress` | Query: `source=weekly_challenge`, `challengeId`, `challengeItemIndex` — clear on submit/restart |
 
-Use `drillId` = synthetic id from adapter: `${challengeId}-${index}`.
+**Path `{drillId}` = bare `challengeId`** — the WeeklyChallenge document `_id` (24-char ObjectId). Read it from `weeklyChallengeMeta.challengeId` or `itemData.challengeId`. **Do not** use the composite `itemId` or `toDrillShape()._id` (`{challengeId}-{index}`) in this path; the backend validates `{drillId}` with `Types.ObjectId.isValid()` and returns **400** for composite strings.
+
+> **ID split (vs §4.3 / §4.4):** Item fetch and complete APIs accept composite `{challengeId}-{index}` in the path. Roleplay-progress is the exception — path `drillId` must be the bare `challengeId` only. Disambiguation within the challenge is via query/body (`challengeId` + `challengeItemIndex`). Web: `src/components/drills/RoleplayDrill.tsx`. Mobile: `utils/roleplayProgressContext.ts` (`progressDrillId: challengeId`).
+
+**HTTP examples:**
+
+```http
+GET  /api/v1/drills/{challengeId}/roleplay-progress?source=weekly_challenge&challengeId={challengeId}&challengeItemIndex={index}
+POST /api/v1/drills/{challengeId}/roleplay-progress
+DELETE /api/v1/drills/{challengeId}/roleplay-progress?source=weekly_challenge&challengeId={challengeId}&challengeItemIndex={index}
+```
 
 ---
 
@@ -646,7 +657,7 @@ export function toDrillShape(
 **Mid-session save:**
 
 ```typescript
-drillAPI.saveRoleplayProgress(drillId, {
+drillAPI.saveRoleplayProgress(weeklyChallengeMeta.challengeId, {
   source: 'weekly_challenge',
   challengeId: weeklyChallengeMeta.challengeId,
   challengeItemIndex: weeklyChallengeMeta.itemIndex,
@@ -658,6 +669,8 @@ drillAPI.saveRoleplayProgress(drillId, {
   sessionAnalytics,
 });
 ```
+
+Do **not** pass `weeklyChallengeMeta.itemId` or `drill._id` (composite `{challengeId}-{index}`) as the progress API path argument.
 
 ---
 
@@ -815,6 +828,10 @@ Poll every **3 seconds** while `status === 'generating'` on history (any challen
 
 Accept both `0` and `{challengeId}-0` in API paths. The completion helper always extracts the numeric suffix.
 
+### Roleplay progress `drillId`
+
+Composite `{challengeId}-{index}` is valid for item fetch (§4.3) and complete (§4.4) only. The roleplay-progress path (`GET/POST/DELETE /drills/{drillId}/roleplay-progress`) requires the bare `challengeId` (WeeklyChallenge `_id`). Passing the composite id causes **400** / "no drill found". Use `parseRoleplayProgressContext()` in `utils/roleplayProgressContext.ts` to split `progressDrillId` (API path) from `detailDrillId` (route / adapter `_id`).
+
 ### Empty drill sequences
 
 History hides weeks with `drillSequence.length === 0`. Week view shows empty state when ready but no drills.
@@ -853,7 +870,7 @@ Use this when mirroring the feature on mobile:
 - [ ] Implement `toDrillShape` adapter (vocabulary → fill_blank)
 - [ ] Pass `weeklyChallengeMeta` into drill components
 - [ ] Wire `completeWeeklyChallengeItem` in all 4 drill types
-- [ ] Roleplay: `source: 'weekly_challenge'` progress save/load
+- [ ] Roleplay: progress API path uses `challengeId` (not composite `itemId`); body/query include `source: 'weekly_challenge'`, `challengeId`, `challengeItemIndex`
 - [ ] Review screen: "Back to Challenge" → week screen
 - [ ] Subscription gate on all screens
 - [ ] URL encode/decode `weekStartDate` in navigation

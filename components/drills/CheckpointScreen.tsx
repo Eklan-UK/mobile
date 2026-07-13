@@ -1,5 +1,7 @@
 import { AppText } from '@/components/ui';
+import { invalidateDrillCaches } from '@/hooks/useDrills';
 import tw from '@/lib/tw';
+import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -74,9 +76,11 @@ export default function CheckpointScreen({
   title = 'Progress Saved',
   onContinue,
 }: CheckpointScreenProps) {
+  const queryClient = useQueryClient();
   const remaining = Math.max(totalItems - completedCount, 0);
 
   const handleExit = () => {
+    void invalidateDrillCaches(queryClient);
     router.replace('/(tabs)/plan');
   };
 

@@ -109,6 +109,7 @@ export interface UserCurrentResponse {
     subscriptionActivatedAt?: string | null;
     stripeSubscriptionStatus?: string | null;
     hasProfile?: boolean;
+    iapAccountToken?: string;
   };
   profile?: UserProfile;
 }

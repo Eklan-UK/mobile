@@ -1,15 +1,18 @@
+import DrillExitOverlay from "@/components/drills/DrillExitOverlay";
 import { AppText } from "@/components/ui";
 import {
+  beginCelebrationSession,
   playDrillEndCelebration,
   registerDrillConfettiTrigger,
+  shouldPlayCelebration,
   unregisterDrillConfettiTrigger,
   unloadDrillCelebrationSound,
 } from "@/lib/drill-celebration";
 import tw from "@/lib/tw";
 import type { DrillCompletionEffects } from "@/types/drill.types";
 import { router } from "expo-router";
-import { useEffect, useRef } from "react";
-import { Dimensions, TouchableOpacity, View } from "react-native";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { ActivityIndicator, Dimensions, StyleSheet, TouchableOpacity, View } from "react-native";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -132,6 +135,12 @@ interface DrillCompletedBaseProps {
   onContinue?: () => void;
   /** Called when the close (X) icon is pressed */
   onClose?: () => void;
+  /** Disable the continue button (e.g. while API submission is in flight). */
+  continueDisabled?: boolean;
+  /** Optional loading label shown on the continue button when disabled. */
+  continueLoadingLabel?: string;
+  /** Full-screen loader overlay while async exit work is in flight. */
+  exiting?: boolean;
 }
 
 interface DrillCompletedProgressProps extends DrillCompletedBaseProps {
@@ -177,7 +186,12 @@ export default function DrillCompletedScreen(
     onClose,
     celebrate,
     celebrationEffects,
+    continueDisabled = false,
+    continueLoadingLabel,
+    exiting = false,
   } = props;
+
+  const isExitLocked = exiting || continueDisabled;
 
   const passed =
     props.passed ?? (variant === "progress" ? true : false);
@@ -185,7 +199,6 @@ export default function DrillCompletedScreen(
   const shouldCelebrate = celebrate ?? passed;
 
   const confettiRef = useRef<ConfettiCannon>(null);
-  const celebrationPlayedRef = useRef(false);
 
   useEffect(() => {
     registerDrillConfettiTrigger(() => confettiRef.current?.start());
@@ -195,14 +208,17 @@ export default function DrillCompletedScreen(
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (variant !== "progress" || !shouldCelebrate) return;
-    if (celebrationPlayedRef.current) return;
-    celebrationPlayedRef.current = true;
+
+    const token = beginCelebrationSession();
+    if (!shouldPlayCelebration(token)) return;
+
     void playDrillEndCelebration(celebrationEffects);
   }, [variant, shouldCelebrate, celebrationEffects]);
 
   const handleClose = () => {
+    if (isExitLocked) return;
     if (onClose) {
       onClose();
     } else {
@@ -211,6 +227,7 @@ export default function DrillCompletedScreen(
   };
 
   const handleContinue = () => {
+    if (isExitLocked) return;
     if (onContinue) {
       onContinue();
     } else {
@@ -232,21 +249,28 @@ export default function DrillCompletedScreen(
   return (
     <SafeAreaView style={tw`flex-1 bg-cream-100`} edges={["top", "bottom"]}>
       {variant === "progress" && shouldCelebrate ? (
-        <ConfettiCannon
-          ref={confettiRef}
-          count={150}
-          origin={{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.55 }}
-          autoStart={false}
-          fadeOut
-          fallSpeed={3000}
-          explosionSpeed={350}
-          colors={GREEN_CONFETTI_COLORS}
-        />
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          <ConfettiCannon
+            ref={confettiRef}
+            count={150}
+            origin={{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.55 }}
+            autoStart={false}
+            fadeOut
+            fallSpeed={3000}
+            explosionSpeed={350}
+            colors={GREEN_CONFETTI_COLORS}
+          />
+        </View>
       ) : null}
 
       {/* Close Button */}
       <View style={tw`px-6 pt-4 flex-row justify-end`}>
-        <TouchableOpacity onPress={handleClose} hitSlop={8}>
+        <TouchableOpacity
+          onPress={handleClose}
+          hitSlop={8}
+          disabled={isExitLocked}
+          style={isExitLocked ? tw`opacity-50` : undefined}
+        >
           <CloseIcon />
         </TouchableOpacity>
       </View>
@@ -314,14 +338,28 @@ export default function DrillCompletedScreen(
       <View style={tw`px-6 pb-6`}>
         <TouchableOpacity
           onPress={handleContinue}
-          style={tw`w-full bg-primary-500 rounded-full py-4 items-center`}
+          disabled={isExitLocked}
+          style={tw`w-full bg-primary-500 rounded-full py-4 items-center ${
+            isExitLocked ? "opacity-70" : ""
+          }`}
           activeOpacity={0.8}
         >
-          <AppText style={tw`text-white text-base font-semibold`}>
-            {buttonLabel}
-          </AppText>
+          {isExitLocked && continueLoadingLabel ? (
+            <View style={tw`flex-row items-center gap-2`}>
+              <ActivityIndicator size="small" color="white" />
+              <AppText style={tw`text-white text-base font-semibold`}>
+                {continueLoadingLabel}
+              </AppText>
+            </View>
+          ) : (
+            <AppText style={tw`text-white text-base font-semibold`}>
+              {buttonLabel}
+            </AppText>
+          )}
         </TouchableOpacity>
       </View>
+
+      {exiting ? <DrillExitOverlay /> : null}
     </SafeAreaView>
   );
 }

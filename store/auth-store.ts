@@ -30,6 +30,7 @@ export interface User {
   subscriptionExpiresAt?: string | null;
   stripeSubscriptionStatus?: string | null;
   isSubscribed?: boolean;
+  iapAccountToken?: string;
 }
 
 export interface Session {
@@ -117,6 +118,7 @@ async function syncUserFromServer<T extends User>(user: T): Promise<T> {
       resolveEmailVerified(serverUser) || resolveEmailVerified(merged),
     isEmailVerified:
       resolveEmailVerified(serverUser) || resolveEmailVerified(merged),
+    iapAccountToken: serverUser.iapAccountToken ?? merged.iapAccountToken,
   };
 }
 
@@ -211,6 +213,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           subscriptionExpiresAt: userData.subscriptionExpiresAt || null,
           stripeSubscriptionStatus: userData.stripeSubscriptionStatus ?? null,
           isSubscribed: isProSubscriber(userData),
+          iapAccountToken: userData.iapAccountToken,
         };
 
         // Update stored user data
@@ -480,6 +483,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error) {
       // Continue even if deregistration fails
       logger.warn('Push token deregistration failed (non-critical):', error);
+    }
+
+    try {
+      const Notifications = require('expo-notifications');
+      if (Notifications?.setBadgeCountAsync) {
+        await Notifications.setBadgeCountAsync(0);
+      }
+    } catch {
+      // Badge clear is best-effort when native module is unavailable
     }
 
     try {

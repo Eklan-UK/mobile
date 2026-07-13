@@ -81,6 +81,9 @@ const translations = {
       noDrillsAssigned: 'No drills assigned yet',
       noDrillsForTopic: 'No drills assigned for this topic yet.',
       backToJourney: 'My Learning Journey',
+      notEnrolledYet: 'Not enrolled yet',
+      notEnrolledToast: 'You are not enrolled in this mission yet.',
+      enrollmentsLoadError: 'Could not load mission enrollment. Pull to refresh or tap Retry.',
     },
     language: {
       screenTitle: 'What language should the app use?',

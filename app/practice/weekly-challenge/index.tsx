@@ -93,7 +93,7 @@ export default function WeeklyChallengeHistoryScreen() {
                 <WeeklyChallengeWeekCard
                   key={challenge.weekStartDate}
                   challenge={challenge}
-                  weekNumber={idx + 1}
+                  weekNumber={challenge.weekNumber ?? visibleChallenges.length - idx}
                   onPress={() => handleCardPress(challenge.weekStartDate)}
                 />
               ))}

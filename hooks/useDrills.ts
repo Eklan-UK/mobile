@@ -1,7 +1,7 @@
 import { invalidateLearnerActivityCaches } from '@/hooks/invalidateLearnerActivityCaches';
 import { progressScorecardQueryKey } from '@/hooks/useProgressScorecard';
 import { completeDrill, getDrillById, getMyDrills } from '@/services/drill.service';
-import { DrillStatus } from '@/types/drill.types';
+import { DrillStatus, type DrillsResponse } from '@/types/drill.types';
 import { shouldFetchDrillDetail } from '@/utils/drillAssignment';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
@@ -68,6 +68,40 @@ export function useDrill(
       return failureCount < 2;
     },
   });
+}
+
+/** Optimistically mark an assignment in_progress in cached my-drills lists. */
+export function patchAssignmentStatusInDrillCaches(
+  queryClient: QueryClient,
+  assignmentId: string,
+  status: DrillStatus
+): void {
+  queryClient.setQueriesData<DrillsResponse>(
+    { queryKey: drillKeys.lists() },
+    (old) => {
+      if (!old?.drills?.length) return old;
+      return {
+        ...old,
+        drills: old.drills.map((assignment) =>
+          assignment.assignmentId === assignmentId
+            ? { ...assignment, status }
+            : assignment
+        ),
+      };
+    }
+  );
+}
+
+/**
+ * After checkpoint or roleplay progress is saved, refresh learner drill listings
+ * so Home Continue Practice and Plan reflect server in_progress state.
+ */
+export function syncDrillProgressToLearnerDrills(
+  queryClient: QueryClient,
+  assignmentId: string
+): void {
+  patchAssignmentStatusInDrillCaches(queryClient, assignmentId, 'in_progress');
+  void invalidateDrillCaches(queryClient);
 }
 
 /**

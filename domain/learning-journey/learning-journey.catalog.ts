@@ -1,6 +1,10 @@
 // Mirror of server-side catalog — hard-coded, no API fetch required.
 
-export type LearningJourneyPartId = 1 | 2 | 3 | 4;
+export type LearningJourneyPartId = 1 | 2 | 3 | 4 | 5;
+
+export interface MyEnrollmentsResponse {
+  enrolledParts: LearningJourneyPartId[];
+}
 
 export type LearningJourneyTopic = {
   id: string;
@@ -49,20 +53,42 @@ export const LEARNING_JOURNEY_PARTS: LearningJourneyPart[] = [
   },
   {
     part: 4,
+    title: 'Interview Preparation',
+    topics: [
+      { id: 'motivation_prep', title: 'Motivation prep', order: 1 },
+      { id: 'technical_prep', title: 'Technical prep', order: 2 },
+      { id: 'situation_judgement_prep', title: 'Situation Judgement Prep', order: 3 },
+      { id: 'mock_1', title: 'Mock 1', order: 4 },
+      { id: 'mock_2', title: 'Mock 2', order: 5 },
+      { id: 'mock_3', title: 'Mock 3', order: 6 },
+      { id: 'mock_4', title: 'Mock 4', order: 7 },
+      { id: 'mock_5', title: 'Mock 5', order: 8 },
+    ],
+  },
+  {
+    part: 5,
     title: 'Bonus Scenarios',
     topics: [
       { id: 'phone_colleagues', title: 'Phone Communication with Colleagues', order: 1, freeTalkScenarioType: 'phone_colleague' },
       { id: 'phone_other_departments', title: 'Phone Communication with Other Departments', order: 2, freeTalkScenarioType: 'phone_department' },
       { id: 'phone_patient_families', title: "Phone Communication with the Patient's Families", order: 3, freeTalkScenarioType: 'phone_family' },
+      { id: 'grammar', title: 'Grammar', order: 4 },
     ],
   },
 ];
 
-export function getLearningJourneyPart(part: LearningJourneyPartId) {
+export function parseLearningJourneyPartId(value: unknown): LearningJourneyPartId | null {
+  const n = typeof value === 'string' ? parseInt(value, 10) : value;
+  if (n === 1 || n === 2 || n === 3 || n === 4 || n === 5) {
+    return n;
+  }
+  return null;
+}
+
+export function getPartById(part: LearningJourneyPartId): LearningJourneyPart | undefined {
   return LEARNING_JOURNEY_PARTS.find((p) => p.part === part);
 }
 
-export function isValidLearningJourneyPart(value: unknown): value is LearningJourneyPartId {
-  const n = typeof value === 'string' ? parseInt(value, 10) : value;
-  return n === 1 || n === 2 || n === 3 || n === 4;
+export function getTopicsForPart(part: LearningJourneyPartId): LearningJourneyTopic[] {
+  return getPartById(part)?.topics ?? [];
 }

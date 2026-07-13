@@ -20,7 +20,10 @@ export async function getWeeklyChallengeHistory(): Promise<WeeklyChallengeListRe
     '/api/v1/learner/weekly-challenge/history',
   );
   const data = response.data?.data ?? (response.data as any);
-  return data?.challenges ?? [];
+  const challenges: WeeklyChallengeListResponse[] = data?.challenges ?? [];
+  return [...challenges].sort(
+    (a, b) => new Date(b.weekStartDate).getTime() - new Date(a.weekStartDate).getTime(),
+  );
 }
 
 /**

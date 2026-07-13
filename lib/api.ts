@@ -35,6 +35,25 @@ export function isAxiosTimeout(error: unknown): boolean {
   );
 }
 
+/** True for offline, refused, or timed-out transport failures (axios or fetch). */
+export function isNetworkError(error: unknown): boolean {
+  if (!error) return false;
+  if (typeof error === 'string') {
+    return error === 'Network Error' || /network|timed out/i.test(error);
+  }
+  if (typeof error !== 'object') return false;
+  const err = error as { message?: string; code?: string; name?: string };
+  return (
+    err.message === 'Network Error' ||
+    err.code === 'ERR_NETWORK' ||
+    err.code === 'ECONNREFUSED' ||
+    err.name === 'AbortError' ||
+    isAxiosTimeout(error) ||
+    (typeof err.message === 'string' &&
+      (/network request failed/i.test(err.message) || /timed out/i.test(err.message)))
+  );
+}
+
 const isDev = __DEV__;
 
 // ─── In-memory token cache (avoids SecureStore read on every request) ────────

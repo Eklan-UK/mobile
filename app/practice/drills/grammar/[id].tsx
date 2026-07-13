@@ -8,6 +8,7 @@ import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
 import { useActivityStore } from "@/store/activity-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
@@ -31,6 +32,10 @@ export default function GrammarDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
+  const handleExit = () => {
+    void exitDrill();
+  };
   const startTimeRef = useRef(Date.now());
   const insets = useSafeAreaInsets();
 
@@ -259,8 +264,9 @@ export default function GrammarDrill() {
         passed={false}
         title="Grammar submitted"
         message="Your grammar drill has been submitted for review. You'll be notified when your sentences have been reviewed."
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        exiting={isExiting}
+        onContinue={handleExit}
+        onClose={handleExit}
       />
     );
   }

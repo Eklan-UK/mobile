@@ -8,6 +8,7 @@ import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
 import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useDrillCheckpoint } from "@/hooks/useDrillCheckpoint";
+import { useDrillExit } from "@/hooks/useDrillExit";
 import { useActivityStore } from "@/store/activity-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
@@ -32,6 +33,10 @@ export default function SentenceDrill() {
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
+  const { isExiting, exitDrill } = useDrillExit();
+  const handleExit = () => {
+    void exitDrill();
+  };
   const startTimeRef = useRef(Date.now());
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
@@ -70,6 +75,8 @@ export default function SentenceDrill() {
     dismissCheckpoint,
     clearCheckpoint,
     skipLocalRestore,
+    persistCheckpoint,
+    checkpointsEnabled,
   } = useDrillCheckpoint({
     drillId,
     assignmentId,
@@ -108,29 +115,46 @@ export default function SentenceDrill() {
     };
   }, [drill]);
 
-  // Save progress (debounced to avoid AsyncStorage writes on every keystroke)
+  // Save progress — API checkpoint when assigned, otherwise local AsyncStorage
   useEffect(() => {
-    if (drill) {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        updateDrillProgress({
-          drillId,
-          title: drill.title,
-          type: drill.type,
-          currentStep: 1,
-          totalSteps: 1,
-          answers: [],
-          data: { answers },
-          startTime: startTimeRef.current,
-          lastUpdated: Date.now(),
-        });
-      }, 1500); // Only persist after 1.5s of inactivity
-    }
+    if (!drill) return;
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const hasPartial =
+        answers.definition.trim().length > 0 ||
+        answers.sentence1.trim().length > 0 ||
+        answers.sentence2.trim().length > 0;
+
+      if (checkpointsEnabled && hasPartial) {
+        void persistCheckpoint(
+          { answers },
+          0,
+          -1,
+          { requireBoundary: false, showCheckpointScreen: false }
+        );
+        return;
+      }
+
+      if (skipLocalRestore) return;
+
+      updateDrillProgress({
+        drillId,
+        title: drill.title,
+        type: drill.type,
+        currentStep: 1,
+        totalSteps: 1,
+        answers: [],
+        data: { answers },
+        startTime: startTimeRef.current,
+        lastUpdated: Date.now(),
+      });
+    }, 1500);
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [answers, drill]);
+  }, [answers, drill, checkpointsEnabled, persistCheckpoint, skipLocalRestore, drillId, updateDrillProgress]);
 
   useEffect(() => {
     loadDrill();
@@ -243,8 +267,9 @@ export default function SentenceDrill() {
         passed={false}
         title="Sentence submitted"
         message="Your submission has been submitted for review. You'll be notified when your sentences have been reviewed."
-        onContinue={() => router.back()}
-        onClose={() => router.back()}
+        exiting={isExiting}
+        onContinue={handleExit}
+        onClose={handleExit}
       />
     );
   }
