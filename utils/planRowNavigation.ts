@@ -32,8 +32,9 @@ export function navigatePlanDrillRow(item: DrillAssignment, onNavigate?: () => v
   onNavigate?.();
   const status = getPlanDrillStatus(item);
   if (status === 'completed' && item.assignmentId) {
+    const type = item.drill?.type ? `&type=${encodeURIComponent(String(item.drill.type))}` : '';
     router.push(
-      `/practice/drills/results?drillId=${item.drill._id}&assignmentId=${item.assignmentId}` as never
+      `/practice/drills/results?drillId=${item.drill._id}&assignmentId=${item.assignmentId}${type}` as never
     );
     return;
   }

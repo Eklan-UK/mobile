@@ -650,7 +650,8 @@ export const aiService = {
 
   /**
    * Fetch TTS audio for Free Talk and return a local file URI for playback.
-   * Uses main /api/v1/tts (staging does not reliably serve /ai/free-talk/tts).
+   * Prefers POST /api/v1/ai/free-talk/tts (ElevenLabs + user englishAccent, same as web).
+   * Falls back to /api/v1/tts with voice=default (also accent-aware) if free-talk TTS is unavailable.
    */
   async fetchFreeTalkTtsUri(text: string): Promise<string> {
     const trimmed = text.trim();
@@ -658,14 +659,30 @@ export const aiService = {
       throw new Error('TTS text is empty');
     }
 
+    const { ttsService } = await import('./tts.service');
+
     try {
-      const { ttsService } = await import('./tts.service');
-      const uri = await ttsService.generateTTS({ text: trimmed });
+      const uri = await ttsService.generateFreeTalkTTS(trimmed);
       if (!uri?.trim()) throw new Error('TTS unavailable');
       return uri;
     } catch (error: any) {
-      logger.error('❌ fetchFreeTalkTtsUri:', error?.message ?? error);
-      throw error;
+      const message = error?.message ?? String(error);
+      if (message.includes('Subscription required')) {
+        logger.error('❌ fetchFreeTalkTtsUri:', message);
+        throw error;
+      }
+      logger.warn(
+        'Free Talk TTS endpoint failed; falling back to /api/v1/tts (accent via default voice):',
+        message,
+      );
+      try {
+        const uri = await ttsService.generateTTS({ text: trimmed });
+        if (!uri?.trim()) throw new Error('TTS unavailable');
+        return uri;
+      } catch (fallbackError: any) {
+        logger.error('❌ fetchFreeTalkTtsUri:', fallbackError?.message ?? fallbackError);
+        throw fallbackError;
+      }
     }
   },
 

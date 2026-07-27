@@ -24,7 +24,7 @@ const LoginSheet = forwardRef<BottomSheetModal, LoginSheetProps>(({ onDismiss, o
   const { login, isLoading, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   // variables
   const snapPoints = useMemo(() => ['75%'], []);

@@ -113,13 +113,9 @@ Apple button unavailable, entitlement missing on older builds, or verify fails a
 ### Solution steps
 
 1. **App Store Connect / Apple Developer:** Enable **Sign in with Apple** on App ID `com.eklan.ai`.
-2. **Mobile:** `app.json` must include `ios.usesAppleSignIn: true` (already set per audit). Ship a **new** native build to TestFlight/App Store after enabling.
-3. **Backend:** Configure Apple verification env vars (names only; values in server secret store):
-   - `APPLE_CLIENT_ID`
-   - `APPLE_TEAM_ID`
-   - `APPLE_KEY_ID`
-   - `APPLE_PRIVATE_KEY`
-4. Align `APPLE_CLIENT_ID` with what the server expects for native ID tokens (bundle ID vs Services ID — match [NATIVE_OAUTH_SETUP.md](./NATIVE_OAUTH_SETUP.md) and server config).
+2. **Mobile:** `app.json` must include `ios.usesAppleSignIn: true` and plugin `expo-apple-authentication`. Ship a **new** native build after entitlement/plugin changes.
+3. **Backend (native verify — required):** Set `APPLE_BUNDLE_ID=com.eklan.ai` (must match iOS JWT `aud` / EAS bundle ID). Redeploy after changing it.
+4. **Backend (web Apple OAuth only — optional):** `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` — not used by mobile `verify-id-token`.
 5. **UI:** Apple button is shown only on iOS (`app/(auth)/auth.tsx`); do not test Apple on Android.
 
 ### Who owns it

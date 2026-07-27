@@ -8,6 +8,7 @@ import { notificationService } from '@/services/notification.service';
 import { queryClient } from '@/lib/query-client';
 import { prefetchUserCurrent } from '@/lib/prefetch-user-current';
 import { USER_CURRENT_KEY } from '@/hooks/useSettings';
+import type { BillingPeriod } from '@/types/billing';
 import { isProSubscriber, mergeSubscriptionFields } from '@/utils/subscription';
 import { resolveEmailVerified, resolveHasProfile } from '@/utils/auth-profile';
 
@@ -30,6 +31,8 @@ export interface User {
   subscriptionExpiresAt?: string | null;
   stripeSubscriptionStatus?: string | null;
   isSubscribed?: boolean;
+  eligibleForTrial?: boolean;
+  subscriptionBillingPeriod?: BillingPeriod | null;
   iapAccountToken?: string;
 }
 
@@ -119,6 +122,9 @@ async function syncUserFromServer<T extends User>(user: T): Promise<T> {
     isEmailVerified:
       resolveEmailVerified(serverUser) || resolveEmailVerified(merged),
     iapAccountToken: serverUser.iapAccountToken ?? merged.iapAccountToken,
+    eligibleForTrial: serverUser.eligibleForTrial ?? merged.eligibleForTrial,
+    subscriptionBillingPeriod:
+      serverUser.subscriptionBillingPeriod ?? merged.subscriptionBillingPeriod,
   };
 }
 
@@ -213,6 +219,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           subscriptionExpiresAt: userData.subscriptionExpiresAt || null,
           stripeSubscriptionStatus: userData.stripeSubscriptionStatus ?? null,
           isSubscribed: isProSubscriber(userData),
+          eligibleForTrial: userData.eligibleForTrial,
+          subscriptionBillingPeriod: userData.subscriptionBillingPeriod ?? null,
           iapAccountToken: userData.iapAccountToken,
         };
 

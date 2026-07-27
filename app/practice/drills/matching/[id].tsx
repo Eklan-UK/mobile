@@ -33,6 +33,7 @@ import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
 import { Alert } from "@/utils/alert";
 import { resolveDrillIdsFromListing } from "@/utils/drillAssignment";
 import { logger } from "@/utils/logger";
+import { isRedoSearchParam } from "@/utils/drillNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -101,7 +102,7 @@ export default function MatchingDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const paramAssignmentId = params.assignmentId as string | undefined;
-  const isRedo = params.redo === "true";
+  const isRedo = isRedoSearchParam(params.redo);
 
   const { addRecentActivity } = useActivityStore();
   const queryClient = useQueryClient();

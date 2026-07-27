@@ -2,8 +2,16 @@ import { AppText } from "@/components/ui";
 import tw from "@/lib/tw";
 import { router } from "expo-router";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ScrollView, Switch, TouchableOpacity, View } from "react-native";
+import {
+  AppState,
+  type AppStateStatus,
+  ScrollView,
+  Switch,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import Svg, { Path } from "react-native-svg";
 import { useUserCurrent, useUpdatePreferences } from "@/hooks/useSettings";
 import { DEFAULT_LESSON_PREFERENCES } from "@/types/settings";
@@ -13,8 +21,22 @@ import {
   SPEAKING_SPEEDS,
 } from "@/constants/settings-options";
 import type { LessonPreferences } from "@/types/settings";
+import {
+  DEFAULT_ENGLISH_ACCENT,
+  normalizeEnglishAccent,
+} from "@/utils/tts-accent-voices";
 
 const DEBOUNCE_MS = 500;
+
+function hydrateLessonPrefs(stored?: LessonPreferences | null): LessonPreferences {
+  const base = stored ?? DEFAULT_LESSON_PREFERENCES;
+  return {
+    ...DEFAULT_LESSON_PREFERENCES,
+    ...base,
+    englishAccent:
+      normalizeEnglishAccent(base.englishAccent) ?? DEFAULT_ENGLISH_ACCENT,
+  };
+}
 
 function BackIcon() {
   return (
@@ -144,21 +166,41 @@ function PickerRow({
 }
 
 export default function LessonSettingsScreen() {
-  const { data: me } = useUserCurrent();
+  const { data: me, refetch } = useUserCurrent();
   const mutation = useUpdatePreferences();
 
-  const serverPrefs: LessonPreferences =
-    me?.profile?.lessonPreferences ?? DEFAULT_LESSON_PREFERENCES;
-
-  const [prefs, setPrefs] = useState<LessonPreferences>(serverPrefs);
+  const [prefs, setPrefs] = useState<LessonPreferences>(() =>
+    hydrateLessonPrefs(me?.profile?.lessonPreferences),
+  );
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const appStateRef = useRef(AppState.currentState);
 
-  // Sync when profile loads
+  // Keep local UI in sync with API profile (source of truth).
   useEffect(() => {
-    if (me?.profile?.lessonPreferences) {
-      setPrefs(me.profile.lessonPreferences);
-    }
+    setPrefs(hydrateLessonPrefs(me?.profile?.lessonPreferences));
   }, [me?.profile?.lessonPreferences]);
+
+  // Refresh from API whenever this screen is focused (web↔mobile sync).
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
+
+  // Refresh when app returns to foreground while this screen is mounted.
+  useEffect(() => {
+    const onChange = (nextState: AppStateStatus) => {
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextState === "active"
+      ) {
+        void refetch();
+      }
+      appStateRef.current = nextState;
+    };
+    const sub = AppState.addEventListener("change", onChange);
+    return () => sub.remove();
+  }, [refetch]);
 
   const save = useCallback(
     (patch: Partial<LessonPreferences>) => {
@@ -180,6 +222,9 @@ export default function LessonSettingsScreen() {
     },
     [save]
   );
+
+  const accentValue =
+    normalizeEnglishAccent(prefs.englishAccent) ?? DEFAULT_ENGLISH_ACCENT;
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900`} edges={["top", "bottom"]}>
@@ -207,7 +252,7 @@ export default function LessonSettingsScreen() {
         />
         <PickerRow
           label="English type / accent"
-          value={prefs.englishAccent ?? 'british'}
+          value={accentValue}
           options={ENGLISH_ACCENTS}
           onSelect={(v) => update({ englishAccent: v })}
         />

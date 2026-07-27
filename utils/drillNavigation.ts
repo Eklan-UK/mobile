@@ -1,3 +1,4 @@
+import { getDrillById } from "@/services/drill.service";
 import {
   Drill,
   DrillAssignment,
@@ -8,6 +9,17 @@ import { resolveFreeTalkScenarioId } from "@/utils/drillAssignment";
 import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
 import { router } from "expo-router";
 import { encodeWeekStartDate } from "@/utils/challengeDrillAdapter";
+
+/**
+ * Fetch an assigned drill and navigate to its practice screen.
+ */
+export async function openAssignedDrill(
+  drillId: string,
+  assignmentId?: string,
+): Promise<void> {
+  const drill = await getDrillById(drillId, assignmentId);
+  navigateToDrill(drill, assignmentId);
+}
 
 // Route mapping for drill types
 const DRILL_ROUTE_MAP: Partial<Record<DrillType, string>> = {
@@ -27,10 +39,44 @@ const DRILL_ROUTE_MAP: Partial<Record<DrillType, string>> = {
 };
 
 /**
+ * True when an Expo Router search param is the redo flag (`true` / `1`).
+ * Handles `string | string[]` from useLocalSearchParams.
+ */
+export function isRedoSearchParam(
+  value: string | string[] | undefined | null,
+): boolean {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === "true" || raw === "1";
+}
+
+/**
+ * Build a practice-runner URL with optional assignment + redo query params.
+ */
+export function buildDrillPracticeUrl(
+  route: string,
+  drillId: string,
+  options?: { assignmentId?: string; redo?: boolean },
+): string {
+  const params = new URLSearchParams();
+  if (options?.assignmentId) {
+    params.set("assignmentId", options.assignmentId);
+  }
+  if (options?.redo) {
+    params.set("redo", "true");
+  }
+  const qs = params.toString();
+  return qs ? `${route}/${drillId}?${qs}` : `${route}/${drillId}`;
+}
+
+/**
  * Navigate to the appropriate drill interface based on drill type
  * Supports both Drill and DrillAssignment objects
  */
-export const navigateToDrill = (drillOrAssignment: Drill | DrillAssignment, assignmentId?: string) => {
+export const navigateToDrill = (
+  drillOrAssignment: Drill | DrillAssignment,
+  assignmentId?: string,
+  options?: { redo?: boolean },
+) => {
   // Extract drill and assignmentId
   const drill = 'drill' in drillOrAssignment ? drillOrAssignment.drill : drillOrAssignment;
   const finalAssignmentId = assignmentId || ('assignmentId' in drillOrAssignment ? drillOrAssignment.assignmentId : undefined);
@@ -50,14 +96,14 @@ export const navigateToDrill = (drillOrAssignment: Drill | DrillAssignment, assi
     console.error(`No route mapping found for drill type: ${practiceType ?? drill.type}`);
     return;
   }
-  
-  // Build URL with optional assignmentId query parameter
-  const url = finalAssignmentId
-    ? `${route}/${drill._id}?assignmentId=${finalAssignmentId}`
-    : `${route}/${drill._id}`;
-  
-  // Type assertion needed due to dynamic route construction
-  router.push(url as any);
+
+  router.push({
+    pathname: `${route}/${drill._id}` as never,
+    params: {
+      ...(finalAssignmentId ? { assignmentId: String(finalAssignmentId) } : {}),
+      ...(options?.redo ? { redo: "true" } : {}),
+    },
+  } as never);
 };
 
 /**

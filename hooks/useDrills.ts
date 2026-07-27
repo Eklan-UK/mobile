@@ -115,6 +115,7 @@ export async function invalidateDrillCaches(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: progressScorecardQueryKey }),
     queryClient.invalidateQueries({ queryKey: ['learner-drills-profile'] }),
     queryClient.invalidateQueries({ queryKey: ['confidence-metrics'] }),
+    queryClient.invalidateQueries({ queryKey: ['assignment-attempts'] }),
     invalidateLearnerActivityCaches(queryClient),
   ]);
 }

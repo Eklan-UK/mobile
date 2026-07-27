@@ -1,6 +1,6 @@
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
-import { useColorScheme, Appearance } from "react-native";
+import { useColorScheme, Appearance, View } from "react-native";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -18,6 +18,7 @@ import { PushNotificationManager } from "@/components/PushNotificationManager";
 import { ProfileThemeSync } from "@/components/ProfileThemeSync";
 import { SubscriptionDeepLinkHandler } from "@/components/subscription/SubscriptionDeepLinkHandler";
 import { OtaUpdateCoordinator } from "@/components/OtaUpdateCoordinator";
+import { ForceUpdateGate } from "@/components/ForceUpdateGate";
 import { RootErrorBoundary } from "@/components/RootErrorBoundary";
 import { initGlobalErrorHandlers } from "@/lib/global-error-handlers";
 import * as SystemUI from "expo-system-ui";
@@ -135,6 +136,7 @@ export default Sentry.wrap(function RootLayout() {
               <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
                 <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0c0e0d' : '#2E7D32'} />
                 <RootErrorBoundary>
+                <View style={{ flex: 1 }}>
                 <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: stackSurface } }}>
                   <Stack.Screen name="index" options={{ headerShown: false }} />
                   {/* First-install onboarding / splash */}
@@ -162,6 +164,9 @@ export default Sentry.wrap(function RootLayout() {
                     }}
                   />
                 </Stack>
+                {/* Store-binary force update — overlays all routes; fail-open until required */}
+                <ForceUpdateGate />
+                </View>
                 </RootErrorBoundary>
               </ThemeProvider>
               </BadgeUnlockProvider>

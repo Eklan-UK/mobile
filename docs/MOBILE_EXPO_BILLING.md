@@ -69,7 +69,7 @@ Branch every upgrade, restore, and manage action on `Platform.OS` (see [APPLE_IA
 
 | Function | iOS | Android |
 |----------|-----|---------|
-| `startUpgrade()` | StoreKit purchase for Pro monthly product ID | `POST /api/v1/stripe/checkout` → open `{ url }` |
+| `startUpgrade(billingPeriod?)` | StoreKit purchase for Pro monthly product ID (period ignored) | `POST /api/v1/stripe/checkout` with `{ billingPeriod }` → open `{ url }` |
 | `manageSubscription()` | Apple Manage Subscriptions UI (StoreKit 2) | `POST /api/v1/stripe/portal` → open `{ url }` |
 | `restorePurchases()` | StoreKit restore → `POST /api/v1/apple/verify` per entitlement | Refresh `GET /api/v1/users/current` only |
 
@@ -87,10 +87,12 @@ Branch every upgrade, restore, and manage action on `Platform.OS` (see [APPLE_IA
 
 Web and Stripe mobile flows use **2 seconds × 5 attempts (~10 s)** after success before showing a “still activating” message. Use the same pattern on both platforms:
 
-1. Complete platform payment (StoreKit success or return from Stripe deep link).
+1. Complete platform payment (StoreKit success, return from Stripe deep link, or Android browser dismiss after Checkout).
 2. iOS: call `POST /api/v1/apple/verify` immediately with transaction payload.
-3. Poll `GET /api/v1/users/current` until `user.isSubscribed === true`.
+3. Poll `GET /api/v1/users/current`: wait 2 s, fetch, check `user.isSubscribed === true` — repeat up to 5 times (delay runs **before** each fetch, so the first check happens 2 s after step 1/2, not immediately).
 4. If still false after 5 attempts, show: payment is confirmed; access should appear shortly (refresh / retry).
+
+On Android, until backend Checkout/Portal return URLs use the app's `elkan://` scheme (see [STRIPE_ANDROID_MOBILE_CONTRACT.md](../STRIPE_ANDROID_MOBILE_CONTRACT.md#deep-links--return-urls)), the supported return path is **browser dismiss + this poll** — `WebBrowser.openBrowserAsync` resolves when the user closes the in-app browser, and the client starts polling immediately. The `elkan://subscription/success` deep-link handler (`SubscriptionDeepLinkHandler`) is already registered and will take over automatically once the backend return URLs are updated; no client change will be needed then.
 
 Renewals and cancellations are driven by **webhooks** on the server (`/webhooks/apple`, `/webhooks/stripe`). The app does not need to listen for renewals; refresh profile on foreground is enough.
 
@@ -160,9 +162,10 @@ Follow [stripe-implementation.md §16](./stripe-implementation.md#16-mobile-impl
 
 ### Subscriptions screen
 
-- [x] Load `GET /api/v1/users/current` on mount (`isSubscribed`, `subscriptionPlan`, optional `subscriptionExpiresAt` for display only).
-- [x] Not subscribed: **Upgrade to Pro** → `POST /api/v1/stripe/checkout` (no body) → open returned `url` in `WebBrowser` / Chrome Custom Tabs.
-- [x] Subscribed: **Manage subscription** → `POST /api/v1/stripe/portal` → open `url` (only if user already has Stripe billing — server returns 400 if no `stripeCustomerId`).
+- [x] Load `GET /api/v1/users/current` on mount (`isSubscribed`, `subscriptionPlan`, `eligibleForTrial`, `subscriptionBillingPeriod`, optional `subscriptionExpiresAt` for display only).
+- [x] Not subscribed: period picker (monthly / quarterly / annual with locked US$20 / US$60 / $200) → `POST /api/v1/stripe/checkout` with `{ billingPeriod }` → open returned `url` in `WebBrowser` / Chrome Custom Tabs → poll `/users/current` **2 s × 5** after the browser dismisses.
+- [x] Trial badge / **"Start free trial"** CTA only when `eligibleForTrial === true`; otherwise **"Subscribe"**.
+- [x] Subscribed: show `subscriptionBillingPeriod` when present; **Manage subscription** → `POST /api/v1/stripe/portal` → open `url` (server returns 400 if no `stripeCustomerId` — surface message via alert).
 - [x] Loading and error states (spinner, toast).
 
 ### Deep links (coordinate with backend)

@@ -1,6 +1,7 @@
 import { SavedDrillsList } from '@/components/learning-journey/SavedDrillsList';
 import { AppText, BoldText } from '@/components/ui';
 import { getBookmarkedPlanItems } from '@/domain/learning-journey/group-journey-drills';
+import { useTranslation } from '@/contexts/LanguageContext';
 import { useLearnerDrills } from '@/hooks/useLearnerDrills';
 import { useSemanticTheme } from '@/hooks/useSemanticTheme';
 import tw from '@/lib/tw';
@@ -16,19 +17,13 @@ export type SavedDrillsSectionProps = {
   showTopicTitle?: boolean;
 };
 
-function subtitleForCount(count: number, isLoading: boolean): string {
-  if (isLoading) return 'Loading…';
-  if (count === 0) return 'No saved drills yet';
-  if (count === 1) return '1 saved drill';
-  return `${count} saved drills`;
-}
-
 export function SavedDrillsSection({
   id = 'saved-drills',
-  title = 'Saved Drills',
+  title,
   defaultExpanded = false,
   showTopicTitle = false,
 }: SavedDrillsSectionProps) {
+  const { t } = useTranslation();
   const { colors: c, isDark } = useSemanticTheme();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { data, isLoading } = useLearnerDrills();
@@ -38,8 +33,11 @@ export function SavedDrillsSection({
     [data?.drills]
   );
   const count = bookmarked.length;
-  const subtitle = subtitleForCount(count, isLoading);
-  const showBadge = !isLoading && count > 0;
+  const resolvedTitle = title ?? t('account.savedDrills');
+  const subtitle = t('account.savedDrillsQuickAccess');
+  const pillLabel = isLoading
+    ? t('common.loading')
+    : t('account.nSaved', { count });
 
   return (
     <View nativeID={id}>
@@ -47,52 +45,48 @@ export function SavedDrillsSection({
         onPress={() => setExpanded((v) => !v)}
         activeOpacity={0.8}
         style={[
-          tw`rounded-2xl p-4 border flex-row items-center`,
+          tw`rounded-2xl p-[17px] border gap-3`,
           {
             backgroundColor: c.card,
-            borderColor: c.border,
-            boxShadow: '0px 1px 3px rgba(0,0,0,0.05)',
+            borderColor: isDark ? c.border : 'rgba(224,224,224,0.5)',
+            boxShadow: '0px 4px 10px rgba(0,0,0,0.05)',
           },
         ]}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
       >
-        <View
-          style={[
-            tw`w-10 h-10 rounded-xl items-center justify-center`,
-            { backgroundColor: isDark ? 'rgba(234, 88, 12, 0.2)' : '#FFEDD5' },
-          ]}
-        >
+        <View style={tw`flex-row items-center gap-2`}>
           <Ionicons
             name="bookmark"
-            size={20}
+            size={16}
             color={isDark ? '#FB923C' : '#EA580C'}
           />
+          <BoldText style={[tw`text-sm`, { color: c.textPrimary }]}>
+            {resolvedTitle}
+          </BoldText>
         </View>
 
-        <View style={tw`flex-1 ml-3`}>
-          <BoldText style={[tw`text-base`, { color: c.textPrimary }]}>{title}</BoldText>
-          <AppText style={[tw`text-xs mt-0.5`, { color: c.textSecondary }]}>{subtitle}</AppText>
-        </View>
+        <AppText style={[tw`text-xs`, { color: c.textPrimary }]}>
+          {subtitle}
+        </AppText>
 
-        {showBadge ? (
+        <View style={tw`flex-row items-center justify-between`}>
           <View
             style={[
-              tw`min-w-6 h-6 px-2 rounded-full items-center justify-center mr-2`,
-              { backgroundColor: c.muted },
+              tw`px-2 py-0.5 rounded-lg`,
+              { backgroundColor: isDark ? c.muted : '#f3f4f6' },
             ]}
           >
-            <AppText style={[tw`text-xs font-semibold`, { color: c.textSecondary }]}>
-              {count}
-            </AppText>
+            <BoldText style={[tw`text-[11px]`, { color: c.textPrimary }]}>
+              {pillLabel}
+            </BoldText>
           </View>
-        ) : null}
-
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={20}
-          color={c.textLight}
-        />
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-forward'}
+            size={16}
+            color={c.textLight}
+          />
+        </View>
       </TouchableOpacity>
 
       {expanded ? (

@@ -1,3 +1,8 @@
+import type { BillingPeriod } from '@/types/billing';
+import { DEFAULT_ENGLISH_ACCENT } from '@/utils/tts-accent-voices';
+
+export type { BillingPeriod };
+
 // ─── Preference types ─────────────────────────────────────────────────────────
 
 export interface LessonPreferences {
@@ -105,6 +110,8 @@ export interface UserCurrentResponse {
     isEmailVerified?: boolean;
     subscriptionPlan?: 'free' | 'premium';
     isSubscribed?: boolean;
+    eligibleForTrial?: boolean;
+    subscriptionBillingPeriod?: BillingPeriod | null;
     subscriptionExpiresAt?: string | null;
     subscriptionActivatedAt?: string | null;
     stripeSubscriptionStatus?: string | null;
@@ -125,7 +132,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 export const DEFAULT_LESSON_PREFERENCES: LessonPreferences = {
   eklanTalks: true,
   chatTranslation: false,
-  englishAccent: 'british',
+  englishAccent: DEFAULT_ENGLISH_ACCENT,
   voiceTone: 'friendly',
   speakingSpeed: 'normal',
 };

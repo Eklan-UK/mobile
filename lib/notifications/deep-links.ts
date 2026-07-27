@@ -1,10 +1,9 @@
-import { getDrillById } from '@/services/drill.service';
 import type { NotificationData } from '@/types/notifications';
 import {
   decodeWeekStartDate,
   encodeWeekStartDate,
 } from '@/utils/challengeDrillAdapter';
-import { navigateToDrill } from '@/utils/drillNavigation';
+import { openAssignedDrill } from '@/utils/drillNavigation';
 import { logger } from '@/utils/logger';
 import { router } from 'expo-router';
 import { Linking } from 'react-native';
@@ -43,8 +42,7 @@ async function navigateDrillDetail(data: NotificationData): Promise<void> {
   }
 
   try {
-    const drill = await getDrillById(drillId, assignmentId);
-    navigateToDrill(drill, assignmentId);
+    await openAssignedDrill(drillId, assignmentId);
   } catch (error) {
     logger.warn('[navigateFromNotification] Failed to open drill:', error);
     router.push('/notifications' as never);

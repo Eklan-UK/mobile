@@ -327,7 +327,7 @@ function ReviewConfettiLayer() {
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <ConfettiCannon
         ref={confettiRef}
-        count={150}
+        count={60}
         origin={{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.55 }}
         autoStart={false}
         fadeOut

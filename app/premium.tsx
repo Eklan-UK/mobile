@@ -1,4 +1,9 @@
 import { AppText, BoldText, Button } from "@/components/ui";
+import {
+  billingPeriodDisplayLabel,
+  STRIPE_BILLING_PERIODS,
+  STRIPE_PRICING,
+} from "@/constants/stripe-pricing";
 import { useNotificationToast } from "@/contexts/NotificationToastContext";
 import { useUserCurrent } from "@/hooks/useSettings";
 import tw from "@/lib/tw";
@@ -8,7 +13,6 @@ import {
   initAppleIap,
   teardownAppleIap,
 } from "@/services/apple-iap.service";
-import { isExpoGo } from "@/utils/expo-runtime";
 import {
   iapErrorMessage,
   manageSubscription,
@@ -17,7 +21,9 @@ import {
   startUpgrade,
 } from "@/services/billing";
 import { useAuthStore } from "@/store/auth-store";
+import type { BillingPeriod } from "@/types/billing";
 import { Alert } from "@/utils/alert";
+import { isExpoGo } from "@/utils/expo-runtime";
 import { logger } from "@/utils/logger";
 import { isProSubscriber } from "@/utils/subscription";
 import { useQueryClient } from "@tanstack/react-query";
@@ -35,6 +41,7 @@ import Svg, { Path } from "react-native-svg";
 import type { ProductSubscription } from "react-native-iap";
 
 const IS_IOS = Platform.OS === "ios";
+const IS_ANDROID = Platform.OS === "android";
 
 const FREE_FEATURES = [
   "Basic pronunciation practice",
@@ -93,12 +100,15 @@ export default function PremiumScreen() {
 
   const isPro = isProSubscriber(user);
   const expiresAt = user?.subscriptionExpiresAt;
+  const eligibleForTrial = user?.eligibleForTrial === true;
+  const subscriptionBillingPeriod = user?.subscriptionBillingPeriod ?? null;
 
   const checkoutPollStarted = useRef(false);
   const [upgradeBusy, setUpgradeBusy] = useState(false);
   const [manageBusy, setManageBusy] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [iapProduct, setIapProduct] = useState<ProductSubscription | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<BillingPeriod>("monthly");
 
   const statusMessage = isPro
     ? "You have full access to AI features — dive in!"
@@ -170,10 +180,9 @@ export default function PremiumScreen() {
   const handleUpgrade = async () => {
     setUpgradeBusy(true);
     try {
-      await startUpgrade();
-      if (IS_IOS) {
-        await runPostPurchaseFlow();
-      }
+      await startUpgrade(IS_ANDROID ? selectedPeriod : undefined);
+      // iOS: poll after StoreKit verify. Android: poll after browser dismisses.
+      await runPostPurchaseFlow();
     } catch (e: unknown) {
       const msg = IS_IOS ? iapErrorMessage(e) : extractStripeError(e);
       if (msg !== "Purchase cancelled.") {
@@ -229,6 +238,8 @@ export default function PremiumScreen() {
     router.push("/contact" as never);
   };
 
+  const periodLabel = billingPeriodDisplayLabel(subscriptionBillingPeriod);
+
   const upgradeLabel = IS_IOS
     ? upgradeBusy
       ? "Processing…"
@@ -237,7 +248,9 @@ export default function PremiumScreen() {
         : "Subscribe to Pro"
     : upgradeBusy
       ? "Preparing checkout…"
-      : "Upgrade to Pro";
+      : eligibleForTrial
+        ? "Start free trial"
+        : "Subscribe";
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white dark:bg-neutral-900`} edges={["top", "bottom"]}>
@@ -286,6 +299,11 @@ export default function PremiumScreen() {
               <AppText style={tw`text-sm text-neutral-600 dark:text-neutral-300 mt-2 leading-5`}>
                 {statusMessage}
               </AppText>
+              {isPro && periodLabel ? (
+                <AppText style={tw`text-xs text-neutral-500 dark:text-neutral-400 mt-2`}>
+                  Billing period: {periodLabel}
+                </AppText>
+              ) : null}
               {isPro && expiresAt ? (
                 <AppText style={tw`text-xs text-neutral-500 dark:text-neutral-400 mt-2`}>
                   Renews or ends on {formatDate(expiresAt)}
@@ -341,9 +359,75 @@ export default function PremiumScreen() {
                 {manageBusy ? "Opening…" : "Manage subscription"}
               </Button>
             ) : (
-              <Button onPress={handleUpgrade} loading={upgradeBusy}>
-                {upgradeLabel}
-              </Button>
+              <>
+                {IS_ANDROID ? (
+                  <View style={tw`mb-4`}>
+                    {eligibleForTrial ? (
+                      <View
+                        style={tw`mb-3 self-start bg-green-100 dark:bg-green-900/40 px-3 py-1.5 rounded-full`}
+                      >
+                        <AppText style={tw`text-xs font-semibold text-green-800 dark:text-green-300`}>
+                          2-week free trial
+                        </AppText>
+                      </View>
+                    ) : null}
+
+                    <BoldText style={tw`text-sm text-neutral-900 dark:text-white mb-2`}>
+                      Choose a plan
+                    </BoldText>
+
+                    <View style={tw`gap-2 mb-1`}>
+                      {STRIPE_BILLING_PERIODS.map((period) => {
+                        const option = STRIPE_PRICING[period];
+                        const selected = selectedPeriod === period;
+                        return (
+                          <TouchableOpacity
+                            key={period}
+                            onPress={() => setSelectedPeriod(period)}
+                            disabled={upgradeBusy}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={`${option.label} ${option.priceLabel}${option.periodHint}`}
+                            style={tw`flex-row items-center justify-between px-4 py-3.5 rounded-2xl border-2 ${
+                              selected
+                                ? "border-green-600 bg-green-50 dark:bg-green-900/20 dark:border-green-500"
+                                : "border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+                            }`}
+                          >
+                            <View>
+                              <BoldText
+                                style={tw`text-sm ${
+                                  selected
+                                    ? "text-green-800 dark:text-green-300"
+                                    : "text-neutral-900 dark:text-white"
+                                }`}
+                              >
+                                {option.label}
+                              </BoldText>
+                              <AppText style={tw`text-xs text-neutral-500 dark:text-neutral-400 mt-0.5`}>
+                                {option.periodHint.replace(/^\//, "").trim()}
+                              </AppText>
+                            </View>
+                            <BoldText
+                              style={tw`text-base ${
+                                selected
+                                  ? "text-green-700 dark:text-green-400"
+                                  : "text-neutral-900 dark:text-white"
+                              }`}
+                            >
+                              {option.priceLabel}
+                            </BoldText>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : null}
+
+                <Button onPress={handleUpgrade} loading={upgradeBusy}>
+                  {upgradeLabel}
+                </Button>
+              </>
             )}
 
             {IS_IOS ? (

@@ -11,6 +11,7 @@ interface RoleplayConversationCompleteSheetProps {
   visible: boolean;
   studentCharacterName?: string | null;
   bottomInset?: number;
+  reviewDisabled?: boolean;
   onReviewPerformance: () => void;
 }
 
@@ -18,6 +19,7 @@ export default function RoleplayConversationCompleteSheet({
   visible,
   studentCharacterName,
   bottomInset = 0,
+  reviewDisabled = false,
   onReviewPerformance,
 }: RoleplayConversationCompleteSheetProps) {
   return (
@@ -88,6 +90,7 @@ export default function RoleplayConversationCompleteSheet({
           {/* Review Performance (primary) */}
           <TouchableOpacity
             onPress={onReviewPerformance}
+            disabled={reviewDisabled}
             activeOpacity={0.86}
             style={{
               backgroundColor: "#3b883e",
@@ -95,10 +98,11 @@ export default function RoleplayConversationCompleteSheet({
               paddingVertical: 16,
               alignItems: "center",
               marginBottom: 12,
+              opacity: reviewDisabled ? 0.7 : 1,
             }}
           >
             <AppText style={{ color: "#fafafa", fontSize: 16, fontWeight: "700" }}>
-              Review Performance
+              {reviewDisabled ? "Saving…" : "Review Performance"}
             </AppText>
           </TouchableOpacity>
 

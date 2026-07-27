@@ -14,6 +14,7 @@ import {
 } from '@/services/stripe.service';
 import { settingsService } from '@/services/settings.service';
 import { useAuthStore } from '@/store/auth-store';
+import type { BillingPeriod } from '@/types/billing';
 import { logger } from '@/utils/logger';
 import { isProSubscriber } from '@/utils/subscription';
 import type { QueryClient } from '@tanstack/react-query';
@@ -52,6 +53,8 @@ export async function ensureIapAccountToken(): Promise<string> {
 /**
  * Poll GET /api/v1/users/current until `user.isSubscribed === true`.
  * Shared by iOS IAP and Android Stripe deep-link flows.
+ * Contract timing: delay 2s BEFORE each of 5 attempts (not after), succeeding
+ * only on an explicit `isSubscribed === true` — never a plan-based fallback.
  */
 export async function pollUntilSubscribed(
   client: QueryClient = queryClient,
@@ -59,18 +62,16 @@ export async function pollUntilSubscribed(
   intervalMs: number = POLL_INTERVAL_MS
 ): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, intervalMs));
     try {
       const data = await settingsService.getCurrentUser();
       client.setQueryData(USER_CURRENT_KEY, data);
-      if (isProSubscriber(data.user)) {
+      if (data.user?.isSubscribed === true) {
         await useAuthStore.getState().checkSession();
         return true;
       }
     } catch (e) {
       logger.warn('Subscription poll attempt failed:', e);
-    }
-    if (i < maxAttempts - 1) {
-      await new Promise((r) => setTimeout(r, intervalMs));
     }
   }
   return false;
@@ -78,9 +79,12 @@ export async function pollUntilSubscribed(
 
 /**
  * Start upgrade flow: StoreKit on iOS, Stripe Checkout on Android.
+ * iOS ignores `billingPeriod`; Android requires it and never opens Stripe on iOS.
  * iOS verifies with the server before returning; caller should poll afterward.
  */
-export async function startUpgrade(): Promise<void> {
+export async function startUpgrade(
+  billingPeriod?: BillingPeriod
+): Promise<void> {
   if (Platform.OS === 'ios') {
     const iapAccountToken = await ensureIapAccountToken();
     await initAppleIap();
@@ -89,7 +93,11 @@ export async function startUpgrade(): Promise<void> {
     return;
   }
 
-  const url = await createStripeCheckoutSession();
+  if (!billingPeriod) {
+    throw new Error('Select a billing period to continue.');
+  }
+
+  const url = await createStripeCheckoutSession(billingPeriod);
   await WebBrowser.openBrowserAsync(url);
 }
 

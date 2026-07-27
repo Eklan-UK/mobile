@@ -11,6 +11,7 @@ import { useActivityStore } from "@/store/activity-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { Drill } from "@/types/drill.types";
 import { logger } from "@/utils/logger";
+import { isRedoSearchParam } from "@/utils/drillNavigation";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -21,6 +22,7 @@ export default function SummaryDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const isRedo = isRedoSearchParam(params.redo);
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();
@@ -44,15 +46,24 @@ export default function SummaryDrill() {
   const [questionAnswers, setQuestionAnswers] = useState<Record<number, string>>({});
   const [showSubmittedScreen, setShowSubmittedScreen] = useState(false);
 
-  // Restore progress
+  // Restore progress (skip on redo — start a fresh editable attempt)
   useEffect(() => {
+    if (isRedo) {
+      clearDrillProgress(drillId);
+      setSummary("");
+      setIsCompleted(false);
+      setIsReadOnly(false);
+      setShowSubmittedScreen(false);
+      startTimeRef.current = Date.now();
+      return;
+    }
     if (drillId && drillProgress[drillId]) {
       const saved = drillProgress[drillId];
       if (saved.data?.summary) {
         setSummary(saved.data.summary);
       }
     }
-  }, [drillId]);
+  }, [drillId, isRedo]);
 
   // Track activity on unmount
   useEffect(() => {
@@ -72,7 +83,7 @@ export default function SummaryDrill() {
 
   // Save progress
   useEffect(() => {
-    if (drill && !showInstructions) {
+    if (drill && !showInstructions && !isReadOnly) {
       updateDrillProgress({
         drillId,
         title: drill.title,
@@ -85,17 +96,17 @@ export default function SummaryDrill() {
         lastUpdated: Date.now(),
       });
     }
-  }, [summary, drill, showInstructions]);
+  }, [summary, drill, showInstructions, isReadOnly]);
 
   useEffect(() => {
     loadDrill();
   }, [drillId]);
 
-  // Load existing submission for completed drills (read-only view)
+  // Load existing submission for completed drills (read-only view) — skip on redo
   useEffect(() => {
-    if (!assignmentId) return;
+    if (!assignmentId || isRedo) return;
     loadExistingSubmission();
-  }, [assignmentId, drillId]);
+  }, [assignmentId, drillId, isRedo]);
 
   const loadDrill = async () => {
     try {

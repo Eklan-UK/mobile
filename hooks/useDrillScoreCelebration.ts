@@ -10,6 +10,7 @@ import {
   type DrillCompletionEffects,
 } from '@/types/drill.types';
 import { useLayoutEffect } from 'react';
+import { InteractionManager } from 'react-native';
 
 const DEFAULT_CELEBRATION_EFFECTS: DrillCompletionEffects = {
   soundUrl: DEFAULT_CELEBRATION_SOUND_URL,
@@ -24,16 +25,18 @@ export function useDrillScoreCelebration(
     if (passed == null) return;
 
     const token = beginCelebrationSession();
-
-    if (passed) {
-      if (shouldPlayCelebration(token)) {
-        void playDrillEndCelebration(effects ?? DEFAULT_CELEBRATION_EFFECTS);
+    const handle = InteractionManager.runAfterInteractions(() => {
+      if (passed) {
+        if (shouldPlayCelebration(token)) {
+          void playDrillEndCelebration(effects ?? DEFAULT_CELEBRATION_EFFECTS);
+        }
+      } else if (shouldPlayCelebration(token)) {
+        void playPracticeFeedback('failure');
       }
-    } else if (shouldPlayCelebration(token)) {
-      void playPracticeFeedback('failure');
-    }
+    });
 
     return () => {
+      handle.cancel();
       void unloadDrillCelebrationSound();
     };
   }, [passed, effects]);

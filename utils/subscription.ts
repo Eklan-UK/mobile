@@ -1,26 +1,24 @@
+import type { BillingPeriod } from '@/types/billing';
+
 /** Fields that may appear on auth or `/users/current` payloads (camelCase or snake_case). */
 export type ProSubscriptionFields = {
   isSubscribed?: boolean;
   subscriptionPlan?: string | null;
   is_subscribed?: boolean;
   subscription_plan?: string | null;
+  eligibleForTrial?: boolean;
+  subscriptionBillingPeriod?: BillingPeriod | null;
 };
 
 /**
  * Pro / paid UX and feature gating.
- * Prefer explicit `isSubscribed` from the API when present.
- * If it is missing (common on sign-in payloads), fall back to `subscriptionPlan === "premium"`.
- * If the API explicitly sends `isSubscribed: false`, that wins over plan (server downgrade / edge cases).
+ * Strict contract gate: Pro is `isSubscribed === true` / `is_subscribed === true` only.
+ * `subscriptionPlan` / `subscription_plan` are display/diagnostics only and never gate access.
  */
 export function isProSubscriber(user: ProSubscriptionFields | null | undefined): boolean {
   if (!user) return false;
 
-  const explicit = user.isSubscribed ?? user.is_subscribed;
-  const plan = user.subscriptionPlan ?? user.subscription_plan ?? null;
-
-  if (explicit === true) return true;
-  if (explicit === false) return false;
-  return plan === "premium";
+  return (user.isSubscribed ?? user.is_subscribed) === true;
 }
 
 type UserWithId = ProSubscriptionFields & { id?: string };
@@ -59,6 +57,9 @@ export function mergeSubscriptionFields<T extends ProSubscriptionFields>(
       (server as { subscriptionExpiresAt?: string | null }).subscriptionExpiresAt ??
       (base as { subscriptionExpiresAt?: string | null }).subscriptionExpiresAt,
     isSubscribed: server.isSubscribed ?? server.is_subscribed ?? base.isSubscribed,
+    eligibleForTrial: server.eligibleForTrial ?? base.eligibleForTrial,
+    subscriptionBillingPeriod:
+      server.subscriptionBillingPeriod ?? base.subscriptionBillingPeriod,
   };
 
   return {

@@ -73,6 +73,8 @@ const translations = {
       seeAll: 'See all',
       yourProgress: 'Your Progress',
       noDrillsYet: 'No drills assigned yet',
+      savedDrillsQuickAccess: 'Quick access to your bookmarked exercises.',
+      nSaved: '{{count}} saved',
     },
     journey: {
       title: 'My Learning Journey',
@@ -84,6 +86,9 @@ const translations = {
       notEnrolledYet: 'Not enrolled yet',
       notEnrolledToast: 'You are not enrolled in this mission yet.',
       enrollmentsLoadError: 'Could not load mission enrollment. Pull to refresh or tap Retry.',
+      viewDetails: 'View Details',
+      start: 'Start',
+      continue: 'Continue',
     },
     language: {
       screenTitle: 'What language should the app use?',

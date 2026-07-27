@@ -1,9 +1,13 @@
-import apiClient, { API_BASE_URL } from '@/lib/api';
+import apiClient, { API_BASE_URL, getCachedToken } from '@/lib/api';
 // Note: expo-av and expo-file-system need to be installed:
 // npx expo install expo-av expo-file-system
 import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
 import { logger } from "@/utils/logger";
+import {
+  DEFAULT_ENGLISH_ACCENT,
+  resolveAccentVoiceId,
+} from '@/utils/tts-accent-voices';
 
 // Type assertion for cacheDirectory (expo-file-system v19+)
 // The properties exist at runtime but TypeScript types may not expose them
@@ -14,6 +18,11 @@ const getCacheDirectory = () => {
 
 interface TTSOptions {
   text: string;
+  /**
+   * Explicit ElevenLabs voice ID. Omit (or pass 'default') so the backend
+   * resolves voice from the authenticated user's englishAccent.
+   * Do not use for Free Talk — use generateFreeTalkTTS instead.
+   */
   voiceId?: string;
   modelId?: string;
   stability?: number;
@@ -22,12 +31,20 @@ interface TTSOptions {
   useSpeakerBoost?: boolean;
 }
 
-interface TTSResponse {
-  audioUrl?: string;
-  audioBlob?: Blob;
+const TTS_FETCH_TIMEOUT_MS = 30_000;
+
+function extensionForAudioContentType(contentType?: string | null): 'mp3' | 'wav' {
+  const ct = (contentType || '').toLowerCase();
+  if (ct.includes('wav') || ct.includes('x-wav') || ct.includes('wave')) {
+    return 'wav';
+  }
+  // ElevenLabs + free-talk TTS return audio/mpeg
+  return 'mp3';
 }
 
-const TTS_FETCH_TIMEOUT_MS = 30_000;
+function isDefaultVoice(voiceId?: string): boolean {
+  return !voiceId || voiceId === 'default';
+}
 
 export class TTSTimeoutError extends Error {
   constructor() {
@@ -51,40 +68,119 @@ class TTSService {
   private playbackFinishResolve: (() => void) | null = null;
 
   /**
-   * Generate TTS audio using backend API
-   * Backend will handle Speechase or ElevenLabs based on configuration
+   * Free Talk situation/hint TTS via POST /api/v1/ai/free-talk/tts.
+   * Server resolves ElevenLabs voice from the user's englishAccent.
+   * Returns audio/mpeg (not Gemini Kore / WAV).
+   */
+  async generateFreeTalkTTS(text: string): Promise<string> {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      throw new Error('TTS text is empty');
+    }
+
+    const token = await this.getAuthToken();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TTS_FETCH_TIMEOUT_MS);
+
+    try {
+      logger.log('🔵 Free Talk TTS POST:', {
+        url: `${API_BASE_URL}/api/v1/ai/free-talk/tts`,
+        hasToken: !!token,
+        textLen: trimmed.length,
+      });
+
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE_URL}/api/v1/ai/free-talk/tts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: 'include',
+          body: JSON.stringify({ text: trimmed }),
+          signal: controller.signal,
+        });
+      } catch (fetchError: unknown) {
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new TTSTimeoutError();
+        }
+        throw fetchError;
+      }
+
+      const contentType = response.headers.get('content-type');
+      logger.log('📥 Free Talk TTS Response:', {
+        status: response.status,
+        contentType,
+        ok: response.ok,
+      });
+
+      if (!response.ok) {
+        if (contentType?.includes('application/json')) {
+          const errorData = await response.json().catch(() => ({}));
+          const message =
+            (errorData as { message?: string })?.message ||
+            `Free Talk TTS failed (${response.status})`;
+          if (response.status === 402) {
+            throw new Error('Subscription required');
+          }
+          throw new Error(message);
+        }
+        throw new Error(`Free Talk TTS failed: ${response.status} ${response.statusText}`);
+      }
+
+      if (contentType?.includes('application/json')) {
+        const data = await response.json();
+        throw new Error(
+          (data as { message?: string })?.message || 'Free Talk TTS returned JSON instead of audio',
+        );
+      }
+
+      const audioBlob = await response.blob();
+      return await this.saveAudioBlob(audioBlob, trimmed, contentType);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * Generate on-the-fly TTS via POST /api/v1/tts.
+   * When voiceId is omitted/default, the server resolves voice from englishAccent.
+   * Pre-generated Cloudinary drill URLs should be played directly — do not call this for those.
    */
   async generateTTS(options: TTSOptions): Promise<string> {
     try {
-      // First, check if audio is cached on server
-      try {
-        const cacheResponse = await apiClient.get('/api/v1/tts', {
-          params: {
-            text: options.text,
-            voice: options.voiceId || 'default',
-          },
-        });
+      const useServerAccent = isDefaultVoice(options.voiceId);
 
-        // If cached and has audioUrl, return it
-        if (cacheResponse.data?.data?.cached && cacheResponse.data?.data?.audioUrl) {
-          logger.log('TTS cache hit, using cached audio');
-          return cacheResponse.data.data.audioUrl;
+      // GET /api/v1/tts cache lookup resolves voice without the user's accent.
+      // Skip it when relying on server-side accent so we never play the wrong voice.
+      if (!useServerAccent) {
+        try {
+          const cacheResponse = await apiClient.get('/api/v1/tts', {
+            params: {
+              text: options.text,
+              voice: options.voiceId,
+            },
+          });
+
+          if (cacheResponse.data?.data?.cached && cacheResponse.data?.data?.audioUrl) {
+            logger.log('TTS cache hit, using cached audio');
+            return cacheResponse.data.data.audioUrl;
+          }
+
+          logger.log('TTS cache miss, will generate new audio');
+        } catch (cacheError) {
+          logger.warn('Cache check failed, proceeding to generate:', cacheError);
         }
-        
-        // If not cached (cached: false, audioUrl: null), that's fine - proceed to generate
-        // Don't throw error here, just proceed to POST request
-        logger.log('TTS cache miss, will generate new audio');
-      } catch (cacheError) {
-        // Only log warning, don't throw - proceed to generate
-        logger.warn('Cache check failed, proceeding to generate:', cacheError);
       }
 
       // Generate new TTS audio - use fetch instead of axios for blob handling
       const token = await this.getAuthToken();
-      
-      const requestBody = {
+
+      // Omit voice (or send "default") so backend uses authenticated user's englishAccent.
+      const requestBody: Record<string, unknown> = {
         text: options.text,
-        voice: options.voiceId || 'default',
+        voice: useServerAccent ? 'default' : options.voiceId,
         modelId: options.modelId,
         stability: options.stability,
         similarityBoost: options.similarityBoost,
@@ -241,11 +337,9 @@ class TTSService {
         }
       }
 
-      // Get audio blob
+      // Get audio blob (mpeg when uncached; JSON+audioUrl handled above)
       const audioBlob = await response.blob();
-      
-      // Save audio blob to file system
-      const audioUri = await this.saveAudioBlob(audioBlob, options.text);
+      const audioUri = await this.saveAudioBlob(audioBlob, options.text, contentType);
       return audioUri;
     } catch (error: any) {
       if (isTtsTimeoutError(error)) {
@@ -294,19 +388,39 @@ class TTSService {
   }
 
   /**
-   * Get auth token from secure storage
+   * Get auth token (cached SecureStore read).
    */
   private async getAuthToken(): Promise<string | null> {
     try {
-      const { secureStorage } = await import('@/lib/secure-storage');
-      return await secureStorage.getToken();
+      return await getCachedToken();
     } catch {
       return null;
     }
   }
 
   /**
-   * Direct ElevenLabs API call (fallback)
+   * Best-effort accent voice for rare client-side ElevenLabs fallback.
+   * Prefers an explicit voiceId; otherwise reads lessonPreferences.englishAccent.
+   */
+  private async resolveFallbackVoiceId(explicitVoiceId?: string): Promise<string> {
+    if (explicitVoiceId && explicitVoiceId !== 'default') {
+      return explicitVoiceId;
+    }
+    try {
+      const { settingsService } = await import('./settings.service');
+      const me = await settingsService.getCurrentUser();
+      const accent = me?.profile?.lessonPreferences?.englishAccent;
+      const fromAccent = resolveAccentVoiceId(accent);
+      if (fromAccent) return fromAccent;
+    } catch (e) {
+      logger.warn('Could not resolve accent voice for ElevenLabs fallback:', e);
+    }
+    return resolveAccentVoiceId(DEFAULT_ENGLISH_ACCENT)!;
+  }
+
+  /**
+   * Direct ElevenLabs API call (fallback when backend TTS is misconfigured).
+   * Uses student accent when voiceId is omitted/default.
    */
   private async generateElevenLabsDirect(options: TTSOptions): Promise<string> {
     const ELEVEN_LABS_API_KEY = process.env.EXPO_PUBLIC_ELEVEN_LABS_API_KEY;
@@ -315,7 +429,7 @@ class TTSService {
       throw new Error('ElevenLabs API key not configured');
     }
 
-    const voiceId = options.voiceId || '21m00Tcm4TlvDq8ikWAM';
+    const voiceId = await this.resolveFallbackVoiceId(options.voiceId);
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: {
@@ -339,18 +453,24 @@ class TTSService {
       throw new Error(`ElevenLabs API error: ${errorText}`);
     }
 
+    const contentType = response.headers.get('content-type') || 'audio/mpeg';
     const audioBlob = await response.blob();
-    return await this.saveAudioBlob(audioBlob, options.text);
+    return await this.saveAudioBlob(audioBlob, options.text, contentType);
   }
 
   /**
-   * Save audio blob to file system
+   * Save audio blob to file system with extension matching content-type (mpeg/mp3 vs wav).
    */
-  private async saveAudioBlob(blob: Blob, text: string): Promise<string> {
+  private async saveAudioBlob(
+    blob: Blob,
+    text: string,
+    contentType?: string | null,
+  ): Promise<string> {
     try {
       // Create a hash from text for filename
       const hash = text.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '_');
-      const filename = `tts_${hash}_${Date.now()}.mp3`;
+      const ext = extensionForAudioContentType(contentType || blob.type);
+      const filename = `tts_${hash}_${Date.now()}.${ext}`;
       const cacheDir = getCacheDirectory();
       const fileUri = `${cacheDir}${filename}`;
 

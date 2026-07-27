@@ -29,6 +29,56 @@ export function resolveDrillTopicTitle(drill: Drill | null | undefined): string 
   return typeof title === 'string' && title.trim() ? title.trim() : null;
 }
 
+/**
+ * Extract drill metadata from GET .../assignments/:id/attempts.
+ * Backend populates `drillId` as `{ _id, title, type, difficulty }` — not `drill`.
+ */
+export function resolveAttemptsAssignmentDrill(
+  assignment: Record<string, unknown> | null | undefined
+): Pick<Drill, '_id' | 'title' | 'type' | 'difficulty'> | null {
+  if (!assignment || typeof assignment !== 'object') return null;
+
+  const nested = assignment.drill;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const d = nested as Record<string, unknown>;
+    const type = d.type != null ? String(d.type) : '';
+    if (type) {
+      return {
+        _id: String(d._id ?? d.id ?? ''),
+        title: String(d.title ?? ''),
+        type: type as Drill['type'],
+        difficulty: d.difficulty as Drill['difficulty'],
+      };
+    }
+  }
+
+  const populated = assignment.drillId;
+  if (populated && typeof populated === 'object' && !Array.isArray(populated)) {
+    const d = populated as Record<string, unknown>;
+    const type = d.type != null ? String(d.type) : '';
+    if (type) {
+      return {
+        _id: String(d._id ?? d.id ?? ''),
+        title: String(d.title ?? ''),
+        type: type as Drill['type'],
+        difficulty: d.difficulty as Drill['difficulty'],
+      };
+    }
+  }
+
+  // Flat assignment row with type at top level
+  if (assignment.type != null) {
+    return {
+      _id: String(assignment._id ?? assignment.drillId ?? ''),
+      title: String(assignment.title ?? ''),
+      type: String(assignment.type) as Drill['type'],
+      difficulty: assignment.difficulty as Drill['difficulty'],
+    };
+  }
+
+  return null;
+}
+
 /** Read learning journey fields from snake_case or camelCase API keys. */
 export function readJourneyFields(source: Record<string, unknown> | null | undefined): {
   part?: 1 | 2 | 3 | 4 | 5;

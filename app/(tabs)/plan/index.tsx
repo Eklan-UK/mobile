@@ -1,10 +1,13 @@
-import { LearningJourneyPartCard } from '@/components/learning-journey/LearningJourneyPartCard';
+import { LearningJourneyRoadmap } from '@/components/learning-journey/LearningJourneyRoadmap';
 import { SavedDrillsSection } from '@/components/learning-journey/SavedDrillsSection';
 import { MyPlanHeader } from '@/components/plan/MyPlanHeader';
 import { NextSessionCard } from '@/components/sessions/NextSessionCard';
 import { AppText, BoldText } from '@/components/ui';
 import {
+  deriveMissionStates,
   LEARNING_JOURNEY_PARTS,
+  type LearningJourneyPartId,
+  type PartProgressInput,
 } from '@/domain/learning-journey/learning-journey.catalog';
 import { countPartJourneyProgress } from '@/domain/learning-journey/group-journey-drills';
 import { useLearnerDrills } from '@/hooks/useLearnerDrills';
@@ -40,10 +43,23 @@ export default function MyPlanScreen() {
   const { nextSession } = useLearnerClasses();
   const [refreshing, setRefreshing] = useState(false);
 
-  const enrolledSet = useMemo(
-    () => new Set(enrollmentsError ? [] : (enrolledParts ?? [])),
-    [enrolledParts, enrollmentsError]
-  );
+  const drills = data?.drills ?? [];
+
+  const missionStates = useMemo(() => {
+    const progressByPart: Partial<
+      Record<LearningJourneyPartId, PartProgressInput>
+    > = {};
+    for (const partDef of LEARNING_JOURNEY_PARTS) {
+      progressByPart[partDef.part] = countPartJourneyProgress(
+        drills,
+        partDef.part
+      );
+    }
+    return deriveMissionStates(
+      enrollmentsError ? [] : (enrolledParts ?? []),
+      progressByPart
+    );
+  }, [drills, enrolledParts, enrollmentsError]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -51,7 +67,9 @@ export default function MyPlanScreen() {
     setRefreshing(false);
   };
 
-  const drills = data?.drills ?? [];
+  const openPart = useCallback((part: LearningJourneyPartId) => {
+    router.push(`/(tabs)/plan/journey/${part}` as never);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,7 +101,7 @@ export default function MyPlanScreen() {
 
       <ScrollView
         style={tw`flex-1`}
-        contentContainerStyle={tw`px-5 py-4 pb-24 gap-8`}
+        contentContainerStyle={tw`px-5 py-4 pb-24 gap-6`}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -96,13 +114,17 @@ export default function MyPlanScreen() {
       >
         <NextSessionCard session={nextSession} />
 
-        <SavedDrillsSection title={t('account.savedDrills')} defaultExpanded={expandSavedDrills} />
+        <View style={tw`gap-3`}>
+          <BoldText style={tw`text-base font-bold text-gray-900 dark:text-white px-1`}>
+            {t('account.yourProgress')}
+          </BoldText>
+          <SavedDrillsSection
+            title={t('account.savedDrills')}
+            defaultExpanded={expandSavedDrills}
+          />
+        </View>
 
         <View>
-          <BoldText style={tw`text-base font-bold text-gray-900 dark:text-white mb-3`}>
-            {t('journey.title')}
-          </BoldText>
-
           {enrollmentsError && (
             <View
               style={tw`mb-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900`}
@@ -122,24 +144,7 @@ export default function MyPlanScreen() {
             </View>
           )}
 
-          {LEARNING_JOURNEY_PARTS.map((partDef) => {
-            const { completed, total } = countPartJourneyProgress(drills, partDef.part);
-            const isEnrolled = enrolledSet.has(partDef.part);
-            return (
-              <LearningJourneyPartCard
-                key={partDef.part}
-                part={partDef.part}
-                completedCount={completed}
-                totalCount={total}
-                isEnrolled={isEnrolled}
-                onPress={
-                  isEnrolled
-                    ? () => router.push(`/(tabs)/plan/journey/${partDef.part}` as never)
-                    : undefined
-                }
-              />
-            );
-          })}
+          <LearningJourneyRoadmap states={missionStates} onOpenPart={openPart} />
         </View>
       </ScrollView>
     </SafeAreaView>

@@ -19,7 +19,7 @@ import OtpVerification, { OtpVerificationHandle } from "./OtpVerification";
 
 interface VerifyEmailOtpSheetProps {
   email: string;
-  onVerified?: () => void;
+  onVerified?: () => void | Promise<void>;
   onDismiss?: () => void;
 }
 
@@ -65,7 +65,7 @@ const VerifyEmailOtpSheet = forwardRef<BottomSheetModal, VerifyEmailOtpSheetProp
           otp: otpCode,
         });
         logger.log("✅ Email verified via OTP");
-        onVerified?.();
+        await onVerified?.();
       },
       [onVerified]
     );

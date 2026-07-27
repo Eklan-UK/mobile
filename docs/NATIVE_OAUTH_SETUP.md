@@ -130,7 +130,18 @@ No additional environment variables needed for Apple Sign-In. The native SDK han
 
 ## 3. Backend Configuration
 
-The backend needs these environment variables (already configured in `front-end/.env`):
+### Native Sign in with Apple (mobile `verify-id-token`)
+
+Native Apple ID tokens use the **app bundle ID** as the JWT `aud` claim. The backend verifies with JWKS + this env var:
+
+```env
+# MUST match app.json ios.bundleIdentifier / EAS (com.eklan.ai)
+APPLE_BUNDLE_ID=com.eklan.ai
+```
+
+### Web Apple OAuth (Better Auth browser flow — optional)
+
+Only needed for web Sign in with Apple, not for the native mobile path:
 
 ```env
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com

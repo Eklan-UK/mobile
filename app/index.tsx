@@ -6,7 +6,22 @@ import LottieView from "lottie-react-native";
 import tw from "@/lib/tw";
 import { useAuthStore } from "@/store/auth-store";
 import { logger } from "@/utils/logger";
-import { resolveHasProfile } from "@/utils/auth-profile";
+import { resolveEmailVerified, resolveHasProfile } from "@/utils/auth-profile";
+
+/** Max wait for session refresh on launch so offline verified users are not blocked forever. */
+const SESSION_REFRESH_TIMEOUT_MS = 3000;
+
+async function refreshSessionWithTimeout(): Promise<void> {
+  await Promise.race([
+    useAuthStore.getState().checkSession(),
+    new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error("Session refresh timeout")),
+        SESSION_REFRESH_TIMEOUT_MS
+      );
+    }),
+  ]);
+}
 
 export default function RootSplashRouter() {
   const { isAuthenticated, hasHydrated, hydrate } = useAuthStore();
@@ -29,21 +44,22 @@ export default function RootSplashRouter() {
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
         if (isAuthenticated) {
-          useAuthStore.getState().checkSession().catch((error) => {
-            logger.warn("Background session check failed:", error);
-          });
+          try {
+            await refreshSessionWithTimeout();
+          } catch (error) {
+            logger.warn("Session refresh before routing failed:", error);
+          }
 
           const cachedUser = useAuthStore.getState().user;
 
           if (cachedUser) {
             const hasProfile = resolveHasProfile(cachedUser);
-            const emailVerified =
-              cachedUser.emailVerified === true ||
-              cachedUser.isEmailVerified === true;
+            const emailVerified = resolveEmailVerified(cachedUser);
 
             logger.log("🔍 Profile check (cached):", {
               hasProfile,
               userHasProfile: cachedUser.hasProfile,
+              emailVerified,
               role: cachedUser.role,
               userId: cachedUser.id,
             });

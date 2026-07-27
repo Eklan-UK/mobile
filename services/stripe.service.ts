@@ -1,4 +1,5 @@
 import apiClient, { API_BASE_URL } from '@/lib/api';
+import type { BillingPeriod } from '@/types/billing';
 import { logger } from '@/utils/logger';
 import axios from 'axios';
 import { Platform } from 'react-native';
@@ -29,10 +30,18 @@ function portalUnavailableMessage(): string {
   return `Billing portal returned 404 at POST ${API_BASE_URL}${STRIPE_PORTAL_PATH}. Fix EXPO_PUBLIC_API_URL / proxy so requests reach the Next app, or set EXPO_PUBLIC_STRIPE_PORTAL_PATH.`;
 }
 
-export async function createStripeCheckoutSession(): Promise<string> {
+/**
+ * Create a Stripe Checkout session for the selected billing period.
+ * Always send an explicit `billingPeriod` — never Stripe price IDs.
+ */
+export async function createStripeCheckoutSession(
+  billingPeriod: BillingPeriod
+): Promise<string> {
   assertAndroidStripe();
   try {
-    const response = await apiClient.post<{ url: string }>(STRIPE_CHECKOUT_PATH, {});
+    const response = await apiClient.post<{ url: string }>(STRIPE_CHECKOUT_PATH, {
+      billingPeriod,
+    });
     const url = response.data?.url;
     if (!url || typeof url !== 'string') {
       logger.error('Stripe checkout: missing url in response', response.data);

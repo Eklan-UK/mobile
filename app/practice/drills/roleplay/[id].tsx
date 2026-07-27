@@ -70,6 +70,7 @@ import {
     turnKey,
 } from "@/utils/roleplaySceneHelpers";
 import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
+import { isRedoSearchParam } from "@/utils/drillNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
@@ -158,6 +159,7 @@ function buildRoleplayIntroGreeting(drill: Drill): string {
 export default function RoleplayDrill() {
   const params = useLocalSearchParams();
   const routeDrillId = params.id as string;
+  const isRedo = isRedoSearchParam(params.redo);
   const progressCtx = useMemo(
     () =>
       parseRoleplayProgressContext({
@@ -256,6 +258,7 @@ export default function RoleplayDrill() {
   // ── Drill complete ──
   const [isDrillCompleted, setIsDrillCompleted] = useState(false);
   const [completingDrill, setCompletingDrill] = useState(false);
+  const completingRef = useRef(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [celebrationEffects, setCelebrationEffects] = useState<DrillCompletionEffects | undefined>();
 
@@ -279,7 +282,7 @@ export default function RoleplayDrill() {
 
   useEffect(() => {
     void loadDrill();
-  }, [progressCtx.progressDrillId, progressCtx.detailDrillId, progressCtx.assignmentId]);
+  }, [progressCtx.progressDrillId, progressCtx.detailDrillId, progressCtx.assignmentId, isRedo]);
 
   const resetToIntro = () => {
     aiTurnAppendSigRef.current = null;
@@ -322,6 +325,7 @@ export default function RoleplayDrill() {
     }
 
     if (advance.kind === "complete") {
+      setPhase("complete_banner");
       void completeDrillAsync(options?.completedTurns ?? completedStudentTurns);
       return;
     }
@@ -364,6 +368,7 @@ export default function RoleplayDrill() {
     );
 
     if (advance.kind === "complete") {
+      setPhase("complete_banner");
       void completeDrillAsync(completedStudentTurns);
       return;
     }
@@ -517,6 +522,20 @@ export default function RoleplayDrill() {
       }
       if (!audit.isPlayable) {
         setLoadError("This roleplay has no lines to practice.");
+        return;
+      }
+
+      // Practice Again: clear saved progress and start from intro.
+      if (isRedo && progressCtx.assignmentId) {
+        try {
+          await clearRoleplayProgress(
+            progressCtx.progressDrillId,
+            buildProgressQuery(progressCtx)
+          );
+        } catch (e) {
+          logger.warn("Failed to clear roleplay progress on redo:", e);
+        }
+        resetToIntro();
         return;
       }
 
@@ -1149,7 +1168,7 @@ export default function RoleplayDrill() {
     }
 
     if (advance.kind === "complete") {
-      setPhase("analyzing");
+      setPhase("complete_banner");
       void completeDrillAsync(nextCompletedTurns);
       return;
     }
@@ -1168,6 +1187,7 @@ export default function RoleplayDrill() {
     const scenes = drill.roleplay_scenes ?? [];
     const next = findNextSceneWithContent(scenes, sceneBreak.nextSceneIndex);
     if (!next) {
+      setPhase("complete_banner");
       void completeDrillAsync(completedStudentTurns);
       return;
     }
@@ -1303,7 +1323,8 @@ export default function RoleplayDrill() {
   // ─── Drill complete ───────────────────────────────────────────────────────
 
   const completeDrillAsync = async (passedTurnCount?: number) => {
-    if (!drill || completingDrill) return;
+    if (!drill || completingRef.current) return;
+    completingRef.current = true;
     const durationSeconds = (Date.now() - startTimeRef.current) / 1000;
     const turnsDone = passedTurnCount ?? completedStudentTurns;
     const score = totalTurns > 0 ? Math.round((turnsDone / totalTurns) * 100) : 0;
@@ -1313,12 +1334,14 @@ export default function RoleplayDrill() {
 
     try {
       if (progressCtx.source === "weekly_challenge" && progressCtx.challengeId && progressCtx.weekStartDate) {
-        const { completeWeeklyChallengeItemAndRefetch } = await import("@/hooks/useWeeklyChallenge");
+        const { completeWeeklyChallengeItem } = await import("@/services/weekly-challenge.service");
+        const { weeklyChallengeKeys } = await import("@/hooks/useWeeklyChallenge");
         const itemId = `${progressCtx.challengeId}-${progressCtx.challengeItemIndex ?? 0}`;
-        await completeWeeklyChallengeItemAndRefetch(queryClient, itemId, {
+        await completeWeeklyChallengeItem(itemId, {
           score,
           weekStartDate: progressCtx.weekStartDate,
         });
+        void queryClient.refetchQueries({ queryKey: weeklyChallengeKeys.all });
       } else {
         const performanceReviewSnapshot = buildRoleplayPerformanceReviewSnapshot({
           analytics: sessionAnalytics,
@@ -1345,18 +1368,15 @@ export default function RoleplayDrill() {
           performanceReviewSnapshot,
         });
         setCelebrationEffects(result.effects);
-        await invalidateDrillCaches(queryClient);
-      }
-      try {
-        await clearRoleplayProgress(
-          progressCtx.progressDrillId,
-          buildProgressQuery(progressCtx)
-        );
-      } catch (e) {
-        logger.warn("Failed to clear roleplay progress after submit:", e);
+        void invalidateDrillCaches(queryClient);
       }
       addRecentActivity({ id: drill._id, title: drill.title, type: drill.type, durationSeconds, score });
-      setPhase("complete_banner");
+      void clearRoleplayProgress(
+        progressCtx.progressDrillId,
+        buildProgressQuery(progressCtx)
+      ).catch((e) => {
+        logger.warn("Failed to clear roleplay progress after submit:", e);
+      });
     } catch (e) {
       logger.error("Failed to submit drill:", e);
       setCompleteError(
@@ -1366,6 +1386,7 @@ export default function RoleplayDrill() {
       );
       setPhase("complete_error");
     } finally {
+      completingRef.current = false;
       setCompletingDrill(false);
     }
   };
@@ -1887,6 +1908,7 @@ export default function RoleplayDrill() {
         visible={showCompleteSheet}
         studentCharacterName={drill.student_character_name}
         bottomInset={dockBottom}
+        reviewDisabled={completingDrill}
         onReviewPerformance={() => setPhase("review")}
       />
 
@@ -1919,7 +1941,10 @@ export default function RoleplayDrill() {
               {completeError}
             </AppText>
             <TouchableOpacity
-              onPress={() => void completeDrillAsync(completedStudentTurns)}
+              onPress={() => {
+                setPhase("complete_banner");
+                void completeDrillAsync(completedStudentTurns);
+              }}
               disabled={completingDrill}
               style={{
                 backgroundColor: "#3b883e",

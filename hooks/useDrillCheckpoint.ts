@@ -57,7 +57,8 @@ export function useDrillCheckpoint<TType extends DrillCheckpointType>({
   const sessionKey = `${drillId}-${assignmentId ?? 'pending'}`;
   const checkpointsEnabled =
     !!assignmentId && !isRedo && !isWeeklyChallenge;
-  const skipLocalRestore = checkpointsEnabled;
+  // Redo must not rehydrate finished local progress (activity-store).
+  const skipLocalRestore = checkpointsEnabled || isRedo;
 
   useEffect(() => {
     startedAtRef.current = undefined;
@@ -65,8 +66,28 @@ export function useDrillCheckpoint<TType extends DrillCheckpointType>({
     setCheckpointCompletedCount(0);
   }, [drillId, assignmentId, sessionKey]);
 
+  // On redo open: clear server checkpoint so a later non-redo open stays fresh.
+  useEffect(() => {
+    if (!isRedo || !assignmentId) return;
+    clearCheckpointSafe(drillId, assignmentId);
+  }, [isRedo, drillId, assignmentId, sessionKey]);
+
   useEffect(() => {
     let cancelled = false;
+
+    if (isRedo) {
+      if (!isDrillReady) {
+        setIsLoadingCheckpoint(false);
+        return () => {
+          cancelled = true;
+        };
+      }
+      onFreshStartRef.current();
+      setIsLoadingCheckpoint(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     if (!checkpointsEnabled) {
       setIsLoadingCheckpoint(false);
@@ -120,6 +141,7 @@ export function useDrillCheckpoint<TType extends DrillCheckpointType>({
     sessionKey,
     checkpointsEnabled,
     isDrillReady,
+    isRedo,
   ]);
 
   const persistCheckpoint = useCallback(

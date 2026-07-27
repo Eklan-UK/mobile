@@ -9,11 +9,14 @@ import { usePreloadDrillCelebration } from "@/hooks/usePreloadDrillCelebration";
 import { useTTS } from "@/hooks/useTTS";
 import tw from "@/lib/tw";
 import { completeDrill, getDrillById } from "@/services/drill.service";
+import { invalidateDrillCaches } from "@/hooks/useDrills";
 import { useActivityStore } from "@/store/activity-store";
 import { Drill, type DrillCompletionEffects } from "@/types/drill.types";
 import { Alert } from "@/utils/alert";
 import { logger } from "@/utils/logger";
+import { isRedoSearchParam } from "@/utils/drillNavigation";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, TouchableOpacity, View } from "react-native";
@@ -23,8 +26,10 @@ export default function ListeningDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
+  const isRedo = isRedoSearchParam(params.redo);
 
-  const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
+  const { clearDrillProgress, addRecentActivity } = useActivityStore();
+  const queryClient = useQueryClient();
   const { isExiting, exitDrill } = useDrillExit();
   const startTimeRef = useRef(Date.now());
   const submitPromiseRef = useRef<Promise<boolean> | null>(null);
@@ -53,6 +58,16 @@ export default function ListeningDrill() {
       setIsPlaying(false);
     },
   });
+
+  useEffect(() => {
+    if (!isRedo) return;
+    clearDrillProgress(drillId);
+    setHasListened(false);
+    setIsRecording(false);
+    setIsDrillCompleted(false);
+    setIsPlaying(false);
+    startTimeRef.current = Date.now();
+  }, [isRedo, drillId]);
 
   useEffect(() => {
     loadDrill();
@@ -117,6 +132,7 @@ export default function ListeningDrill() {
           setCelebrationEffects(result.effects);
           setCompletePassed(result.passed);
           clearDrillProgress(drillId);
+          await invalidateDrillCaches(queryClient);
           return true;
         } catch (err) {
           logger.warn("Failed to submit listening completion", err);

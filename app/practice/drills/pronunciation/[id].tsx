@@ -45,6 +45,7 @@ import {
     showMicrophonePermissionAlert,
 } from "@/utils/microphone";
 import { getCachedWCDrill } from "@/utils/weeklyChallengeDrillCache";
+import { isRedoSearchParam } from "@/utils/drillNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
@@ -110,7 +111,7 @@ export default function PronunciationDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
-  const isRedo = params.redo === "true";
+  const isRedo = isRedoSearchParam(params.redo);
 
   // Weekly challenge mode params
   const wcSource = params.source as string | undefined;

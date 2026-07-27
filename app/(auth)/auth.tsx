@@ -22,6 +22,8 @@ import { useAuth } from "@/hooks/useAuth";
 import Logo from "@/assets/icons/icon-logo.svg";
 import { SignupFormData } from "./components/SignupSheet";
 import apiClient from "@/lib/api";
+import { secureStorage } from "@/lib/secure-storage";
+import { useAuthStore } from "@/store/auth-store";
 import { logger } from "@/utils/logger";
 
 export default function AccessGatewayScreen() {
@@ -98,9 +100,32 @@ export default function AccessGatewayScreen() {
 
   /**
    * Called after OTP is successfully verified.
-   * Dismiss OTP sheet → Loading sheet → Success sheet → Loader overlay → Profile setup
+   * Persist emailVerified locally (and refresh session) before UI continues,
+   * so a cold start cannot route back to verify-email on a stale cache.
+   * Then: Dismiss OTP sheet → Loading sheet → Success sheet → Loader → Profile setup
    */
-  const handleOtpVerified = () => {
+  const handleOtpVerified = async () => {
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser) {
+      const verifiedUser = {
+        ...currentUser,
+        emailVerified: true,
+        isEmailVerified: true,
+      };
+      try {
+        await secureStorage.setUser(verifiedUser);
+        useAuthStore.setState({ user: verifiedUser });
+      } catch (error) {
+        logger.warn("Failed to persist emailVerified after OTP:", error);
+      }
+    }
+
+    try {
+      await useAuthStore.getState().checkSession();
+    } catch (error) {
+      logger.warn("Session refresh after OTP verify failed:", error);
+    }
+
     verifyEmailOtpSheetRef.current?.dismiss();
 
     setTimeout(() => {

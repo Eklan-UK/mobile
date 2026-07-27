@@ -1,22 +1,38 @@
 import { AppText, BoldText } from "@/components/ui";
 import tw from "@/lib/tw";
-import { getAssignmentAttempts } from "@/services/drill.service";
+import { getAssignmentAttempts, getDrillById } from "@/services/drill.service";
 import { getDrillCategory, type KeyPhrasesResult, type MatchingResults } from "@/types/drill.types";
+import { resolveAttemptsAssignmentDrill } from "@/utils/drillAssignment";
 import { resolveDrillPracticeType } from "@/utils/drillPracticeType";
+import {
+  getDrillRoute,
+  navigateToDrill,
+} from "@/utils/drillNavigation";
 import { KEY_PHRASES_PASS_THRESHOLD } from "@/utils/keyPhrasesCompletion";
 import { MATCHING_PASS_THRESHOLD } from "@/lib/drill/matching-score";
+import { Alert } from "@/utils/alert";
+import { logger } from "@/utils/logger";
+import type { DrillType } from "@/types/drill.types";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { router, useLocalSearchParams } from "expo-router";
-import { ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function DrillResultsScreen() {
-  const { drillId, assignmentId } = useLocalSearchParams<{
-    drillId: string;
-    assignmentId: string;
+  const params = useLocalSearchParams<{
+    drillId?: string | string[];
+    assignmentId?: string | string[];
+    type?: string | string[];
   }>();
+  const drillId = Array.isArray(params.drillId) ? params.drillId[0] : params.drillId;
+  const assignmentId = Array.isArray(params.assignmentId)
+    ? params.assignmentId[0]
+    : params.assignmentId;
+  const typeParam = Array.isArray(params.type) ? params.type[0] : params.type;
+  const [isStartingRedo, setIsStartingRedo] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["assignment-attempts", assignmentId],
@@ -26,9 +42,12 @@ export default function DrillResultsScreen() {
 
   const assignment = data?.assignment;
   const latest = data?.latestAttempt;
-  const drill = assignment?.drill ?? assignment;
-  const drillTitle = drill?.title ?? "Drill";
-  const drillType = drill?.type ?? "";
+  // Attempts API populates `drillId`, not `drill` — resolve both shapes.
+  const drill =
+    resolveAttemptsAssignmentDrill(assignment) ??
+    (typeParam ? { _id: drillId ?? "", title: "", type: typeParam as DrillType } : null);
+  const drillTitle = drill?.title || "Drill";
+  const drillType = drill?.type ?? typeParam ?? "";
   const difficulty = drill?.difficulty ?? "";
   const category = drillType ? getDrillCategory(drillType as any) : "";
   const completedAt = assignment?.completedAt ?? latest?.completedAt;
@@ -36,16 +55,57 @@ export default function DrillResultsScreen() {
   const timeSpent = latest?.timeSpent;
   const keyPhrasesResults = latest?.keyPhrasesResults as KeyPhrasesResult | undefined;
   const matchingResults = latest?.matchingResults as MatchingResults | undefined;
-  const practiceType = drill ? resolveDrillPracticeType(drill) : null;
+  const practiceType = drill
+    ? resolveDrillPracticeType(drill)
+    : typeParam
+      ? resolveDrillPracticeType({ type: typeParam })
+      : null;
   const isKeyPhrases =
     !!keyPhrasesResults || practiceType === "key_phrases";
   const isMatching =
     !!matchingResults || practiceType === "matching" || drillType === "matching";
-  const runnerType = isKeyPhrases
-    ? "key_phrases"
-    : isMatching
-      ? "matching"
-      : (drillType || practiceType || "");
+
+  async function handlePracticeAgain() {
+    if (!drillId || !assignmentId) {
+      Alert.alert(
+        "Unable to practice again",
+        "Missing drill information for another attempt."
+      );
+      return;
+    }
+    if (isStartingRedo) return;
+    setIsStartingRedo(true);
+
+    try {
+      const knownType = practiceType;
+      const knownRoute = knownType
+        ? getDrillRoute(knownType as DrillType)
+        : null;
+
+      if (knownRoute) {
+        router.push({
+          pathname: `${knownRoute}/${drillId}` as never,
+          params: {
+            assignmentId: String(assignmentId),
+            redo: "true",
+          },
+        } as never);
+        return;
+      }
+
+      // Fallback: fetch full drill when attempts payload lacked a resolvable type.
+      const full = await getDrillById(drillId, assignmentId);
+      navigateToDrill(full, assignmentId, { redo: true });
+    } catch (error) {
+      logger.warn("Practice Again failed:", error);
+      Alert.alert(
+        "Unable to practice again",
+        "Couldn't open this drill for another attempt. Please try again."
+      );
+    } finally {
+      setIsStartingRedo(false);
+    }
+  }
 
   function isAttemptPassed(attemptScore?: number): boolean {
     if (attemptScore === undefined) return false;
@@ -296,14 +356,15 @@ export default function DrillResultsScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.secondaryBtn}
-                  onPress={() =>
-                    router.push(
-                      `/practice/drills/${runnerType}/${drillId}?assignmentId=${assignmentId}` as any
-                    )
-                  }
+                  onPress={() => void handlePracticeAgain()}
                   activeOpacity={0.85}
+                  disabled={isStartingRedo}
                 >
-                  <AppText style={styles.secondaryBtnText}>View Drill Again</AppText>
+                  {isStartingRedo ? (
+                    <ActivityIndicator size="small" color="#374151" />
+                  ) : (
+                    <AppText style={styles.secondaryBtnText}>Practice Again</AppText>
+                  )}
                 </TouchableOpacity>
               </View>
             </>

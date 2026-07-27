@@ -3,6 +3,7 @@ import type {
   LanguageOption,
   LearningGoalOption,
 } from '@/types/settings';
+import { ACCENT_VOICE_OPTIONS } from '@/utils/tts-accent-voices';
 
 // ─── Nationality options ───────────────────────────────────────────────────────
 
@@ -147,12 +148,9 @@ export const LEARNING_GOAL_ITEMS: LearningGoalOption[] = [
 
 // ─── Lesson preference options ─────────────────────────────────────────────────
 
-export const ENGLISH_ACCENTS: { id: string; label: string }[] = [
-  { id: 'british', label: 'British' },
-  { id: 'american', label: 'American' },
-  { id: 'australian', label: 'Australian' },
-  { id: 'canadian', label: 'Canadian' },
-];
+/** Same keys/labels as web student lesson accent setting. */
+export const ENGLISH_ACCENTS: { id: string; label: string }[] =
+  ACCENT_VOICE_OPTIONS.map((opt) => ({ id: opt.key, label: opt.label }));
 
 export const VOICE_TONES: { id: string; label: string }[] = [
   { id: 'friendly', label: 'Friendly' },

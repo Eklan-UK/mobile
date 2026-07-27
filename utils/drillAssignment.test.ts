@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeDrillAssignment, readJourneyFields, resolveDrillTopicTitle } from './drillAssignment';
+import {
+  normalizeDrillAssignment,
+  readJourneyFields,
+  resolveAttemptsAssignmentDrill,
+  resolveDrillTopicTitle,
+} from './drillAssignment';
 
 describe('resolveDrillTopicTitle', () => {
   it('returns trimmed topic when present', () => {
@@ -12,6 +17,47 @@ describe('resolveDrillTopicTitle', () => {
     expect(resolveDrillTopicTitle(null)).toBeNull();
     expect(resolveDrillTopicTitle({ topicTitle: '' } as never)).toBeNull();
     expect(resolveDrillTopicTitle({ topicTitle: '   ' } as never)).toBeNull();
+  });
+});
+
+describe('resolveAttemptsAssignmentDrill', () => {
+  it('reads populated drillId from attempts API assignment', () => {
+    const drill = resolveAttemptsAssignmentDrill({
+      _id: 'asg1',
+      status: 'completed',
+      drillId: {
+        _id: 'd1',
+        title: 'ICU Vocab',
+        type: 'vocabulary',
+        difficulty: 'intermediate',
+      },
+    });
+
+    expect(drill).toEqual({
+      _id: 'd1',
+      title: 'ICU Vocab',
+      type: 'vocabulary',
+      difficulty: 'intermediate',
+    });
+  });
+
+  it('prefers nested drill when present', () => {
+    const drill = resolveAttemptsAssignmentDrill({
+      drill: { _id: 'd2', title: 'Roleplay', type: 'roleplay', difficulty: 'beginner' },
+      drillId: { _id: 'ignored', title: 'x', type: 'vocabulary' },
+    });
+    expect(drill?.type).toBe('roleplay');
+    expect(drill?._id).toBe('d2');
+  });
+
+  it('returns null when assignment has no drill type', () => {
+    expect(
+      resolveAttemptsAssignmentDrill({
+        _id: 'asg1',
+        drillId: 'plain-string-id',
+        status: 'completed',
+      })
+    ).toBeNull();
   });
 });
 

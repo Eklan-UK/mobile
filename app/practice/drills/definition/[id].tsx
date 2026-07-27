@@ -13,6 +13,7 @@ import { useActivityStore } from "@/store/activity-store";
 import { Drill, type DrillCompletionEffects } from "@/types/drill.types";
 import { DrillCheckpointType } from "@/types/drill-checkpoint.types";
 import { logger } from "@/utils/logger";
+import { isRedoSearchParam } from "@/utils/drillNavigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -23,7 +24,7 @@ export default function DefinitionDrill() {
   const params = useLocalSearchParams();
   const drillId = params.id as string;
   const assignmentId = params.assignmentId as string | undefined;
-  const isRedo = params.redo === "true";
+  const isRedo = isRedoSearchParam(params.redo);
 
   const { drillProgress, updateDrillProgress, addRecentActivity, clearDrillProgress } = useActivityStore();
   const queryClient = useQueryClient();

@@ -2,13 +2,15 @@ import { AppText, BoldText } from '@/components/ui';
 import tw from '@/lib/tw';
 import { LearnerClassListItem } from '@/types/session.types';
 import { router } from 'expo-router';
-import { Linking } from 'react-native';
 import { useRecordAttendance } from '@/hooks/useLearnerClasses';
 import { formatRelativeTime, formatSessionDateTime } from '@/utils/sessionFormatters';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
-import { TouchableOpacity, View } from 'react-native';
+import { Linking, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import JoiningSessionModal from './JoiningSessionModal';
+
+const CARD_BG = '#2a602c';
+const CTA_YELLOW = '#fbd100';
 
 interface NextSessionCardProps {
   /** When null, shows an empty state but keeps the same card layout. */
@@ -51,82 +53,112 @@ export function NextSessionCard({ session }: NextSessionCardProps) {
 
   return (
     <>
-      <LinearGradient
-        colors={['#3EC6E0', '#2196F3']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={tw`mx-4 mb-4 rounded-3xl p-4`}
+      <View
+        style={[
+          tw`rounded-[32px] p-6`,
+          {
+            backgroundColor: CARD_BG,
+            boxShadow: '0px 20px 25px -5px rgba(0,0,0,0.1), 0px 8px 10px -6px rgba(0,0,0,0.1)',
+          },
+        ]}
       >
-        {/* Top row */}
-        <View style={tw`flex-row items-center justify-between mb-3`}>
-          <View style={tw`flex-row items-center gap-2`}>
-            <AppText style={tw`text-white text-sm`}>📹</AppText>
-            <AppText style={tw`text-white text-sm font-medium`}>Next Session</AppText>
+        <View style={tw`flex-row items-center justify-between`}>
+          <View style={tw`flex-row items-center gap-1.5 bg-white/20 rounded-full px-3 py-1`}>
+            <Ionicons name="star" size={12} color="#fff" />
+            <BoldText
+              style={tw`text-white text-[10px] font-bold uppercase tracking-[1px] leading-[15px]`}
+            >
+              Upcoming Session
+            </BoldText>
           </View>
-          {startsInLabel && (
-            <View style={tw`flex-row items-center bg-white/20 rounded-full px-3 py-1 gap-1`}>
-              <AppText style={tw`text-white text-xs`}>🕐</AppText>
+          {startsInLabel ? (
+            <View style={tw`flex-row items-center bg-white/20 rounded-full px-2.5 py-1 gap-1`}>
+              <Ionicons name="time-outline" size={14} color="#fff" />
               <AppText style={tw`text-white text-xs font-medium`}>{startsInLabel}</AppText>
             </View>
-          )}
+          ) : null}
         </View>
 
-        {/* Date / time */}
-        <BoldText style={tw`text-white text-2xl font-bold mb-1`}>
-          {hasSession && dateLabel
-            ? `${dateLabel}${timeLabel ? ` • ${timeLabel}` : ''}`
-            : 'No class scheduled'}
-        </BoldText>
+        {hasSession && session.nextSessionIsReschedule ? (
+          <View style={tw`mt-2 self-start bg-[#FBD100] rounded-full px-2 py-0.5`}>
+            <AppText style={tw`text-[#171717] text-xs font-medium`}>Rescheduled</AppText>
+          </View>
+        ) : null}
 
-        {/* Tutor + session label */}
-        <View style={tw`flex-row items-center flex-wrap gap-2 mb-4`}>
-          {hasSession ? (
-            <>
-              <BoldText style={tw`text-white text-sm font-semibold`}>
+        {hasSession ? (
+          <>
+            <BoldText style={tw`text-white text-xl font-medium leading-7 pt-3`}>
+              {dateLabel
+                ? `${dateLabel}${timeLabel ? ` • ${timeLabel}` : ''}`
+                : 'Upcoming session'}
+            </BoldText>
+            <View style={tw`flex-row items-center flex-wrap gap-2 mt-0.5`}>
+              <AppText style={tw`text-white/80 text-sm leading-5`}>
                 {session.tutorName}
-              </BoldText>
-              {sessionLabel && (
-                <>
-                  <AppText style={tw`text-white/70 text-sm`}>•</AppText>
-                  <AppText style={tw`text-white/70 text-sm`}>{sessionLabel}</AppText>
-                </>
-              )}
-              {session.nextSessionIsReschedule && (
-                <View style={tw`bg-yellow-400 rounded-full px-2 py-0.5`}>
-                  <AppText style={tw`text-yellow-900 text-xs font-medium`}>Rescheduled</AppText>
-                </View>
-              )}
-            </>
-          ) : (
-            <AppText style={tw`text-white/90 text-sm leading-5`}>
-              {hasSession
-                ? 'You have a class'
-                : 'No upcoming session scheduled. When your tutor adds one, it will appear here.'}
+                {sessionLabel ? ` • ${sessionLabel}` : ''}
+              </AppText>
+            </View>
+          </>
+        ) : (
+          <>
+            <BoldText style={tw`text-white text-xl font-medium leading-7 pt-3`}>
+              Session Status
+            </BoldText>
+            <AppText style={tw`text-white/80 text-sm leading-5 mt-0.5`}>
+              No upcoming session scheduled. When your tutor adds one, it will appear here.
             </AppText>
-          )}
-        </View>
-   
+          </>
+        )}
 
-        {/* Action buttons */}
-        <View style={tw`flex-row gap-3`}>
+        <View style={tw`gap-3 pt-7`}>
           <TouchableOpacity
-            style={tw`flex-1 bg-white/20 rounded-full py-3 items-center`}
+            style={[
+              tw`w-full rounded-full py-4 items-center`,
+              {
+                backgroundColor: CTA_YELLOW,
+                boxShadow: '0px 10px 15px -3px rgba(0,0,0,0.1), 0px 4px 6px -4px rgba(0,0,0,0.1)',
+              },
+            ]}
             onPress={() => router.push('/sessions')}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="View all Sessions"
           >
-            <AppText style={tw`text-white text-sm font-medium`}>View all Sessions</AppText>
+            <BoldText style={tw`text-[#171717] text-base font-bold`}>
+              View all Sessions
+            </BoldText>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={tw`flex-1 bg-white rounded-full py-3 items-center ${!canJoin ? 'opacity-50' : ''}`}
+            style={[
+              tw`w-full rounded-full py-[17px] items-center flex-row justify-center gap-2 border`,
+              canJoin
+                ? tw`bg-white/15 border-white/20`
+                : tw`bg-white/10 border-white/5`,
+            ]}
             onPress={handleJoin}
             disabled={!canJoin}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canJoin }}
+            accessibilityLabel="Join Session"
           >
-            <BoldText style={tw`text-gray-900 text-sm font-bold`}>Join Session</BoldText>
+            <Ionicons
+              name="videocam"
+              size={16}
+              color={canJoin ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.4)'}
+            />
+            <BoldText
+              style={[
+                tw`text-base font-bold`,
+                { color: canJoin ? '#fff' : 'rgba(255,255,255,0.4)' },
+              ]}
+            >
+              Join Session
+            </BoldText>
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      </View>
 
       <JoiningSessionModal visible={joiningVisible} />
     </>
